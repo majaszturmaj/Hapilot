@@ -6,12 +6,11 @@
 2. Second pass (after the form): the confirmed parameters are compiled to PDF and the plan goes on.
 """
 
-import json
 import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from src.core.tools_common import invoke_llm_and_normalize
+from src.core.tools_common import extract_json_object, invoke_llm_and_normalize
 from src.llm_config import get_bielik_chat
 
 
@@ -112,12 +111,9 @@ Odpowiedz WYŁĄCZNIE w formacie JSON:
         raw = invoke_llm_and_normalize(llm, [SystemMessage(content=system_prompt), HumanMessage(content=prompt)]).content
         if raw.startswith("[LLM"):
             return _error(f"Model nie może przetworzyć zapytania.\n{raw[:200]}")
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
-        if not match:
-            return _error(f"Model nie zwrócił JSON.\n{raw[:300]}")
-        parsed = json.loads(match.group(0))
-    except json.JSONDecodeError as exc:
-        return _error(f"Nieprawidłowy JSON: {exc}")
+        parsed = extract_json_object(raw)
+        if parsed is None:
+            return _error(f"Model nie zwrócił poprawnego JSON.\n{raw[:300]}")
     except Exception as exc:
         return _error(str(exc))
 

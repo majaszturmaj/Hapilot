@@ -199,3 +199,20 @@ def test_coder_sees_earlier_step_results_and_readable_files(graph, invoke, llm, 
     assert "/data/" in coder_prompt  # the demo company documents are readable by code
     assert docker.runs[-1]["volumes"]  # and mounted read-only
     assert any(v == {"bind": "/data", "mode": "ro"} for v in docker.runs[-1]["volumes"].values())
+
+
+def test_planner_json_with_trailing_brace_is_parsed(graph, invoke, llm):
+    """Regression (Bielik on the GPU host): an extra '}' after the plan made the greedy regex fail."""
+    llm.on("task_planner", plan(("chat", "Odpowiedz", "")) + "}")
+    llm.on("chat", "odpowiedź z planu")
+    state = invoke(graph, "Hej", "s-brace")
+    assert state["task_plan"]["steps"][0]["tool"] == "chat" and last_text(state) == "odpowiedź z planu"
+
+
+def test_extract_json_object_variants():
+    from src.core.tools_common import extract_json_object
+
+    assert extract_json_object('{"a": 1}}') == {"a": 1}
+    assert extract_json_object('Oto plan:\n```json\n{"a": {"b": [1, 2]}}\n```') == {"a": {"b": [1, 2]}}
+    assert extract_json_object('{zły} potem {"ok": true}') == {"ok": True}
+    assert extract_json_object("brak") is None

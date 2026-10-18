@@ -95,7 +95,7 @@ it. The UI's knowledge base is not touched.
 | `status` | `ok` (the graph finished), `error` (exception; message in `error`), `timeout` |
 | `answer_text` | the agent's final message to the user, verbatim |
 | `answer_json`, `answer_json_valid` | only with `answer_format`: the parsed object, and whether it is a JSON object with every field in `fields` (and valid against `schema` if given) |
-| `sources_used` | corpus files (path relative to `corpus_dir`) whose text was put into a model prompt during the task, plus attachments. In v1 every retrieved chunk goes into a prompt, so this equals the files of all retrieved chunks; the per-chunk detail is in the trace |
+| `sources_used` | corpus files (path relative to `corpus_dir`) whose text was put into a model prompt during the task, plus corpus files that executed Python code named by path (`/data/<file>`), plus attachments. In v1 every retrieved chunk goes into a prompt, so the first part equals the files of all retrieved chunks; the per-chunk detail is in the trace |
 | `sources_cited` | corpus files named in list-valued fields of `answer_json` (matched by path or base name) — what the answer itself claims as its sources |
 | `files_created` | files in the task workspace at the end that were not attachments |
 | `plan_tools` | tools of the executed plan, in order (detail in the trace) |
@@ -115,6 +115,7 @@ strictly increasing within a task. Types:
 | `model_fallback` | `role`, `model` — the role's own model was not served and the profile's default model was used |
 | `attachments` | `files` (name, bytes, sha256, chars, error), `inlined`, `collection` |
 | `retrieval` | `query`, `method` (`hybrid`), `k`, `chunks[{rank, file, chunk_id, page, score, score_dense, score_bm25, text}]` |
+| `code_data_access` | `files` — corpus files that generated code names by path (the sandbox sees the corpus read-only at `/data`) |
 | `sandbox_run` | `command`, `exit_code`, `timed_out`, `network_mode`, `duration_ms` |
 | `file_created` | `path`, `bytes`, `sha256` |
 | `approval` | `kind` (`plan`, `document_form`, `confirm_step`, `email_draft`), `policy`, `decision` (`auto_approved`), `summary` |

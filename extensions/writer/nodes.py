@@ -28,7 +28,7 @@ def _get_current_turn_ai_messages(messages) -> list:
 
 def run_writer(state):
     """Run Bielik as a writer/synthesizer for plan steps that require textual synthesis."""
-    print("   --> ✍️ [NODE: WRITER] Generowanie treści (Bielik)...")
+    print("   --> ✍️ [NODE: WRITER] Generowanie treści...")
     llm, system_prompt = get_bielik_chat(role="writer")
 
     task_plan = state.get("task_plan") or {}

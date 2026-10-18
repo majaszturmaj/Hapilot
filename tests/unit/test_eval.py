@@ -182,3 +182,17 @@ def test_run_config_rejects_bad_settings(tmp_path):
     for kw in ({"today": "14.10.2026"}, {"approval_policy": "ask"}, {"answer_mode": "guess"}, {"profile": "cloud"}):
         with pytest.raises(ConfigError):
             RunConfig(corpus_dir=tmp_path, out_dir=tmp_path / "o", **{"today": "2026-10-14", **kw})
+
+
+def test_files_read_by_code_count_as_sources(corpus, tmp_path, llm, docker):
+    llm.on("task_planner", plan(("python", "policz z pliku")))
+    llm.on("coder", "```python\nprint(open('/data/kadry/regulamin.txt').read()[:5] if False else 14)\n```")
+    llm.on("answer_formatter", '{"dni": 14}')
+    with EvalSession(_cfg(corpus, tmp_path)) as run:
+        result = run.run_task(Task(id="C1", instruction="Ile dni?", answer_format={"fields": {"dni": "liczba"}}))
+    assert result["sources_used"] == ["kadry/regulamin.txt"]
+    events = [json.loads(line) for line in (tmp_path / "out" / "traces" / "C1.jsonl").read_text().splitlines()]
+    assert any(e["type"] == "code_data_access" and e["files"] == ["kadry/regulamin.txt"] for e in events)
+    run_volumes = docker.runs[-1]["volumes"]
+    assert {"bind": "/data", "mode": "ro"} in run_volumes.values()
+    assert validate_run(tmp_path / "out") == []

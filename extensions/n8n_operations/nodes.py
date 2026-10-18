@@ -6,14 +6,13 @@ local. A draft is created only after the user confirms it — never automaticall
 ``auto`` approval policy. No credentials live in this repository: n8n holds them.
 """
 
-import json
 import re
 from datetime import date, timedelta
 
 import httpx
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from src.core.tools_common import create_hitl_confirm_request, invoke_llm_and_normalize
+from src.core.tools_common import create_hitl_confirm_request, extract_json_object, invoke_llm_and_normalize
 
 
 def _webhook(path: str) -> str:
@@ -86,11 +85,7 @@ def _email(state) -> dict:
     raw = invoke_llm_and_normalize(llm, [SystemMessage(content=system_prompt), HumanMessage(content=(
         f"Przygotuj wersję roboczą e-maila na podstawie polecenia:\n{request}\n\n"
         'Odpowiedz WYŁĄCZNIE JSON: {"to": "adres lub puste", "subject": "temat", "body": "treść"}'))]).content
-    match = re.search(r"\{.*\}", raw or "", re.DOTALL)
-    try:
-        draft = json.loads(match.group(0)) if match else {}
-    except json.JSONDecodeError:
-        draft = {}
+    draft = extract_json_object(raw or "") or {}
     draft = {"to": str(draft.get("to", "")), "subject": str(draft.get("subject", "")), "body": str(draft.get("body", raw))}
     preview = f"**Do:** {draft['to'] or '(uzupełnij w Outlooku)'}\n**Temat:** {draft['subject']}\n\n{draft['body']}"
 

@@ -201,6 +201,27 @@ def invoke_llm_and_normalize(llm, messages):
 
 
 
+# --- JSON FROM MODEL OUTPUT ---
+
+def extract_json_object(text: str) -> Optional[dict]:
+    """The first JSON object in a model's answer.
+
+    Tolerates code fences, prose around the object and trailing garbage (e.g. an extra ``}``),
+    which a greedy ``{.*}`` regex does not.
+    """
+    decoder = json.JSONDecoder()
+    for i, ch in enumerate(text or ""):
+        if ch != "{":
+            continue
+        try:
+            obj, _end = decoder.raw_decode(text, i)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            return obj
+    return None
+
+
 # --- CONVERSATION FORMAT ---
 
 def to_valid_chat(messages, closing_instruction: Optional[str] = None) -> list:

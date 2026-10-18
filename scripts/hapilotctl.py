@@ -350,13 +350,17 @@ def cmd_eval(args) -> None:
 
 
 def cmd_smoke(args) -> None:
-    if not owned("modelswap"):
+    started_here = not owned("modelswap")
+    if started_here:
         models_up(args.profile)
     cmd_ingest(argparse.Namespace(docs=None, force=False))
     cmd = [str(PY), str(ROOT / "scripts" / "smoke.py"), "--model-url", f"http://127.0.0.1:{PROXY_PORT}/v1"]
     if args.profile:
         cmd += ["--profile", args.profile]
-    raise SystemExit(subprocess.run(cmd, cwd=ROOT).returncode)
+    code = subprocess.run(cmd, cwd=ROOT).returncode
+    if started_here:
+        models_down()
+    raise SystemExit(code)
 
 
 # --------------------------------------------------------------------------- egress test

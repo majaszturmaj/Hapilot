@@ -3,29 +3,303 @@
   "$id": "hapilot.trace/1",
   "title": "Hapilot trace event (one line of traces/<task_id>.jsonl)",
   "type": "object",
-  "required": ["schema", "run_id", "task_id", "seq", "ts", "type"],
+  "required": [
+    "schema",
+    "run_id",
+    "task_id",
+    "seq",
+    "ts",
+    "type"
+  ],
   "properties": {
-    "schema": {"const": "hapilot.trace/1"},
-    "run_id": {"type": "string"},
-    "task_id": {"type": "string"},
-    "seq": {"type": "integer", "minimum": 1},
-    "ts": {"type": "string"},
-    "type": {"enum": ["task_start", "attachments", "plan", "node_start", "node_end", "llm_call", "model_fallback", "tool_call",
-                      "retrieval", "sandbox_run", "file_created", "approval", "answer_format", "task_end"]}
+    "schema": {
+      "const": "hapilot.trace/1"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "seq": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "ts": {
+      "type": "string"
+    },
+    "type": {
+      "enum": [
+        "task_start",
+        "attachments",
+        "plan",
+        "node_start",
+        "node_end",
+        "llm_call",
+        "model_fallback",
+        "tool_call",
+        "retrieval",
+        "code_data_access",
+        "sandbox_run",
+        "file_created",
+        "approval",
+        "answer_format",
+        "task_end"
+      ]
+    }
   },
   "allOf": [
-    {"if": {"properties": {"type": {"const": "task_start"}}}, "then": {"required": ["session_id", "instruction", "answer_format", "attachments"]}},
-    {"if": {"properties": {"type": {"const": "plan"}}}, "then": {"required": ["task_plan", "guards_applied"]}},
-    {"if": {"properties": {"type": {"enum": ["node_start", "node_end"]}}}, "then": {"required": ["node", "plan_step"]}},
-    {"if": {"properties": {"type": {"const": "node_end"}}}, "then": {"required": ["duration_ms", "status", "next"]}},
-    {"if": {"properties": {"type": {"const": "llm_call"}}}, "then": {"required": ["call_id", "node", "role", "model", "base_url", "params", "messages_ref", "response_ref", "prompt_tokens", "completion_tokens", "latency_ms", "finish_reason", "error"]}},
-    {"if": {"properties": {"type": {"const": "tool_call"}}}, "then": {"required": ["name", "depth", "args", "result_summary", "duration_ms", "exception"]}},
-    {"if": {"properties": {"type": {"const": "retrieval"}}}, "then": {"required": ["query", "method", "k", "chunks"],
-      "properties": {"chunks": {"type": "array", "items": {"type": "object", "required": ["rank", "file", "chunk_id", "score", "text"]}}}}},
-    {"if": {"properties": {"type": {"const": "sandbox_run"}}}, "then": {"required": ["command", "exit_code", "timed_out", "network_mode", "duration_ms"]}},
-    {"if": {"properties": {"type": {"const": "file_created"}}}, "then": {"required": ["path", "bytes", "sha256"]}},
-    {"if": {"properties": {"type": {"const": "approval"}}}, "then": {"required": ["kind", "policy", "decision", "summary"]}},
-    {"if": {"properties": {"type": {"const": "answer_format"}}}, "then": {"required": ["mode", "valid", "error", "attempts"]}},
-    {"if": {"properties": {"type": {"const": "task_end"}}}, "then": {"required": ["status", "error", "duration_s", "llm_calls", "prompt_tokens", "completion_tokens"]}}
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "task_start"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "session_id",
+          "instruction",
+          "answer_format",
+          "attachments"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "plan"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "task_plan",
+          "guards_applied"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "enum": [
+              "node_start",
+              "node_end"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "node",
+          "plan_step"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "node_end"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "duration_ms",
+          "status",
+          "next"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "llm_call"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "call_id",
+          "node",
+          "role",
+          "model",
+          "base_url",
+          "params",
+          "messages_ref",
+          "response_ref",
+          "prompt_tokens",
+          "completion_tokens",
+          "latency_ms",
+          "finish_reason",
+          "error"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "tool_call"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "name",
+          "depth",
+          "args",
+          "result_summary",
+          "duration_ms",
+          "exception"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "retrieval"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "query",
+          "method",
+          "k",
+          "chunks"
+        ],
+        "properties": {
+          "chunks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "rank",
+                "file",
+                "chunk_id",
+                "score",
+                "text"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "sandbox_run"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "command",
+          "exit_code",
+          "timed_out",
+          "network_mode",
+          "duration_ms"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "file_created"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "path",
+          "bytes",
+          "sha256"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "approval"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "kind",
+          "policy",
+          "decision",
+          "summary"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "answer_format"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "mode",
+          "valid",
+          "error",
+          "attempts"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "task_end"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "status",
+          "error",
+          "duration_s",
+          "llm_calls",
+          "prompt_tokens",
+          "completion_tokens"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "code_data_access"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "files"
+        ],
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
   ]
 }

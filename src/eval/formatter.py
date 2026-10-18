@@ -8,6 +8,7 @@ from typing import Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src import tracing
+from src.core.tools_common import extract_json_object
 
 MAX_TOOL_CONTEXT = 8000
 
@@ -23,19 +24,6 @@ def format_block(answer_format: dict) -> str:
     return "\n".join(lines)
 
 
-def extract_json_object(text: str) -> Optional[dict]:
-    """The first JSON object in ``text`` (code fences and surrounding prose are ignored)."""
-    decoder = json.JSONDecoder()
-    for i, ch in enumerate(text or ""):
-        if ch != "{":
-            continue
-        try:
-            obj, _end = decoder.raw_decode(text, i)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(obj, dict):
-            return obj
-    return None
 
 
 def check(obj: Optional[dict], answer_format: dict) -> Optional[str]:

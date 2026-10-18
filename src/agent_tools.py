@@ -15,12 +15,13 @@ from typing import Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src import knowledge_base, run_context, sandbox
+from src import knowledge_base, run_context, sandbox, tracing
 from src.tracing import traced_tool
 from src.config import PROJECT_ROOT, get_settings
 from src.core.tools_common import (  # re-exported for extensions
     TaskState,
     create_hitl_action_request,
+    extract_json_object,
     create_hitl_confirm_request,
     create_hitl_form_request,
     invoke_llm_and_normalize,
@@ -135,8 +136,8 @@ INSTRUKCJE:
         content = getattr(response, "content", "") or ""
         if content.startswith("[LLM"):
             raise RuntimeError(content)
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        return match.group(0) if match else content
+        plan = extract_json_object(content)
+        return json.dumps(plan, ensure_ascii=False) if plan is not None else content
     except Exception as exc:
         # No plan → the router sends the request to the chat node, which reports the problem.
         return json.dumps({"error": str(exc), "task_name": query[:30], "complexity": "low", "steps": []})
@@ -354,6 +355,12 @@ def tool_execute_python(code: str) -> str:
     clean_code = _extract_python_from_llm_output(code)
     if not clean_code.strip():
         return "BŁĄD: Nie udało się wyekstrahować kodu Python z odpowiedzi."
+    docs = data_dir()
+    if docs is not None:  # corpus files the code names explicitly count as sources used
+        referenced = sorted({m.group(1).rstrip("/.") for m in re.finditer(r"/data/([^\s'\"\),\]]+)", clean_code)
+                             if (docs / m.group(1).rstrip("/.")).is_file()})
+        if referenced:
+            tracing.event("code_data_access", files=referenced)
     script = run_context.workspace_file(f"snippet_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.py")
     script.write_text(clean_code, encoding="utf-8")
     print(f"💻 [TOOL USE] Executing Python in sandbox ({script.name})")
@@ -498,13 +505,9 @@ Wprowadź WYŁĄCZNIE żądane zmiany. Pozostałe wartości przepisz bez zmian.
 Odpowiedz WYŁĄCZNIE obiektem JSON z kompletem parametrów (te same klucze)."""
         response = invoke_llm_and_normalize(llm, [SystemMessage(content=system_prompt), HumanMessage(content=prompt)])
         content = getattr(response, "content", "") or ""
-        match = re.search(r"\{.*\}", content, re.DOTALL)
-        if content.startswith("[LLM") or not match:
+        updated = None if content.startswith("[LLM") else extract_json_object(content)
+        if updated is None:
             return f"BŁĄD: Model nie zwrócił poprawnych parametrów dokumentu.\n{content[:300]}"
-        try:
-            updated = json.loads(match.group(0))
-        except json.JSONDecodeError as exc:
-            return f"BŁĄD: Nieprawidłowy JSON w odpowiedzi modelu: {exc}"
         if isinstance(updated.get("parameters"), dict):
             updated = updated["parameters"]
         merged = {**saved["parameters"], **normalize_template_params(saved["template_id"], updated)}

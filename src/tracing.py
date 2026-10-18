@@ -83,6 +83,10 @@ def event(type_: str, **fields: Any) -> None:
         for chunk in fields.get("chunks", []):
             if chunk.get("file") and chunk["file"] not in rec.sources:
                 rec.sources.append(chunk["file"])
+    if type_ == "code_data_access":
+        for name in fields.get("files", []):
+            if name not in rec.sources:
+                rec.sources.append(name)
     if type_ == "plan":
         rec.plan_tools = [s.get("tool", "") for s in (fields.get("task_plan") or {}).get("steps", [])]
     rec.emit(type_, **fields)
