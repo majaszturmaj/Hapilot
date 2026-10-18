@@ -5,7 +5,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from langchain_core.messages import AIMessage
 
-# An amount ("2 450,50 zł"), optionally labelled: "1845 zł brutto" → the amount is gross.
+# An amount ("2 450,50 zł"), optionally followed by its label ("1845 zł brutto").
 AMOUNT = re.compile(r"(\d[\d \u00a0]*(?:[.,]\d{1,2})?)\s*(?:zł|pln)?\s*(brutto|netto)?", re.IGNORECASE)
 RATE = re.compile(r"(\d{1,2})\s*%")
 # Without a label next to the amount: does the user ask for the net amount (so the amount given is gross)?
@@ -25,7 +25,9 @@ def calculate(text: str, default_rate: int = 23) -> str:
     if not found:
         return "Nie znalazłem kwoty do przeliczenia."
     amount = Decimal(re.sub(r"[ \u00a0]", "", found[0].group(1)).replace(",", "."))
-    label = (found[0].group(2) or "").lower()
+    before = re.search(r"\b(netto|brutto)\s*$", RATE.sub(" ", text)[:found[0].start()], re.IGNORECASE)
+    # "1845 zł brutto" or "kwoty brutto 1845 zł" → the amount is gross
+    label = (found[0].group(2) or (before.group(1) if before else "")).lower()
     if label == "brutto" or (not label and ASKS_FOR_NET.search(text)):
         net = amount / (1 + rate / 100)
         gross = amount

@@ -251,5 +251,8 @@ the load-time checks.
 - No network access except to local services configured by the operator; no credentials in the repository.
 - Return informative messages instead of raising; the UI shows them to the user.
 - Keep prompts and tool descriptions in Polish where the users are Polish.
+- Say in the tool description what the step's `input` should contain (e.g. „kwota z oznaczeniem netto albo
+  brutto”): the planner rewrites the user's request into the input, and a node that parses text must
+  accept the planner's wording, not only the user's.
 - Keep the tool list small: every tool makes the planner's choice harder. Prefer one tool with a clear
   description to several similar ones.

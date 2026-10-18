@@ -92,7 +92,7 @@ def test_example_extension_end_to_end(tmp_path, llm, restore_active):
                         "retry_count": 0, "hitl_request": None, "hitl_response": None, "last_generated_file": "", "halt": False},
                        config=run_context.make_config("s-vat"))
     assert "brutto: 1 230,00 zł" in state["messages"][-1].content
-    assert "- vat: Przeliczenie kwoty netto na brutto" in llm.prompts_for("task_planner")[0]
+    assert "- vat: Przeliczenie VAT bez modelu językowego" in llm.prompts_for("task_planner")[0]
     hooks = m._hooks["vat_calculator"]
     assert hooks.loaded and hooks.runs == 1
 
@@ -108,6 +108,9 @@ def test_vat_inverse_and_rate():
     # found on the GPU host: the label next to the amount decides the direction
     assert "netto: 1 500,00 zł" in mod.calculate("Faktura opiewa na 1845 zł brutto (VAT 23%). Ile wynosi kwota netto?")
     assert "brutto: 3 013,50 zł" in mod.calculate("Ile to brutto: 2450 zł netto przy stawce VAT 23%?")
+    # the planner's wording of the same requests (label before the amount)
+    assert "netto: 1 500,00 zł" in mod.calculate("Oblicz kwotę netto dla kwoty brutto 1845 zł przy stawce VAT 23%")
+    assert "brutto: 3 013,50 zł" in mod.calculate("Oblicz kwotę brutto dla kwoty netto 2450 zł przy stawce VAT 23%")
 
 
 def test_before_route_hook_can_redirect(tmp_path, llm, restore_active):
