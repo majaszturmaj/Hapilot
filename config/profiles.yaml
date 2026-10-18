@@ -7,10 +7,10 @@
 #   and `scripts/hapilotctl.py models up`).
 # - ${VAR:-default} is expanded from the environment.
 #
-# Roles used by the agent: planner, knowledge, writer, chat, template_filler, coder.
+# Roles used by the agent: task_planner, knowledge, writer, chat, template_filler, coder.
 # "default" covers every role that is not listed.
 
-default: reference   # provisional — the repository default is decided after the first measurements on the GPU host
+default: best-local   # chosen after the first measurements on the GPU host (2026-10-18); reference stays selectable
 
 endpoint: ${HAPILOT_MODEL_URL:-http://127.0.0.1:8611/v1}
 

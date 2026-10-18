@@ -29,6 +29,7 @@ def _write(tmp_path, body):
 def test_repository_profiles_load():
     settings = load_settings({})
     assert {"reference", "best-local"} <= set(settings.profiles)
+    assert settings.default_profile == "best-local"
     ref = settings.profile("reference")
     assert ref.model_for("coder").model != ref.model_for("writer").model  # two models
     best = settings.profile("best-local")

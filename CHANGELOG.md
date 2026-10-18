@@ -31,6 +31,9 @@
 - The reference run found one more bug, fixed in 0752d4f: the chat node sent two assistant messages in a row,
   which llama.cpp rejects.
 
+### Configuration
+- Default model profile: `best-local` (Qwen3.6-27B for all roles); `reference` stays selectable per session.
+
 ### Tooling
 - `config/profiles.yaml` (`reference`, `best-local`), `src/config.py` (one settings module), `tools/modelswap.py`,
   `scripts/hapilotctl.py` (safe launcher), `scripts/smoke.py` + `tests/scenarios/smoke.yaml`.
