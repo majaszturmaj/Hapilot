@@ -1,0 +1,58 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{polski}
+\usepackage[utf8x]{inputenc}
+\usepackage{microtype}
+
+\usepackage{times}
+
+\usepackage[
+pdftitle={Letter},
+colorlinks=true,linkcolor=black,urlcolor=black,citecolor=black]{hyperref}
+\urlstyle{same}
+
+\usepackage{geometry}
+\geometry{left=25mm,right=25mm,%
+bindingoffset=0mm, top=25mm,bottom=25mm}
+
+\linespread{1.3}
+\pagestyle{empty}
+
+
+\begin{document}
+
+\noindent
+{{SENDER_NAME}} \hfill {{CITY_DATE}}\\
+{{SENDER_COMPANY}}\\
+{{SENDER_ADDRESS}}\\
+{{SENDER_EMAIL}}
+
+\vskip 1.0cm
+
+\phantom{a}\hfill
+\begin{tabular}[c]{@{}l@{}}
+{{RECIPIENT_TITLE}} {{RECIPIENT_NAME}}\\
+{{RECIPIENT_COMPANY}}\\
+{{RECIPIENT_ADDRESS}}
+\end{tabular}
+
+\vskip 2.0cm
+
+\begin{center}
+{\Large {{DOCUMENT_TITLE}}}
+\end{center}
+
+\vskip 0.5cm
+
+\noindent
+{{GREETING}}
+\\
+{{BODY}}
+
+\vskip 2.0cm
+
+\hspace{\fill} {{CLOSING}} \hspace{2.0cm}
+
+
+
+\end{document}

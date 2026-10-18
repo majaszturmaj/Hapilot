@@ -1,0 +1,31 @@
+{
+  "id": "writer",
+  "name": "Text Writer / Synthesizer",
+  "version": "1.0.0",
+  "description": "Text synthesis, drafting emails, and content generation",
+  "author": "Hapilot Team",
+  "license": "MIT",
+
+  "routes": [],
+
+  "nodes": [
+    {
+      "name": "writer",
+      "entry_point": "nodes:run_writer",
+      "label": "✍️ Redakcja tekstu",
+      "description": "Synteza i redakcja tekstu formalnego"
+    }
+  ],
+
+  "tools": [
+    {
+      "name": "llm_synthesis",
+      "planner_description": "Generate or synthesize text using the main LLM",
+      "planner_when_to_use": "Summarizing long texts, drafting emails, synthesizing RAG results before document generation"
+    }
+  ],
+
+  "prompts": {
+    "writer": "prompts/writer.txt"
+  }
+}

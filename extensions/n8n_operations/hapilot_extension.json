@@ -1,0 +1,28 @@
+{
+  "id": "n8n_operations",
+  "name": "n8n Webhook Operations",
+  "version": "1.0.0",
+  "description": "Email drafts and calendar checks via n8n webhooks (Office 365 integration)",
+  "author": "Hapilot Team",
+  "license": "MIT",
+
+  "routes": [],
+
+  "nodes": [],
+
+  "tools": [
+    {
+      "name": "email",
+      "planner_description": "Send email drafts via n8n/Outlook webhook",
+      "planner_when_to_use": "Sending ready notifications or email messages"
+    },
+    {
+      "name": "hitl_confirm",
+      "planner_description": "Pause and ask user for confirmation before a critical operation",
+      "planner_when_to_use": "When user confirmation is needed before sending email, executing a critical plan step. Do NOT add before template_pdf — that has automatic confirmation.",
+      "planner_when_not_to_use": "Do not use before template_pdf"
+    }
+  ],
+
+  "prompts": {}
+}

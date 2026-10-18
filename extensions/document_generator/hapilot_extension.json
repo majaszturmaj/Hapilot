@@ -1,0 +1,41 @@
+{
+  "id": "document_generator",
+  "name": "PDF Document Generator",
+  "version": "1.0.0",
+  "description": "Generate PDF documents from LaTeX templates (letters, reports, protocols)",
+  "author": "Hapilot Team",
+  "license": "MIT",
+
+  "routes": [
+    {
+      "id": "A",
+      "name": "document_generator",
+      "description": "GENEROWANIE DOKUMENTU PDF (Generowanie PDF, raporty, podania, listy, protokoły, dokumenty formalne)",
+      "keywords_hint": ["PDF", "raport", "podanie", "list", "protokół", "dokument", "pismo", "wniosek"],
+      "router_example": "\"Napisz podanie o urlop\" -> A",
+      "priority": 1
+    }
+  ],
+
+  "nodes": [
+    {
+      "name": "document_generator",
+      "entry_point": "nodes:run_document_generator",
+      "label": "📄 Generator dokumentów PDF",
+      "description": "Wybór szablonu LaTeX i generowanie dokumentu PDF"
+    }
+  ],
+
+  "tools": [
+    {
+      "name": "template_pdf",
+      "planner_description": "Generate a new PDF from a LaTeX template. System automatically asks user for parameter confirmation (HITL).",
+      "planner_when_to_use": "Creating NEW formal documents (letters, reports, protocols, applications). Always use for new document creation.",
+      "planner_when_not_to_use": "Never use for editing existing documents. Never use coder/latex as alternative."
+    }
+  ],
+
+  "prompts": {
+    "template_filler": "prompts/template_filler.txt"
+  }
+}

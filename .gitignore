@@ -1,0 +1,44 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Environment
+.env
+
+# Runtime data (Docker volumes)
+chroma_data/
+n8n_data/
+task_states/
+sandbox/workspace/
+
+# Chainlit upload scratch
+.files/
+
+# Local model registry (runtime-edited); the repo ships models_config.example.json
+models_config.json
+
+# Local knowledge-base documents are never committed (may be private company data)
+data/private_docs/
+
+# Logs
+chainlit.log
+*.log
+
+# Test reports
+tests/test_report_*.txt
+
+# Chainlit auto-generated
+.chainlit/translations/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

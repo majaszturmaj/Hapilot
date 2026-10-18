@@ -1,0 +1,20 @@
+{
+  "models": [
+    {
+      "id": "bielik_default",
+      "display_name": "Bielik 11B (domyślny)",
+      "base_url": "http://127.0.0.1:1234/v1",
+      "model_id": "bielik-11b-v3.0-instruct",
+      "api_key": "lm-studio"
+    },
+    {
+      "id": "qwen_default",
+      "display_name": "Qwen3 Coder 30B",
+      "base_url": "http://127.0.0.1:1235/v1",
+      "model_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct-FP8",
+      "api_key": "local"
+    }
+  ],
+  "main_model_id": "bielik_default",
+  "coder_model_id": "qwen_default"
+}

@@ -1,0 +1,91 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{polski}
+\usepackage[utf8x]{inputenc}
+\usepackage{microtype}
+
+\usepackage{times}
+
+\usepackage[
+pdftitle={Raport},
+colorlinks=true,linkcolor=black,urlcolor=black,citecolor=black]{hyperref}
+\urlstyle{same}
+
+\usepackage{geometry}
+\geometry{left=25mm,right=25mm,%
+bindingoffset=0mm, top=25mm,bottom=25mm}
+
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+
+\linespread{1.5}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small {{INSTITUTION}}}
+\fancyhead[R]{\small {{REPORT_DATE}}}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+
+\begin{document}
+
+\begin{titlepage}
+\centering
+\vspace*{2cm}
+
+{\Large\bfseries {{INSTITUTION}}}
+
+\vskip 1.5cm
+
+{\Huge\bfseries {{REPORT_TITLE}}}
+
+\vskip 1.0cm
+
+{\large {{REPORT_SUBTITLE}}}
+
+\vskip 2.0cm
+
+\begin{tabular}{ll}
+\textbf{Autor:} & {{AUTHOR_NAME}} \\
+\textbf{Stanowisko:} & {{AUTHOR_POSITION}} \\
+\textbf{Dział:} & {{DEPARTMENT}} \\
+\textbf{Data:} & {{REPORT_DATE}} \\
+\textbf{Nr raportu:} & {{REPORT_NUMBER}} \\
+\end{tabular}
+
+\vfill
+
+{\small Dokument poufny -- do użytku wewnętrznego}
+
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Wstęp}
+{{SECTION_INTRODUCTION}}
+
+\section{Zakres raportu}
+{{SECTION_SCOPE}}
+
+\section{Analiza}
+{{SECTION_ANALYSIS}}
+
+\section{Wyniki}
+{{SECTION_RESULTS}}
+
+\section{Wnioski i rekomendacje}
+{{SECTION_CONCLUSIONS}}
+
+\vskip 1.0cm
+\noindent
+\textbf{Sporządził:} {{AUTHOR_NAME}} \hfill \textbf{Data:} {{REPORT_DATE}}
+
+\vskip 1.0cm
+\noindent
+\textbf{Zatwierdził:} {{APPROVER_NAME}}
+
+\end{document}

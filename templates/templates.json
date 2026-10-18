@@ -1,0 +1,65 @@
+{
+  "templates": {
+    "letter": {
+      "name": "List / Podanie",
+      "description": "Formalny list lub podanie w języku polskim. Zawiera nadawcę, odbiorcę, tytuł, treść i formułę grzecznościową.",
+      "file": "letter.tex",
+      "parameters": {
+        "SENDER_NAME": {"description": "Imię i nazwisko nadawcy", "example": "Jan Kowalski", "required": true},
+        "CITY_DATE": {"description": "Miasto i data", "example": "Wrocław, 5 marca 2026 r.", "required": true},
+        "SENDER_COMPANY": {"description": "Nazwa firmy/instytucji nadawcy", "example": "Przykładowa Sp. z o.o.", "required": true},
+        "SENDER_ADDRESS": {"description": "Adres nadawcy", "example": "ul. Zmyślona 7, 50-001 Wrocław", "required": true},
+        "SENDER_EMAIL": {"description": "Email nadawcy", "example": "jan.kowalski@example.com", "required": false},
+        "RECIPIENT_TITLE": {"description": "Tytuł odbiorcy (Pan/Pani)", "example": "Pan", "required": true},
+        "RECIPIENT_NAME": {"description": "Imię i nazwisko odbiorcy", "example": "Adam Nowak", "required": true},
+        "RECIPIENT_COMPANY": {"description": "Nazwa firmy/instytucji odbiorcy", "example": "Hurtownia Wymyślona Sp. z o.o.", "required": true},
+        "RECIPIENT_ADDRESS": {"description": "Adres odbiorcy", "example": "ul. Wymyślona 12, 50-002 Wrocław", "required": true},
+        "DOCUMENT_TITLE": {"description": "Tytuł dokumentu (np. Podanie, Prośba, Wniosek)", "example": "Podanie", "required": true},
+        "GREETING": {"description": "Formuła powitalna", "example": "Szanowny Panie,", "required": true},
+        "BODY": {"description": "Treść główna dokumentu (może zawierać wiele akapitów)", "example": "Zwracam się z uprzejmą prośbą o...", "required": true},
+        "CLOSING": {"description": "Formuła pożegnalna", "example": "Z poważaniem", "required": true}
+      }
+    },
+    "report": {
+      "name": "Raport",
+      "description": "Formalny raport z tabelą tytułową, spisem treści i sekcjami analitycznymi. Odpowiedni do raportów okresowych, analiz i sprawozdań.",
+      "file": "report.tex",
+      "parameters": {
+        "INSTITUTION": {"description": "Nazwa instytucji", "example": "Przykładowa Sp. z o.o.", "required": true},
+        "REPORT_TITLE": {"description": "Tytuł raportu", "example": "Raport kwartalny z realizacji zamówień", "required": true},
+        "REPORT_SUBTITLE": {"description": "Podtytuł raportu", "example": "Okres: styczeń - marzec 2026", "required": false},
+        "AUTHOR_NAME": {"description": "Imię i nazwisko autora", "example": "Anna Nowak", "required": true},
+        "AUTHOR_POSITION": {"description": "Stanowisko autora", "example": "Kierownik Działu Operacyjnego", "required": true},
+        "DEPARTMENT": {"description": "Nazwa działu/zakładu", "example": "Dział Operacyjny", "required": true},
+        "REPORT_DATE": {"description": "Data raportu", "example": "5 marca 2026 r.", "required": true},
+        "REPORT_NUMBER": {"description": "Numer raportu", "example": "PRZ/RAP/2026/03", "required": true},
+        "SECTION_INTRODUCTION": {"description": "Treść sekcji Wstęp", "example": "Niniejszy raport przedstawia wyniki prac działu...", "required": true},
+        "SECTION_SCOPE": {"description": "Treść sekcji Zakres raportu", "example": "Raport obejmuje okres od stycznia do marca 2026...", "required": true},
+        "SECTION_ANALYSIS": {"description": "Treść sekcji Analiza", "example": "Na podstawie zebranych danych przeprowadzono analizę...", "required": true},
+        "SECTION_RESULTS": {"description": "Treść sekcji Wyniki", "example": "W wyniku przeprowadzonej analizy stwierdzono...", "required": true},
+        "SECTION_CONCLUSIONS": {"description": "Treść sekcji Wnioski i rekomendacje", "example": "Na podstawie analizy rekomenduje się...", "required": true},
+        "APPROVER_NAME": {"description": "Imię i nazwisko osoby zatwierdzającej", "example": "Ewa Przykładowa", "required": true}
+      }
+    },
+    "protocol": {
+      "name": "Protokół ze spotkania",
+      "description": "Protokół z zebrania lub spotkania służbowego. Zawiera listę obecności, porządek obrad, przebieg, decyzje i zadania do realizacji.",
+      "file": "protocol.tex",
+      "parameters": {
+        "INSTITUTION": {"description": "Nazwa instytucji", "example": "Przykładowa Sp. z o.o.", "required": true},
+        "MEETING_TITLE": {"description": "Temat spotkania", "example": "Spotkanie zespołu projektowego", "required": true},
+        "MEETING_DATE": {"description": "Data spotkania", "example": "5 marca 2026 r.", "required": true},
+        "MEETING_TIME": {"description": "Godzina spotkania", "example": "10:00 - 12:00", "required": true},
+        "MEETING_PLACE": {"description": "Miejsce spotkania", "example": "Sala konferencyjna nr 201, budynek A", "required": true},
+        "SECRETARY_NAME": {"description": "Imię i nazwisko protokołującego", "example": "Piotr Testowy", "required": true},
+        "CHAIRPERSON_NAME": {"description": "Imię i nazwisko przewodniczącego", "example": "Ewa Przykładowa", "required": true},
+        "PROTOCOL_NUMBER": {"description": "Numer protokołu", "example": "ZP/2026/05", "required": true},
+        "ATTENDEES_LIST": {"description": "Lista obecnych osób (jako tekst lub itemize LaTeX)", "example": "\\begin{enumerate}\n\\item Ewa Przykładowa -- Kierownik projektu\n\\item Piotr Testowy -- Specjalista ds. zakupów\n\\end{enumerate}", "required": true},
+        "AGENDA": {"description": "Porządek obrad (jako tekst lub enumerate LaTeX)", "example": "\\begin{enumerate}\n\\item Podsumowanie postępu prac\n\\item Omówienie harmonogramu\n\\item Sprawy różne\n\\end{enumerate}", "required": true},
+        "MEETING_MINUTES": {"description": "Opis przebiegu spotkania", "example": "Spotkanie rozpoczął przewodniczący, przedstawiając aktualny stan realizacji projektu...", "required": true},
+        "DECISIONS": {"description": "Lista podjętych decyzji", "example": "\\begin{enumerate}\n\\item Zatwierdzono harmonogram na II kwartał 2026\n\\item Podjęto decyzję o zakupie nowego sprzętu biurowego\n\\end{enumerate}", "required": true},
+        "ACTION_ITEMS": {"description": "Lista zadań do realizacji z osobami odpowiedzialnymi", "example": "\\begin{enumerate}\n\\item Przygotowanie specyfikacji technicznej -- P. Testowy -- termin: 15.03.2026\n\\item Zamówienie materiałów -- E. Przykładowa -- termin: 20.03.2026\n\\end{enumerate}", "required": true}
+      }
+    }
+  }
+}

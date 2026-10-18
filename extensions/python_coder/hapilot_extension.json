@@ -1,0 +1,52 @@
+{
+  "id": "python_coder",
+  "name": "Python Code Generator & Executor",
+  "version": "1.0.0",
+  "description": "Python code generation and execution in Docker sandbox",
+  "author": "Hapilot Team",
+  "license": "MIT",
+
+  "routes": [
+    {
+      "id": "D",
+      "name": "coder",
+      "description": "KOD PYTHON (Obliczenia, skrypty, analiza danych, wykresy, programowanie)",
+      "keywords_hint": ["oblicz", "skrypt", "python", "wykres", "analiza", "policz", "programuj"],
+      "router_example": "\"Oblicz średnią z danych\" -> D"
+    }
+  ],
+
+  "nodes": [
+    {
+      "name": "coder",
+      "entry_point": "nodes:run_coder",
+      "label": "💻 Generowanie kodu Python",
+      "description": "Generowanie kodu Python przez model Coder"
+    },
+    {
+      "name": "execute",
+      "entry_point": "nodes:run_execute",
+      "label": "⚙️ Wykonanie w sandboxie",
+      "description": "Uruchomienie kodu w kontenerze Docker"
+    }
+  ],
+
+  "tools": [
+    {
+      "name": "python",
+      "planner_description": "Execute Python code in a sandboxed Docker container",
+      "planner_when_to_use": "Mathematical calculations, scripts, data analysis, charts, algorithmic logic",
+      "planner_when_not_to_use": ""
+    },
+    {
+      "name": "coder",
+      "planner_description": "Generate Python code (alias for python tool)",
+      "planner_when_to_use": "Same as python"
+    }
+  ],
+
+  "prompts": {
+    "coder": "prompts/coder_qwen.txt",
+    "coder_bielik": "prompts/coder_bielik.txt"
+  }
+}

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hapilot"
+version = "0.1.0"
+description = "Extensible LangGraph Multi-Agent Platform"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Maja Szturmaj" }
+]
+dependencies = [
+    "langgraph>=0.1.0",
+    "langchain-core",
+    "langchain-openai",
+    "langchain-community",
+    "langchain-huggingface",
+    "langchain-chroma",
+    "chainlit",
+    "pydantic",
+    "python-dotenv",
+    "chromadb",
+    "fastmcp",
+    "sentence-transformers"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "extensions*"]

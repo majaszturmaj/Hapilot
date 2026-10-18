@@ -1,0 +1,27 @@
+/*
+ * Hapilot - Custom Chainlit Theme
+ * Accent color: #81AB28
+ * HSL: 79 62% 41%
+ */
+
+/* Light theme overrides */
+:root {
+  --primary: 79 62% 41% !important;
+  --primary-foreground: 0 0% 100% !important;
+  --sidebar-primary: 79 62% 30% !important;
+  --sidebar-primary-foreground: 0 0% 98% !important;
+  --sidebar-accent: 79 30% 90% !important;
+  --sidebar-accent-foreground: 79 62% 25% !important;
+  --ring: 79 62% 41% !important;
+}
+
+/* Dark theme overrides */
+.dark {
+  --primary: 79 62% 41% !important;
+  --primary-foreground: 0 0% 100% !important;
+  --sidebar-primary: 79 55% 50% !important;
+  --sidebar-primary-foreground: 0 0% 100% !important;
+  --sidebar-accent: 79 20% 18% !important;
+  --sidebar-accent-foreground: 79 40% 80% !important;
+  --ring: 79 62% 41% !important;
+}

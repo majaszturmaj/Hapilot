@@ -1,0 +1,43 @@
+{
+  "id": "document_modifier",
+  "name": "Document Modifier",
+  "version": "1.0.0",
+  "description": "Update, correct, or change an existing document",
+  "author": "Hapilot Team",
+  "license": "MIT",
+
+  "routes": [
+    {
+      "id": "E",
+      "name": "modify_document",
+      "description": "MODYFIKACJA DOKUMENTU (Zmień datę, popraw adres, zaktualizuj tekst w istniejącym dokumencie)",
+      "keywords_hint": ["zmień", "popraw", "zaktualizuj", "zmodyfikuj", "edytuj"],
+      "router_example": "\"Zmień datę na 7 marca\" -> E"
+    }
+  ],
+
+  "nodes": [
+    {
+      "name": "modify_document",
+      "entry_point": "nodes:run_modify_document",
+      "label": "📝 Modyfikacja dokumentu",
+      "description": "Modyfikacja istniejącego dokumentu LaTeX i rekompilacja do PDF"
+    }
+  ],
+
+  "tools": [
+    {
+      "name": "modify_document",
+      "planner_description": "Modify an existing LaTeX document and recompile to PDF",
+      "planner_when_to_use": "Updating, correcting, or changing an EXISTING (recently generated) document",
+      "planner_when_not_to_use": ""
+    },
+    {
+      "name": "read_previous_output",
+      "planner_description": "Read a previously generated file from the sandbox",
+      "planner_when_to_use": "When needing to reference a previously generated document"
+    }
+  ],
+
+  "prompts": {}
+}
