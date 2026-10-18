@@ -46,3 +46,20 @@ def test_launcher_has_no_broad_kill_commands():
 def test_proxy_binds_localhost_only():
     text = (ROOT / "tools" / "modelswap.py").read_text()
     assert 'ThreadingHTTPServer(("127.0.0.1"' in text and '"--host", "127.0.0.1"' in text
+
+
+def test_port_free_detects_listeners_only():
+    import socket
+
+    server = socket.socket()
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    port = server.getsockname()[1]
+    assert hapilotctl.port_free(port) is False
+    client = socket.create_connection(("127.0.0.1", port))
+    conn, _ = server.accept()
+    conn.close()  # server side closes first → TIME_WAIT on the listening port
+    client.close()
+    server.close()
+    assert hapilotctl.port_free(port) is True

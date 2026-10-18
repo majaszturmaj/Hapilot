@@ -91,9 +91,12 @@ def owned(name: str) -> dict | None:
 
 
 def port_free(port: int) -> bool:
+    """True unless something listens on 127.0.0.1:port (connections in TIME_WAIT do not count, as for the servers)."""
     with socket.socket() as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind(("127.0.0.1", port))
+            s.listen(1)
             return True
         except OSError:
             return False
