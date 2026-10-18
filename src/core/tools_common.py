@@ -5,14 +5,10 @@ Contains:
 - TaskState: persistent state for multi-step tasks
 - HITL helpers: create_hitl_action_request, create_hitl_form_request, etc.
 - invoke_llm_and_normalize: robust LLM invocation wrapper
-- Common file utilities
 """
 
 import os
-import re
 import json
-import time
-import base64
 import inspect
 import asyncio
 from datetime import datetime
@@ -22,16 +18,20 @@ from langchain_core.messages import AIMessage, SystemMessage
 
 
 # --- STATE PERSISTENCE ---
-STATE_PERSISTENCE_DIR = os.getenv("STATE_PERSISTENCE_DIR", "./task_states")
-os.makedirs(STATE_PERSISTENCE_DIR, exist_ok=True)
+def _state_dir() -> str:
+    from src.config import get_settings
+
+    path = get_settings().state_dir
+    path.mkdir(parents=True, exist_ok=True)
+    return str(path)
 
 
 class TaskState:
-    """Persistent state container for multi-step tasks."""
+    """Persistent state container for multi-step tasks (one JSON file per task)."""
 
     def __init__(self, task_id: str):
         self.task_id = task_id
-        self.state_file = os.path.join(STATE_PERSISTENCE_DIR, f"{task_id}.json")
+        self.state_file = os.path.join(_state_dir(), f"{task_id}.json")
         self.data = self._load_state() or {
             "task_id": task_id,
             "created_at": datetime.now().isoformat(),
@@ -195,10 +195,3 @@ def invoke_llm_and_normalize(llm, messages):
     # Fallback: stringify
     return AIMessage(content=str(resp))
 
-
-# --- FILE UTILITIES ---
-
-def generate_unique_filename(prefix: str = "raport") -> str:
-    """Generate unique filenames with a timestamp."""
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"{prefix}_{ts}.tex"

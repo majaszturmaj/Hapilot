@@ -35,12 +35,14 @@ def run_writer(state):
     current_step = state.get("current_step")
     step_input = None
     step_action = None
+    step_tool = ""
     if task_plan and current_step is not None:
         steps = task_plan.get("steps", [])
         if 0 <= current_step < len(steps):
             step = steps[current_step]
             step_input = step.get("input")
             step_action = step.get("action")
+            step_tool = step.get("tool", "")
 
     # Build a writing prompt that includes relevant conversation history
     prompt_text = ""
@@ -50,6 +52,10 @@ def run_writer(state):
         prompt_text += f"Input: {step_input}\n"
     if not prompt_text:
         prompt_text = state["messages"][-1].content
+    if step_tool == "email":
+        # Without the optional n8n extension nothing can be sent: the writer only drafts the text.
+        prompt_text += ("\nPrzygotuj treść e-maila jako WERSJĘ ROBOCZĄ do skopiowania. "
+                        "Nie twierdź, że wiadomość została wysłana — Hapilot niczego nie wysyła.\n")
 
     # Check if plan contains PDF/modification step
     has_pdf_step = _plan_has_pdf_like_step(task_plan)

@@ -1,0 +1,25 @@
+PRZYKŁADOWA SP. Z O.O.
+ul. Zmyślona 7, 50-001 Wrocław
+
+PROCEDURA PRZYJMOWANIA I ROZPATRYWANIA REKLAMACJI KLIENTÓW
+Dokument wewnętrzny nr JAK/2026/01, wersja 2, obowiązuje od 15 stycznia 2026 r.
+
+1. Cel
+Procedura określa, jak przyjmujemy, rejestrujemy i rozpatrujemy reklamacje klientów, aby każda reklamacja otrzymała odpowiedź w terminie.
+
+2. Przyjęcie reklamacji
+2.1. Reklamację przyjmuje każdy pracownik, który ją otrzymał (e-mail, telefon, pismo), i w ciągu 1 dnia roboczego rejestruje ją w rejestrze reklamacji.
+2.2. Reklamacje e-mailowe klienci kierują na adres reklamacje@example.com.
+2.3. Wpis w rejestrze zawiera: numer reklamacji, datę wpływu, dane klienta, numer zamówienia lub faktury, opis wady oraz żądanie klienta.
+
+3. Rozpatrzenie
+3.1. Za rozpatrzenie odpowiada Dział Jakości.
+3.2. Odpowiedź na reklamację wysyłamy klientowi w ciągu 14 dni kalendarzowych od dnia jej wpływu.
+3.3. Jeżeli rozpatrzenie wymaga ekspertyzy, Dział Jakości informuje klienta o przedłużeniu terminu przed jego upływem, podając przyczynę i nowy termin (nie dłuższy niż 30 dni od wpływu).
+3.4. Reklamacje o wartości powyżej 5 000 zł netto zatwierdza dyrektor operacyjny.
+
+4. Decyzja
+Możliwe decyzje: uznanie reklamacji (naprawa, wymiana, obniżenie ceny lub zwrot pieniędzy) albo odrzucenie z uzasadnieniem. Odpowiedź do klienta podpisuje kierownik Działu Jakości.
+
+5. Analiza
+Raz w miesiącu Dział Jakości przygotowuje zestawienie reklamacji: liczba, przyczyny, średni czas rozpatrzenia, działania korygujące.

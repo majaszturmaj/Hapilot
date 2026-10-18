@@ -1,0 +1,13 @@
+# Unit tests and linting — no model, no torch, no ChromaDB needed.
+#   pip install -r requirements-test.txt && pytest
+langgraph==1.0.8
+langchain-core==1.2.7
+langchain-openai==1.1.7
+openai==2.17.0
+pydantic==2.12.5
+python-dotenv==1.2.1
+httpx==0.28.1
+PyYAML==6.0.3
+docker==7.1.0
+pytest==8.4.2
+ruff==0.14.0

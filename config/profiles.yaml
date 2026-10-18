@@ -1,0 +1,47 @@
+# Model profiles: which local model serves which agent role.
+#
+# - Operators define profiles here; users pick one per chat session in the UI settings panel.
+#   Adding an endpoint is a configuration change, not a UI action.
+# - Every endpoint must be a local/LAN address; anything else is rejected at startup.
+# - Model names must match the names served by the model server (see config/models.example.yaml
+#   and `scripts/hapilotctl.py models up`).
+# - ${VAR:-default} is expanded from the environment.
+#
+# Roles used by the agent: planner, knowledge, writer, chat, template_filler, coder.
+# "default" covers every role that is not listed.
+
+default: reference   # provisional — the repository default is decided after the first measurements on the GPU host
+
+endpoint: ${HAPILOT_MODEL_URL:-http://127.0.0.1:8611/v1}
+
+profiles:
+  reference:
+    description: "Bielik-11B v3 for language roles + Qwen3-Coder-30B-A3B for Python code (the original design; the two models are swapped in turn on a 24 GB GPU)"
+    models:
+      general:
+        model: bielik-11b-v3-q8
+        temperature: 0.3
+        max_tokens: 2500
+      coder:
+        model: qwen3-coder-30b-a3b-q4km
+        temperature: 0.0
+        max_tokens: 2500
+    roles:
+      default: general
+      coder: coder
+
+  best-local:
+    description: "Qwen3.6-27B (Q4_K_M, reasoning off) for all roles — one model, no swapping"
+    models:
+      general:
+        model: qwen3.6-27b-q4km
+        temperature: 0.3
+        max_tokens: 2500
+        extra_body:
+          chat_template_kwargs:
+            enable_thinking: false
+    roles:
+      default: general
+      coder:
+        model: general
+        temperature: 0.0

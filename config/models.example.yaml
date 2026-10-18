@@ -1,0 +1,23 @@
+# Local model servers for tools/modelswap.py (started by `scripts/hapilotctl.py models up`).
+# Copy to config/models.local.yaml (not tracked) and adjust the paths for your GPU host.
+# Model names must match the `model:` names in config/profiles.yaml.
+#
+# All models here are GGUF files served by llama.cpp's llama-server, one at a time on 127.0.0.1,
+# with q8_0 KV cache. Bielik-11B and Qwen3-Coder-30B-A3B together do not fit in 24 GB, which is why
+# the proxy loads one model at a time.
+
+llama_server: ~/.lmstudio/extensions/backends/llama.cpp-linux-x86_64-nvidia-cuda12-avx2-2.41.0/llama-server
+
+models:
+  bielik-11b-v3-q8:
+    gguf: ~/.lmstudio/models/speakleash/Bielik-11B-v3.0-Instruct-GGUF/Bielik-11B-v3.0-Instruct.Q8_0.gguf
+    ctx: 32768
+
+  qwen3-coder-30b-a3b-q4km:
+    gguf: ~/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf
+    ctx: 16384
+
+  qwen3.6-27b-q4km:
+    gguf: ~/.lmstudio/models/lmstudio-community/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
+    ctx: 32768
+    args: ["--reasoning-budget", "0"]   # reasoning off (requests also send enable_thinking=false)

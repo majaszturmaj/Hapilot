@@ -5,17 +5,22 @@
   "description": "Company procedures, regulations — answers from ChromaDB vector database",
   "author": "Hapilot Team",
   "license": "MIT",
-
   "routes": [
     {
       "id": "B",
       "name": "knowledge",
       "description": "WIEDZA I NARZĘDZIA (Procedury firmy, RAG search, sprawdzanie wiedzy, pytania o informacje)",
-      "keywords_hint": ["procedura", "regulamin", "zasady", "jak", "co robić", "kalendarz"],
+      "keywords_hint": [
+        "procedura",
+        "regulamin",
+        "zasady",
+        "jak",
+        "co robić",
+        "kalendarz"
+      ],
       "router_example": "\"Co mam robić w razie pożaru?\" -> B"
     }
   ],
-
   "nodes": [
     {
       "name": "knowledge",
@@ -24,21 +29,14 @@
       "description": "Przeszukiwanie dokumentów firmowych za pomocą RAG"
     }
   ],
-
   "tools": [
     {
       "name": "rag_search",
       "planner_description": "Search company documentation (RAG)",
       "planner_when_to_use": "Looking for procedures, regulations, facts from company documents. Mandatory first step when query relates to institutional rules/docs.",
       "planner_when_not_to_use": ""
-    },
-    {
-      "name": "calendar",
-      "planner_description": "Check Outlook calendar",
-      "planner_when_to_use": "Checking availability, schedules, vacations, meetings in Outlook calendar"
     }
   ],
-
   "prompts": {
     "knowledge": "prompts/knowledge.txt"
   }

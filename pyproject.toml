@@ -5,33 +5,45 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hapilot"
 version = "0.1.0"
-description = "Extensible LangGraph Multi-Agent Platform"
+description = "Local multi-agent assistant for office tasks (LangGraph, local LLMs, isolated sandbox)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [
     { name = "Maja Szturmaj" }
 ]
+# Pinned runtime versions live in requirements.txt; these are the direct dependencies.
 dependencies = [
-    "langgraph>=0.1.0",
+    "langgraph",
     "langchain-core",
     "langchain-openai",
     "langchain-community",
+    "langchain-text-splitters",
     "langchain-huggingface",
     "langchain-chroma",
+    "chromadb",
+    "sentence-transformers",
+    "pypdf",
     "chainlit",
+    "docker",
+    "httpx",
     "pydantic",
     "python-dotenv",
-    "chromadb",
-    "fastmcp",
-    "sentence-transformers"
+    "PyYAML",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest"
-]
+mcp = ["mcp"]
+dev = ["pytest", "ruff"]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src*", "extensions*"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"
+extend-exclude = [".venv", "venv", "var"]
+
+[tool.ruff.lint]
+select = ["E9", "F", "W6", "B006", "B008"]

@@ -1,35 +1,27 @@
-# sandbox/Dockerfile
+# Hapilot sandbox image: Python data tools + LaTeX with Polish support.
+# Built once by `scripts/hapilotctl.py setup`; Hapilot starts a fresh container from it for every
+# code run or PDF compilation, with no network, as a non-root user, on a read-only root filesystem.
 FROM python:3.10-slim
 
-WORKDIR /workspace
-
-# Opcja --no-install-recommends jest KLUCZOWA - nie instaluje śmieci (dokumentacji, zbędnych pakietów)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    # Podstawowy LaTeX
-    texlive-latex-base \
-    texlive-latex-recommended \
-    # Dodatki (tabelki, grafika - niezbędne do raportów)
-    texlive-latex-extra \
-    # Polskie znaki i czcionki
-    texlive-lang-polish \
-    texlive-fonts-recommended \
-    # Narzędzie do czyszczenia po instalacji (zmniejsza obraz)
+        texlive-latex-base \
+        texlive-latex-recommended \
+        texlive-latex-extra \
+        texlive-lang-polish \
+        texlive-fonts-recommended \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# 3. Instalujemy popularne biblioteki Data Science / Utils
-# To jest nasz "Cache", żeby kod wykonywał się natychmiast
 RUN pip install --no-cache-dir \
-    pandas \
-    numpy \
-    matplotlib \
-    seaborn \
-    scikit-learn \
-    requests \
-    openpyxl \
-    reportlab \
-    fpdf \
-    docxtpl
+        pandas \
+        numpy \
+        matplotlib \
+        seaborn \
+        scikit-learn \
+        openpyxl \
+        reportlab \
+        fpdf \
+        docxtpl
 
-# 4. Kluczowa komenda: Kontener ma "wisieć" i czekać na polecenia
-CMD ["tail", "-f", "/dev/null"]
+RUN mkdir -p /work
+WORKDIR /work
+CMD ["python3", "--version"]

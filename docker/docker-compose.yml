@@ -1,51 +1,26 @@
-services:
-  # --- BAZA WIEDZY (ChromaDB) ---
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: hapilot_chroma
-    ports:
-      - "8000:8000"
-    volumes:
-      - ../chroma_data:/chroma/chroma
-    environment:
-      - IS_PERSISTENT=TRUE
-    networks:
-      - hapilot_net
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sSf http://localhost:8000/api/v1/heartbeat || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+# Optional services for Hapilot. The knowledge base (ChromaDB) is embedded in the Hapilot process
+# and the code sandbox is started per run by Hapilot itself, so nothing here is required.
+#
+# n8n (Outlook e-mail drafts / calendar) runs only with the "n8n" profile:
+#   docker compose -f docker/docker-compose.yml --profile n8n up -d
+# The project name "hapilot" keeps these containers separate from anything else on the host.
+name: hapilot
 
-  # --- AUTOMATYZACJA (n8n) ---
+services:
   n8n:
-    image: n8nio/n8n
-    container_name: hapilot_n8n
+    image: ${HAPILOT_N8N_IMAGE:-n8nio/n8n:latest}
+    profiles: ["n8n"]
     ports:
-      - "5679:5678"
+      - "127.0.0.1:${HAPILOT_N8N_PORT:-8678}:5678"
     environment:
-      - N8N_HOST=localhost
+      - N8N_HOST=127.0.0.1
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
       - NODE_ENV=production
-      - WEBHOOK_URL=http://localhost:5679/
-      # Zwiększ timeout dla startupowego healthchecka
-      - N8N_STARTUP_TIMEOUT=600
+      - WEBHOOK_URL=http://127.0.0.1:${HAPILOT_N8N_PORT:-8678}/
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_VERSION_NOTIFICATIONS_ENABLED=false
+      - N8N_TEMPLATES_ENABLED=false
     volumes:
-      - ../n8n_data:/home/node/.n8n
-    networks:
-      - hapilot_net
+      - ../var/n8n:/home/node/.n8n
     restart: unless-stopped
-    # n8n healthcheck (większy timeout ze względu na długi startup)
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sSf http://localhost:5678/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
-
-networks:
-  hapilot_net:
-    driver: bridge
-

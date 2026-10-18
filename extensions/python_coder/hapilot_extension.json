@@ -5,17 +5,23 @@
   "description": "Python code generation and execution in Docker sandbox",
   "author": "Hapilot Team",
   "license": "MIT",
-
   "routes": [
     {
       "id": "D",
       "name": "coder",
       "description": "KOD PYTHON (Obliczenia, skrypty, analiza danych, wykresy, programowanie)",
-      "keywords_hint": ["oblicz", "skrypt", "python", "wykres", "analiza", "policz", "programuj"],
+      "keywords_hint": [
+        "oblicz",
+        "skrypt",
+        "python",
+        "wykres",
+        "analiza",
+        "policz",
+        "programuj"
+      ],
       "router_example": "\"Oblicz średnią z danych\" -> D"
     }
   ],
-
   "nodes": [
     {
       "name": "coder",
@@ -30,7 +36,6 @@
       "description": "Uruchomienie kodu w kontenerze Docker"
     }
   ],
-
   "tools": [
     {
       "name": "python",
@@ -44,9 +49,8 @@
       "planner_when_to_use": "Same as python"
     }
   ],
-
   "prompts": {
     "coder": "prompts/coder_qwen.txt",
-    "coder_bielik": "prompts/coder_bielik.txt"
+    "coder_fallback": "prompts/coder_bielik.txt"
   }
 }

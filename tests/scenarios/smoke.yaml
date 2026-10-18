@@ -1,0 +1,39 @@
+# Smoke scenarios on the demo company (examples/demo_company/docs). Run with real models on the GPU host:
+#   .venv/bin/python scripts/hapilotctl.py smoke [--profile best-local]
+# Approval policy "auto": no forms, no plan approval. Scenarios with the same `session` share history.
+# Checks are deliberately simple (they test that the paths work, not answer quality).
+scenarios:
+  - id: chat
+    session: s1
+    prompt: "Cześć! W czym możesz mi pomóc w pracy biurowej?"
+    checks: {min_chars: 40, not_contains: ["BŁĄD", "LLM INVOKE ERROR"]}
+
+  - id: rag_leave
+    session: s2
+    prompt: "Ile dni wcześniej trzeba złożyć wniosek o urlop wypoczynkowy w naszej firmie?"
+    checks: {regex: ["\\b14\\b"], not_contains: ["LLM INVOKE ERROR"]}
+
+  - id: rag_complaints
+    session: s3
+    prompt: "W jakim terminie musimy odpowiedzieć klientowi na reklamację i kto za to odpowiada?"
+    checks: {regex: ["\\b14\\b", "(?i)dzia[lł]\\w* jako[sś]ci"]}
+
+  - id: python_sum
+    session: s4
+    prompt: "Oblicz w Pythonie sumę kwadratów liczb od 1 do 100 i wypisz wynik."
+    checks: {contains: ["338350"], not_contains: ["BŁĄD WYKONANIA"]}
+
+  - id: email_no_pdf
+    session: s5
+    prompt: "Napisz krótkiego maila do zespołu, że w piątek o 15:00 jest przegląd serwerów. Nie rób z tego PDF, tylko tekst."
+    checks: {min_chars: 60, not_contains: ["Wygenerowano plik"]}
+
+  - id: pdf_letter
+    session: s6
+    prompt: "Przygotuj podanie o urlop wypoczynkowy od 3 do 7 listopada 2026. Jestem Jan Kowalski z Działu Sprzedaży Przykładowej Sp. z o.o."
+    checks: {pdf: true}
+
+  - id: pdf_modify
+    session: s6
+    prompt: "Zmień w tym podaniu daty urlopu na 10–14 listopada 2026."
+    checks: {pdf: true}

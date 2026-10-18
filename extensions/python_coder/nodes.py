@@ -1,28 +1,16 @@
-"""Python Coder nodes — Code generation (Qwen/Bielik) and execution (Docker sandbox)."""
+"""Python Coder nodes — code generation (coder role) and execution in the isolated sandbox."""
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from src.llm_config import get_coder_chat
 from src.core.tools_common import TaskState, invoke_llm_and_normalize
+from src.llm_config import get_coder_chat
 
 
-def run_coder(state):
-    """Generate Python code from user request using the Coder model.
-
-    Key improvements:
-    - Sends MINIMAL context to Coder (only user request + error traceback on retry)
-    - On retry, extracts actual traceback from state messages
-    - Validates output: if LLM returned natural language instead of code, retries
-    """
+def _task_text(state) -> str:
+    """What the code should do: the plan step's input, else the user's request."""
     from src.agent_graph import _resolve_effective_user_message
 
-    print("   --> 💻 [NODE: CODER] Generowanie kodu Python (Qwen Coder)...")
-    llm, system_prompt = get_coder_chat(role="coder")
-
-    retries = state.get("retry_count", 0)
-    original_user_request = _resolve_effective_user_message(state["messages"])
-
-    # If executing a plan step, use step input
+    request = _resolve_effective_user_message(state["messages"])
     task_plan = state.get("task_plan") or {}
     current_step = state.get("current_step")
     if task_plan and isinstance(task_plan, dict) and current_step is not None:
@@ -30,109 +18,67 @@ def run_coder(state):
         if 0 <= current_step < len(steps):
             step_input = steps[current_step].get("input")
             if step_input and not step_input.startswith("WYNIK:"):
-                original_user_request = step_input
+                request = step_input
+    return request
 
-    # Build MINIMAL messages for Coder
-    messages_to_send = [SystemMessage(content=system_prompt)]
+
+def run_coder(state):
+    """Generate Python code for the task; the code is handed to ``run_execute`` via state."""
+    from src.agent_tools import _extract_python_from_llm_output
+
+    print("   --> 💻 [NODE: CODER] Generowanie kodu Python...")
+    llm, system_prompt = get_coder_chat(role="coder")
+    retries = state.get("retry_count", 0)
+    task = _task_text(state)
 
     if retries > 0:
-        error_traceback = ""
-        previous_code = ""
-        for msg in reversed(state["messages"]):
-            content = msg.content if hasattr(msg, "content") else str(msg)
-            if "BŁĄD WYKONANIA:" in content and not error_traceback:
-                error_traceback = content.replace("WYNIK:\n", "").strip()
-            if isinstance(msg, AIMessage) and not previous_code:
-                if any(kw in content for kw in ["import ", "def ", "print(", "for ", "= "]):
-                    previous_code = content
-
-        if error_traceback:
-            messages_to_send.append(HumanMessage(
-                content=f"Zadanie: {original_user_request}\n\n"
-                        f"Poprzedni kod zwrócił błąd (próba {retries}/3).\n"
-                        f"BŁĄD:\n{error_traceback}\n\n"
-                        f"Napisz POPRAWIONY, KOMPLETNY kod Python w bloku ```python ... ```. "
-                        f"NIE powtarzaj tego samego błędu."
-            ))
-        else:
-            messages_to_send.append(HumanMessage(
-                content=f"Zadanie: {original_user_request}\n\n"
-                        f"Poprzednia próba nie zadziałała (próba {retries}/3). "
-                        f"Napisz KOD PYTHON w bloku ```python ... ```.\n"
-                        f"WAŻNE: Zwróć WYŁĄCZNIE kod, żadnego tekstu naturalnego."
-            ))
+        error = next((m.content.replace("WYNIK:\n", "").strip() for m in reversed(state["messages"])
+                      if "BŁĄD WYKONANIA:" in getattr(m, "content", "") or "BŁĄD:" in getattr(m, "content", "")), "")
+        previous = state.get("generated_code") or ""
+        content = (f"Zadanie: {task}\n\nPoprzedni kod (próba {retries}/3):\n```python\n{previous}\n```\n\n"
+                   f"zwrócił błąd:\n{error}\n\nNapisz POPRAWIONY, KOMPLETNY kod Python w bloku ```python ... ```. "
+                   "NIE powtarzaj tego samego błędu.")
     else:
-        messages_to_send.append(HumanMessage(
-            content=f"{original_user_request}\n\n"
-                    f"Napisz kod Python w bloku ```python ... ```. "
-                    f"Użyj print() aby wyświetlić wyniki."
-        ))
+        content = f"{task}\n\nNapisz kod Python w bloku ```python ... ```. Użyj print() aby wyświetlić wyniki."
 
     try:
-        response = invoke_llm_and_normalize(llm, messages_to_send)
-
-        # VALIDATION: Check if the response actually contains code
-        resp_content = response.content if hasattr(response, "content") else str(response)
-        from src.agent_tools import _extract_python_from_llm_output
-        extracted = _extract_python_from_llm_output(resp_content)
-
-        if not extracted.strip() or len(extracted.strip()) < 5:
-            print("      ⚠️ [CODER] Model nie zwrócił kodu Python — wymuszam ponowne generowanie")
-            fallback_msg = HumanMessage(
-                content=f"Poprzednia odpowiedź nie zawierała kodu Python.\n"
-                        f"Zadanie: {original_user_request}\n\n"
-                        f"Napisz KOD PYTHON w bloku ```python ... ```.\n"
-                        f"Przykład poprawnej odpowiedzi:\n"
-                        f"```python\nprint(42)\n```"
-            )
+        response = invoke_llm_and_normalize(llm, [SystemMessage(content=system_prompt), HumanMessage(content=content)])
+        code = _extract_python_from_llm_output(getattr(response, "content", ""))
+        if len(code.strip()) < 5:
+            print("      ⚠️ [CODER] Model nie zwrócił kodu Python — ponawiam z przykładem formatu")
             response = invoke_llm_and_normalize(llm, [
-                SystemMessage(content=system_prompt), fallback_msg
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=f"Poprzednia odpowiedź nie zawierała kodu Python.\nZadanie: {task}\n\n"
+                                     "Napisz KOD PYTHON w bloku ```python ... ```.\nPrzykład:\n```python\nprint(42)\n```"),
             ])
-
-        return {"messages": [response]}
-    except Exception as e:
-        return {"messages": [SystemMessage(content=f"Error: {e}")]}
+            code = _extract_python_from_llm_output(getattr(response, "content", ""))
+        return {"messages": [response], "generated_code": code}
+    except Exception as exc:
+        return {"messages": [AIMessage(content=f"Błąd generowania kodu: {exc}")], "generated_code": ""}
 
 
 def run_execute(state):
-    """Execute Python code in the Docker sandbox."""
-    from src.agent_tools import tool_execute_python
+    """Run the code produced by ``run_coder`` in the sandbox."""
     from src.agent_graph import _advance_plan_step
+    from src.agent_tools import tool_execute_python
 
     print("   --> ⚙️ [NODE: EXECUTE] Wykonywanie kodu Python...")
+    code = state.get("generated_code")
+    if code is None:  # older callers: the coder's answer is the last AI message
+        code = next((m.content for m in reversed(state["messages"]) if isinstance(m, AIMessage)), "")
+    result = tool_execute_python(code)
+    print(f"      📝 [OUTPUT]:\n{result[:500]}")
+    status = "error" if result.startswith("BŁĄD") else "success"
 
-    # Prefer step input if present
-    task_plan = state.get("task_plan") or {}
-    current_step = state.get("current_step")
-    content = None
-    if task_plan and current_step is not None:
-        steps = task_plan.get("steps", [])
-        if 0 <= current_step < len(steps):
-            content = steps[current_step].get("input")
-
-    if content is None:
-        last_message = state["messages"][-1]
-        content = last_message.content
-
-    result = tool_execute_python(content)
-    print(f"      📝 [OUTPUT]:\n{result[:500]}...")
-
-    status = "error" if "BŁĄD" in result else "success"
-
-    # Persist state if needed
     task_id = state.get("task_id")
     if task_id and state.get("is_complex_task"):
         try:
-            task_state = TaskState(task_id)
-            task_state.update_step(state.get("retry_count", 0), result)
+            TaskState(task_id).update_step(state.get("retry_count", 0), result)
         except Exception:
             pass
 
-    base_result = {
-        "messages": [HumanMessage(content=f"WYNIK:\n{result}")],
-        "execution_status": status,
-        "retry_count": state.get("retry_count", 0) + 1,
-    }
+    out = {"messages": [HumanMessage(content=f"WYNIK:\n{result}")], "execution_status": status,
+           "retry_count": state.get("retry_count", 0) + 1}
     if status == "success":
-        base_result.update(_advance_plan_step(state))
-    return base_result
+        out.update(_advance_plan_step(state))
+    return out

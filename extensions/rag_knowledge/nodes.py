@@ -1,6 +1,5 @@
 """RAG Knowledge node — Search company documentation and synthesize answers."""
 
-import os
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from src.llm_config import get_bielik_chat
@@ -35,7 +34,7 @@ def _plan_has_pdf_like_step(task_plan: dict) -> bool:
 def run_knowledge(state):
     """Search company documentation via RAG and synthesize an answer."""
     print("   --> 📂 [NODE: KNOWLEDGE] Analiza zapytania...")
-    from src.agent_tools import tool_rag_search, tool_check_calendar
+    from src.agent_tools import tool_rag_search
     from src.agent_graph import _resolve_effective_user_message, _advance_plan_step
 
     messages = state["messages"]
@@ -88,12 +87,10 @@ Słowa kluczowe:"""
 
     print(f"      🔍 Szukam w plikach: '{optimized_query}'")
 
-    # 2. Tool routing
-    tool_output = ""
-    if "kalendarz" in optimized_query.lower():
-        tool_output = tool_check_calendar()
-    else:
-        tool_output = tool_rag_search(optimized_query)
+    # 2. Knowledge-base search
+    if not optimized_query or optimized_query.startswith("[LLM"):
+        optimized_query = last_user_msg
+    tool_output = tool_rag_search(optimized_query)
 
     # 3. Synthesis
     if has_pdf_step:

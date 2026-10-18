@@ -21,7 +21,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional
 
 from src.core.base_extension import BaseExtension
 from src.core.prompt_registry import prompt_registry

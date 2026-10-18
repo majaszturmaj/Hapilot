@@ -2,27 +2,30 @@
   "id": "n8n_operations",
   "name": "n8n Webhook Operations",
   "version": "1.0.0",
-  "description": "Email drafts and calendar checks via n8n webhooks (Office 365 integration)",
+  "description": "Optional: Outlook e-mail drafts (never sent) and calendar look-ups through local n8n webhooks. Off by default.",
   "author": "Hapilot Team",
   "license": "MIT",
-
   "routes": [],
-
-  "nodes": [],
-
+  "nodes": [
+    {
+      "name": "operations",
+      "entry_point": "nodes:run_operations",
+      "label": "📅 Kalendarz / e-mail (n8n)",
+      "description": "Wersja robocza e-maila w Outlooku (po potwierdzeniu) lub sprawdzenie kalendarza"
+    }
+  ],
   "tools": [
     {
       "name": "email",
-      "planner_description": "Send email drafts via n8n/Outlook webhook",
-      "planner_when_to_use": "Sending ready notifications or email messages"
+      "planner_description": "Create an Outlook e-mail DRAFT via n8n after user confirmation (never sends)",
+      "planner_when_to_use": "The user wants an e-mail prepared in their mailbox"
     },
     {
-      "name": "hitl_confirm",
-      "planner_description": "Pause and ask user for confirmation before a critical operation",
-      "planner_when_to_use": "When user confirmation is needed before sending email, executing a critical plan step. Do NOT add before template_pdf — that has automatic confirmation.",
-      "planner_when_not_to_use": "Do not use before template_pdf"
+      "name": "calendar",
+      "planner_description": "Look up Outlook calendar events for a date via n8n",
+      "planner_when_to_use": "Checking availability, meetings or schedules on a given day"
     }
   ],
-
-  "prompts": {}
+  "prompts": {},
+  "enabled": false
 }

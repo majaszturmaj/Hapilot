@@ -1,6 +1,6 @@
 [server]
-# Chainlit server port (fixed: 8001 to avoid conflict with ChromaDB on port 8000)
-port = 8001
+# Default port when started without --port; scripts/hapilotctl.py passes --host 127.0.0.1 --port $HAPILOT_UI_PORT
+port = 8601
 host = "127.0.0.1"
 
 [project]
@@ -58,7 +58,8 @@ reaction_on_message_received = false
 
 # Authorize users to spontaneously upload files with messages
 [features.spontaneous_file_upload]
-    enabled = true
+    # File attachments are not processed yet — kept off so the UI does not accept files it would ignore.
+    enabled = false
     # Define accepted file types using MIME types
     # Examples:
     # 1. For specific file types:

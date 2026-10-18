@@ -1,0 +1,23 @@
+PRZYKŁADOWA SP. Z O.O.
+ul. Zmyślona 7, 50-001 Wrocław
+
+POLITYKA BEZPIECZEŃSTWA INFORMACJI — ZASADY DLA PRACOWNIKÓW
+Dokument wewnętrzny nr IT/2026/02, obowiązuje od 1 lutego 2026 r.
+
+1. Hasła i logowanie
+1.1. Hasło do systemów firmowych ma co najmniej 12 znaków i nie może być używane w innych serwisach.
+1.2. Do poczty i systemu kadrowego logujemy się z uwierzytelnianiem dwuskładnikowym.
+1.3. Hasła przechowujemy wyłącznie w firmowym menedżerze haseł.
+
+2. Dane klientów i dokumenty
+2.1. Dokumenty zawierające dane osobowe klientów przechowujemy tylko na firmowym dysku sieciowym, w folderach z ograniczonym dostępem.
+2.2. Zabronione jest przesyłanie dokumentów firmowych do zewnętrznych usług (w tym publicznych narzędzi AI) bez zgody Działu IT.
+2.3. Do pracy z dokumentami firmowymi z pomocą AI używamy wyłącznie lokalnego asystenta zatwierdzonego przez Dział IT.
+
+3. Sprzęt
+3.1. Komputer blokujemy przy każdym odejściu od stanowiska.
+3.2. Utratę lub kradzież laptopa albo telefonu służbowego zgłaszamy natychmiast, najpóźniej w ciągu 2 godzin, na helpdesk@example.com lub pod numer wewnętrzny 200.
+
+4. Incydenty
+4.1. Podejrzany e-mail (np. prośbę o podanie hasła lub pilny przelew) przekazujemy do Działu IT bez otwierania załączników.
+4.2. Każdy incydent bezpieczeństwa zgłaszamy w ciągu 2 godzin od jego zauważenia.

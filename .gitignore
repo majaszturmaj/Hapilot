@@ -1,24 +1,30 @@
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+.pytest_cache/
+.ruff_cache/
 
-# Environment
+# Environment and local configuration
 .env
+config/models.local.yaml
 
-# Runtime data (Docker volumes)
+# Runtime data: workspaces, knowledge base, logs, PID files, reports (HAPILOT_DATA_DIR)
+var/
+
+# Older runtime locations (kept ignored so old local data is never committed)
 chroma_data/
 n8n_data/
 task_states/
 sandbox/workspace/
+models_config.json
+tests/test_report_*.txt
 
 # Chainlit upload scratch
 .files/
-
-# Local model registry (runtime-edited); the repo ships models_config.example.json
-models_config.json
 
 # Local knowledge-base documents are never committed (may be private company data)
 data/private_docs/
@@ -26,9 +32,6 @@ data/private_docs/
 # Logs
 chainlit.log
 *.log
-
-# Test reports
-tests/test_report_*.txt
 
 # Chainlit auto-generated
 .chainlit/translations/

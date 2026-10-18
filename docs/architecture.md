@@ -1,179 +1,96 @@
-# Hapilot — System Architecture
+# Hapilot — architecture
 
-Detailed developer documentation. For setup and usage, see [README.md](../README.md).
+Developer documentation; for setup see the [README](../README.md). The code is the reference: file
+links point to where each part lives.
 
----
+## Request flow
 
-## Agent Graph
-
-```
-__start__ → task_planner → router
-  ├→ A) document_generator → check_document_result → writer → __end__
-  ├→ B) knowledge → writer → __end__
-  ├→ C) chat → writer → __end__
-  └→ D) coder → execute → check_python_execution
-                              ├→ (success) → writer → __end__
-                              └→ (error, retries < 3) → coder (retry)
+```text
+__start__ → task_planner ─┬─(HITL request / halt)──────────────→ __end__
+                          └→ router → <node of the current plan step>
+                                        │
+            document_generator / modify_document ── success → next step's node, else __end__
+            coder → execute ── success → next step's node; error → coder (max 3 attempts)
+            knowledge, writer, chat, hitl_confirm, operations ── next step's node, or __end__
 ```
 
-### State Definition (`src/agent_graph.py`)
+- **task_planner** ([src/agent_graph.py](../src/agent_graph.py)) asks the `task_planner` role for a JSON
+  plan (`task_name`, `complexity`, `steps[{id, action, tool, input}]`). Only tools of enabled extensions
+  are offered ([`available_planner_tools`](../src/agent_tools.py)). Deterministic guards then apply:
+  - an edit request (`zmień`, `popraw`, …, matched on word boundaries) becomes a single
+    `modify_document` step — only if a document was generated earlier in the session;
+  - `template_pdf` steps are removed unless the user asked for a document (`pdf`, `podanie`, `raport`,
+    `protokół`, …) and did not say otherwise (`nie rób PDF`, `bez PDF`, `tylko tekst`);
+  - under the `ask` approval policy, plans longer than two steps wait for the user's approval.
+- **router** maps the current step's tool to a node without calling a model; no plan → `chat`.
+- After a node finishes its step it calls `_advance_plan_step`; the edge sends the run to the next
+  step's node or ends it.
+- **Resuming after the user answers** (plan approval, confirmation, document form, e-mail draft): the
+  UI re-invokes the graph with `hitl_response`, which carries the saved plan and step; the planner
+  restores them and the router continues at the right node.
 
-```python
-class AgentState(TypedDict):
-    messages: Annotated[List[BaseMessage], operator.add]
-    next_step: str
-    execution_status: str   # success / error
-    retry_count: int        # Code retry counter (max 3)
-    task_plan: dict         # STORM-like task plan
-    task_id: str            # State persistence ID
-    plan_mode: str          # auto | explicit | off
-    is_complex_task: bool   # Multi-step flag
-```
+## State (`AgentState`)
 
-### Node Descriptions
+| Field | Meaning |
+|---|---|
+| `messages` | conversation; tool results are added as `HumanMessage("WYNIK: …")` |
+| `task_plan`, `current_step` | plan and index of the step being executed (`None` = no plan) |
+| `generated_code` | code produced by `coder`, executed by `execute` |
+| `retry_count`, `execution_status` | Python repair attempts; `success` / `error` / `pending_hitl` |
+| `last_generated_file` | last `.tex` generated in this session's workspace |
+| `hitl_request`, `hitl_response` | question for the user / the user's answer |
+| `halt` | the planner decided there is nothing left to run |
 
-| Node | Model | Function | Purpose |
-|------|-------|----------|---------|
-| `task_planner` | Bielik | `task_planner_node()` | Analyze complexity, generate task plan |
-| `router` | Bielik | `router_node()` | 4-way classification: A=doc, B=knowledge, C=chat, D=python |
-| `document_generator` | Bielik | `run_document_generator()` | Template selection + parameter filling + PDF compilation |
-| `coder` | Qwen | `run_coder()` | Python code generation |
-| `execute` | Docker | `run_execute()` | Execute Python in sandbox |
-| `knowledge` | Bielik | `run_knowledge()` | RAG search + answer synthesis |
-| `chat` | Bielik | `run_chat()` | General conversation |
-| `writer` | Bielik | `run_writer()` | Format final response to user |
+Per-run values (session id, model profile, approval policy, "today") are not in the state: they travel
+in LangGraph's run config (`configurable`), see [src/run_context.py](../src/run_context.py).
 
----
+## Nodes (extensions)
 
-## LLM Configuration (`src/llm_config.py`)
+| Node | Extension | What it does |
+|---|---|---|
+| `knowledge` | `rag_knowledge` | rewrites the question into search terms, searches the knowledge base, answers with sources |
+| `writer` | `writer` | text synthesis; e-mail steps produce drafts only |
+| `chat` | `chat` | conversation |
+| `document_generator` | `document_generator` | picks a template, fills its parameters; form (ask) or direct PDF (auto) |
+| `modify_document` | `document_modifier` | edits a document generated in this session (via its saved parameters) |
+| `coder`, `execute` | `python_coder` | writes Python, runs it in the sandbox, retries with the error |
+| `hitl_confirm` | core | confirmation step (auto-confirmed under `auto`) |
+| `operations` | `n8n_operations` (off) | Outlook draft after confirmation / calendar look-up via local n8n |
 
-### Bielik Roles & System Prompts
+## Models
 
-| Role | Prompt Variable | Purpose |
-|------|----------------|---------|
-| `router` | `BIELIK_SYSTEM_PROMPT_ROUTER` | 4-way intent classification (A/B/C/D) |
-| `knowledge` | `BIELIK_SYSTEM_PROMPT_KNOWLEDGE` | RAG document retrieval and synthesis |
-| `task_planner` | `BIELIK_SYSTEM_PROMPT_TASK_PLANNER` | STORM-like task decomposition |
-| `template_filler` | `BIELIK_SYSTEM_PROMPT_TEMPLATE_FILLER` | Template selection and parameter filling for PDF |
+[src/llm_config.py](../src/llm_config.py): `get_llm(role)` returns the chat model and system prompt for
+a role, using the session's profile from [config/profiles.yaml](../config/profiles.yaml). Endpoints are
+checked with `assert_local_url`. When a role has its own model (e.g. the coder in `reference`) and the
+server does not list it, the role falls back to the profile's default model and to the role's
+`<role>_fallback` prompt if one is registered. System prompts come from the extensions' `prompts/`
+files (prompt registry) plus security rules, project context and the current date.
 
-### Usage
+## Documents
 
-```python
-from src.llm_config import get_bielik_chat, get_coder_chat
+Templates: [templates/templates.json](../templates/templates.json) (parameters, descriptions, examples)
+and `templates/*.tex` with `{{PARAMETER}}` placeholders. Values are LaTeX-escaped
+(`_sanitize_latex_value`). Every generated document stores its parameters next to the `.tex`
+(`<name>.params.json`); edits change those parameters and regenerate the PDF, so nothing is truncated.
 
-llm, system_prompt = get_bielik_chat(role="template_filler")
-coder_llm, coder_prompt = get_coder_chat(role="coder")  # auto-fallback to Bielik
-```
+## Knowledge base
 
-### Dynamic Model Registry (`src/model_registry.py`)
+[src/knowledge_base.py](../src/knowledge_base.py): ChromaDB `PersistentClient` (telemetry off) under
+`HAPILOT_DATA_DIR/chroma`; embeddings `intfloat/multilingual-e5-base` on CPU. Indexing:
+[src/ingest_data.py](../src/ingest_data.py) — .txt, .md, .pdf; chunks of 800 characters with 200
+overlap; each chunk has an id `file#index:sha`; an unchanged corpus is not re-indexed.
 
-Models can be added/switched at runtime via the Chainlit UI settings panel. Configuration persists to `models_config.json`.
+## Sandbox
 
----
+[src/sandbox.py](../src/sandbox.py): every code run or LaTeX compilation is a new container from
+`hapilot-sandbox` ([sandbox/Dockerfile](../sandbox/Dockerfile)) with `network_mode=none`, the invoking
+non-root user, `cap_drop=ALL`, `no-new-privileges`, read-only root filesystem, `/tmp` tmpfs, memory /
+CPU / process limits and a timeout; only the session workspace is mounted (at `/work`). The image is
+never pulled at run time.
 
-## Template-Based PDF Generation
+## Serving models
 
-### Why templates?
-Bielik (11B) is not reliable at writing LaTeX from scratch. Templates ensure consistent, professional formatting while Bielik focuses on content extraction.
-
-### Flow
-```
-User request → Bielik (template_filler role)
-  → Reads templates/templates.json metadata
-  → Selects best template (letter/report/protocol)
-  → Generates parameter values from user context
-  → _fill_template() replaces {{PARAM}} placeholders in .tex file
-  → Writes filled .tex to sandbox/workspace/
-  → pdflatex compiles in Docker sandbox container
-  → PDF returned to user via Chainlit download link
-```
-
-### Available Templates
-
-| Template | File | Parameters | Use Case |
-|----------|------|------------|----------|
-| `letter` | `templates/letter.tex` | 13 | Formal letters, applications |
-| `report` | `templates/report.tex` | 14 | Institutional reports with TOC |
-| `protocol` | `templates/protocol.tex` | 13 | Meeting minutes, protocols |
-
-### Key Functions (`src/agent_tools.py`)
-
-| Function | Purpose |
-|----------|---------|
-| `tool_select_template_and_generate()` | End-to-end: select template + fill + compile |
-| `tool_list_templates()` | Returns list of available templates |
-| `tool_generate_pdf_from_template()` | Fill specific template + compile |
-| `_load_templates_metadata()` | Load templates.json |
-| `_fill_template()` | Replace {{PARAM}} placeholders |
-
-### MCP Server (`src/template_server.py`)
-
-Standalone FastMCP server exposing template tools for external access:
-- `list_templates` — List all available templates
-- `generate_pdf_from_template` — Generate PDF from template + parameters
-- `get_template_details` — Get full metadata for a specific template
-
----
-
-## RAG Knowledge System
-
-### Ingestion (`src/ingest_data.py`)
-- Loads files from `data/private_docs/`
-- RecursiveCharacterTextSplitter: chunk=512, overlap=50
-- Embeddings: `intfloat/multilingual-e5-base` (forced CPU, no GPU)
-- Storage: ChromaDB at `localhost:8000`
-
-### Retrieval (`src/agent_tools.py`)
-- `tool_rag_search(query)`: Searches ChromaDB, returns top 3 semantic matches
-- Contains "OmegaCorp" canary data for hallucination testing
-
-### Private Documents
-Located in `data/private_docs/`:
-- `procedury_zglaszania_pomyslu_projektu.txt` — Project proposal procedures
-- `regulamin_ubiegania_o_podwyzke.txt` — Salary raise regulations
-- `regulamin_urlopu_naukowego.txt` — Scientific leave regulations
-- `wymagania_zrownowazony_rozwoj_ekologia.txt` — Sustainability requirements
-- `zasady_ogloszen_o_prace.txt` — Job posting rules
-
----
-
-## Python Code Execution
-
-### Flow
-```
-Router (D=Python) → run_coder() → run_execute() → check_python_execution()
-                         ↑                                    │
-                         └──── retry (up to 3 attempts) ──────┘
-```
-
-- Qwen generates Python code
-- `_extract_python_from_llm_output()` uses 5 strategies to clean LLM response
-- Code runs in isolated Docker container (Python 3.10 + data-science libs)
-- On error, the error message is fed back to Qwen for retry (up to 3x)
-
-### Docker Sandbox
-- **Build**: `sandbox/Dockerfile` (Python 3.10-slim + texlive + pandas/numpy/matplotlib/etc.)
-- **Volume**: `sandbox/workspace/` mounted at `/workspace`
-- **Security**: Isolated execution, resource-limited (1 CPU, 512MB RAM)
-
----
-
-## MCP Servers
-
-| Server | File | Tools |
-|--------|------|-------|
-| Knowledge | `src/knowledge_server.py` | `search_documentation(query)` |
-| Operations | `src/operations_server.py` | `send_email_draft(to, subject, body)`, `check_calendar(date_from, date_to)` |
-| Template | `src/template_server.py` | `list_templates()`, `generate_pdf_from_template()`, `get_template_details()` |
-
----
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Qwen Coder unavailable | System auto-falls back to Bielik. Check remote server. |
-| PDF compilation fails | Ensure Docker sandbox is running: `cd sandbox && docker compose up -d` |
-| RAG returns no results | Re-ingest documents: `./venv/bin/python src/ingest_data.py` |
-| CUDA OOM on embeddings | Embeddings force CPU execution. Ensure LM Studio isn't consuming all VRAM. |
-| Template not found | Check `templates/templates.json` and that `.tex` file exists. |
+[tools/modelswap.py](../tools/modelswap.py) exposes one OpenAI-compatible endpoint on 127.0.0.1 and
+starts `llama-server` for the requested model (from `config/models.local.yaml`), stopping the previous
+one; requests are handled one at a time. [scripts/hapilotctl.py](../scripts/hapilotctl.py) starts and
+stops the proxy and the UI, records their PIDs, and runs setup, indexing, smoke tests and the egress test.
