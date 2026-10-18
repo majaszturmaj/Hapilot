@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased (stage 2: evaluation readiness)
+## eval-v1 — 2026-10-18 (stage 2: evaluation readiness)
+
+Frozen evaluation interface (docs/EVALUATION_INTERFACE.md). Behaviour changes after this tag go to later tags.
+
+Verification on the GPU host (RTX 4090): unit tests 119 passed; development tasks through the evaluation interface
+10/10 `ok` and schema-valid with both profiles, checks 10/10 (`best-local`) and 8/10 (`reference`; two arithmetic or
+date-reasoning answers by Bielik); a re-run resumed without repeating tasks; egress guard log empty; egress test
+passed (commit 62a949e); smoke 7/7.
+
+Found and fixed during verification: Python steps did not get earlier results or documents; Bielik's trailing `}`
+dropped the plan; the launcher mistook TIME_WAIT connections for a port in use.
 
 - Evaluation interface v1 (`src/eval/`, `docs/EVALUATION_INTERFACE.md`, `docs/schemas/`): tasks in JSONL, results,
   per-task JSONL traces with content-addressed prompts, run metadata, resumable batch runs, schema validation,

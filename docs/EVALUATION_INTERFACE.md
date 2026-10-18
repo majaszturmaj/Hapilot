@@ -3,7 +3,7 @@
 **Status: approved 2026-10-18 (open points of §8 decided as recommended: JSON via a formatter call, the agent sees
 the answer format, `sources_used` = files in prompts + attachments, with files cited in the answer reported
 separately, 900 s per task, full texts in traces, attachments inline up to 20,000 characters). Implemented in
-`src/eval/` (schemas in `docs/schemas/`); verified on the GPU host before tag `eval-v1`.**
+`src/eval/` (schemas in `docs/schemas/`); verified on the GPU host on 2026-10-18 and frozen as tag `eval-v1`.**
 
 This is how an external benchmark harness runs Hapilot without the UI: it gives Hapilot tasks and a
 document corpus, and gets back answers, structured JSON, the sources used, and a complete trace of

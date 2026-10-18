@@ -75,7 +75,8 @@ What Hapilot does to keep data on your machines:
 The claim is tested, not only stated: `scripts/hapilotctl.py egress-test` runs the scenario suite with
 the model server, the UI, indexing and the agent under `strace`, blocks non-local connections from
 Hapilot's Python process, and fails on any outbound connection attempt (including DNS).
-**Last egress test: passed on 2026-10-18, commit `0752d4f`, profiles `best-local` and `reference`** (7/7 scenarios each;
+**Last egress test: passed on 2026-10-18, commit `62a949e`, profile `best-local`** (earlier the same day also on
+`0752d4f` with both profiles; 7/7 scenarios each;
 traced: model server, UI start-up and page load, indexing, agent runs; no outbound connection, no DNS lookup; every
 sandbox run had network mode `none`). Not covered by the trace: the Docker daemon itself (root) and a full browser chat
 session over the UI's websocket (the agent code it runs is the same as in the scenarios).
