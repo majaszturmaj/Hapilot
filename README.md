@@ -54,6 +54,11 @@ Scripts and evaluation runs use the `auto` policy.
 | `reference` | Bielik-11B v3 (Q8_0) for language roles, Qwen3-Coder-30B-A3B (Q4_K_M) for Python | The two models do not fit together on a 24 GB GPU; the proxy swaps them |
 | `best-local` | Qwen3.6-27B (Q4_K_M, reasoning off) for all roles | One model, no swapping |
 
+Measured on an RTX 4090 (24 GB) on 2026-10-18 with llama.cpp, q8_0 KV cache: VRAM Bielik-11B Q8_0 (32k context)
+15,220 MiB, Qwen3-Coder-30B-A3B Q4_K_M (16k) 18,964 MiB, Qwen3.6-27B Q4_K_M (32k) 17,016 MiB. A swap takes 2–3 s when
+the model file is in the page cache (first load from disk: 52 s for Bielik, 120 s for Qwen3-Coder). The seven smoke
+scenarios took 82.6 s in total with `best-local` and 138.3 s with `reference` (all passed).
+
 The default profile is set in `config/profiles.yaml`; users choose a profile per chat session in the
 ⚙️ panel. Adding a model is a configuration change (profiles + `config/models.local.yaml`), not a UI action.
 
@@ -70,15 +75,19 @@ What Hapilot does to keep data on your machines:
 The claim is tested, not only stated: `scripts/hapilotctl.py egress-test` runs the scenario suite with
 the model server, the UI, indexing and the agent under `strace`, blocks non-local connections from
 Hapilot's Python process, and fails on any outbound connection attempt (including DNS).
-**Last egress test: not yet run on the GPU host** (the date and commit of the last passing run will be recorded here).
+**Last egress test: passed on 2026-10-18, commit `0752d4f`, profiles `best-local` and `reference`** (7/7 scenarios each;
+traced: model server, UI start-up and page load, indexing, agent runs; no outbound connection, no DNS lookup; every
+sandbox run had network mode `none`). Not covered by the trace: the Docker daemon itself (root) and a full browser chat
+session over the UI's websocket (the agent code it runs is the same as in the scenarios).
 
 The optional n8n extension (Outlook e-mail drafts and calendar) is outside this claim: n8n talks to
 Office 365 by design. It is disabled by default.
 
 ## Running on a GPU host
 
-Requirements: Linux with an NVIDIA GPU (tested target: RTX 4090, 24 GB), Python 3.10+, Docker with
-Compose, llama.cpp's `llama-server`, GGUF model files, `strace` (for the egress test).
+Requirements: Linux with an NVIDIA GPU, Python 3.10+, Docker with Compose, llama.cpp's `llama-server`, GGUF model
+files, `strace` (for the egress test). Verified on: RTX 4090 24 GB, Ubuntu, Python 3.12, Docker 29, llama.cpp from
+LM Studio's CUDA 12 backend.
 
 ```bash
 git clone https://github.com/majaszturmaj/Hapilot.git ~/Hapilot && cd ~/Hapilot

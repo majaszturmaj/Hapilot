@@ -5,6 +5,8 @@
 # All models here are GGUF files served by llama.cpp's llama-server, one at a time on 127.0.0.1,
 # with q8_0 KV cache. Bielik-11B and Qwen3-Coder-30B-A3B together do not fit in 24 GB, which is why
 # the proxy loads one model at a time.
+# VRAM measured on an RTX 4090 (2026-10-18): Bielik-11B Q8_0 32k 15,220 MiB; Qwen3-Coder-30B-A3B Q4_K_M 16k
+# 18,964 MiB; Qwen3.6-27B Q4_K_M 32k 17,016 MiB.
 
 llama_server: ~/.lmstudio/extensions/backends/llama.cpp-linux-x86_64-nvidia-cuda12-avx2-2.41.0/llama-server
 

@@ -23,6 +23,14 @@
 - Calendar look-ups used a fixed date; e-mail steps pretended to send (now drafts only; n8n is an
   optional, disabled extension that creates Outlook drafts after confirmation).
 
+### Verification (GPU host, RTX 4090, 2026-10-18, commit 0752d4f)
+- Unit tests: 92 passed (Python 3.10 locally, 3.12 on the GPU host); ruff clean.
+- Sandbox: non-root, no network (only `lo`), read-only root filesystem, no Docker socket, 60 s timeout enforced.
+- Smoke scenarios: 7/7 with `best-local` (82.6 s) and `reference` (138.3 s).
+- Egress test: passed for both profiles.
+- The reference run found one more bug, fixed in 0752d4f: the chat node sent two assistant messages in a row,
+  which llama.cpp rejects.
+
 ### Tooling
 - `config/profiles.yaml` (`reference`, `best-local`), `src/config.py` (one settings module), `tools/modelswap.py`,
   `scripts/hapilotctl.py` (safe launcher), `scripts/smoke.py` + `tests/scenarios/smoke.yaml`.
