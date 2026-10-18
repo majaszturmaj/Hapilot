@@ -11,6 +11,9 @@
 - Retrieval: hybrid E5 + BM25 with reciprocal rank fusion (default top 8); E5 passage/query prefixes.
 - Attachments: one module for UI uploads and evaluation tasks; uploads enabled in the UI for the supported formats.
 - Demo company documents in all formats; ten development tasks with a checker (`scripts/dev_eval_check.py`).
+- Python steps get the results of earlier plan steps and can read the company documents (read-only `/data` in the
+  sandbox, still without network) — found by the development tasks on the GPU host (the coder computed on
+  numbers it never received).
 
 ## Stage 1: safety and correctness
 

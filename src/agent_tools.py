@@ -63,7 +63,7 @@ PLANNER_TOOL_DESCRIPTIONS = {
     "llm_synthesis": "Generowanie/synteza tekstu przez model językowy",
     "template_pdf": "Generowanie PDF z szablonu LaTeX (list, raport, protokół). Parametry dokumentu są pokazywane użytkownikowi do potwierdzenia.",
     "modify_document": "Modyfikacja wcześniej wygenerowanego dokumentu (zmiana daty, adresu, treści) i ponowne wygenerowanie PDF",
-    "python": "Wykonanie kodu Python w izolowanym sandboxie (obliczenia, analiza danych, wykresy)",
+    "python": "Wykonanie kodu Python w izolowanym sandboxie (obliczenia, analiza danych, wykresy); kod może czytać dokumenty firmy (np. arkusze .xlsx) i załączniki",
     "calendar": "Sprawdzenie kalendarza (integracja n8n)",
     "email": "Przygotowanie wersji roboczej e-maila (nic nie jest wysyłane automatycznie)",
     "chat": "Zwykła rozmowa z użytkownikiem (luźne pytania, powitania, zgoda/odmowa)",
@@ -327,6 +327,27 @@ def tool_generate_pdf(latex_content: str, filename: Optional[str] = None) -> str
     return f"BŁĄD KOMPILACJI (exit_code={result.exit_code}):\n{detail}"
 
 
+def data_dir() -> Optional[Path]:
+    """Company documents readable by sandboxed code (read-only at /data); the evaluation corpus in eval runs."""
+    path = Path(run_context.current("docs_dir") or get_settings().docs_dir)
+    return path if path.is_dir() else None
+
+
+def files_for_code(limit: int = 200) -> str:
+    """Listing of files code can read: company documents under /data and files in the session workspace."""
+    lines = []
+    docs = data_dir()
+    if docs is not None:
+        names = sorted(p.relative_to(docs).as_posix() for p in docs.rglob("*")
+                       if p.is_file() and not any(part.startswith(".") for part in p.relative_to(docs).parts))
+        shown = names[:limit] + ([f"… i {len(names) - limit} innych"] if len(names) > limit else [])
+        lines.append("Dokumenty firmy (tylko do odczytu) w katalogu /data: " + ", ".join(f"/data/{n}" for n in shown))
+    workspace = [p.name for p in run_context.workspace_dir().iterdir() if p.is_file() and not p.name.startswith("snippet_")]
+    if workspace:
+        lines.append("Pliki sesji (załączniki) w bieżącym katalogu: " + ", ".join(sorted(workspace)))
+    return "\n".join(lines)
+
+
 @traced_tool("execute_python")
 def tool_execute_python(code: str) -> str:
     """Run Python code in the sandbox. ``code`` may be raw code or an LLM answer with a code block."""
@@ -337,7 +358,7 @@ def tool_execute_python(code: str) -> str:
     script.write_text(clean_code, encoding="utf-8")
     print(f"💻 [TOOL USE] Executing Python in sandbox ({script.name})")
     try:
-        result = sandbox.run(["python3", script.name], script.parent, timeout=get_settings().python_timeout)
+        result = sandbox.run(["python3", script.name], script.parent, timeout=get_settings().python_timeout, data_dir=data_dir())
     except sandbox.SandboxUnavailable as exc:
         return f"BŁĄD: {exc}"
     if result.timed_out:

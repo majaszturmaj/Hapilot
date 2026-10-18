@@ -184,3 +184,18 @@ def test_chat_after_other_steps_sends_a_valid_conversation(graph, invoke, llm):
     assert last_text(state) == "odpowiedź czatu"
     chat_prompt = llm.prompts_for("chat")[0]
     assert "poprawiony szkic" in chat_prompt and "Odpowiedz krótko" in chat_prompt
+
+
+def test_coder_sees_earlier_step_results_and_readable_files(graph, invoke, llm, docker):
+    """Regression (found on the GPU host): the coder did not get what the knowledge search found."""
+    llm.on("task_planner", plan(("llm_synthesis", "Znajdź cenę", "Podaj cenę składu raportu"),
+                                ("python", "Policz brutto", "Policz cenę brutto (VAT 23%)")))
+    llm.on("writer", "Cena składu raportu: 350 zł netto.")
+    llm.on("coder", "```python\nprint(round(350 * 1.23, 2))\n```")
+    state = invoke(graph, "Ile kosztuje skład raportu brutto?", "s-ctx", approval_policy="auto")
+    assert "430.5" in last_text(state)
+    coder_prompt = llm.prompts_for("coder")[0]
+    assert "DANE Z POPRZEDNICH KROKÓW" in coder_prompt and "350 zł netto" in coder_prompt
+    assert "/data/" in coder_prompt  # the demo company documents are readable by code
+    assert docker.runs[-1]["volumes"]  # and mounted read-only
+    assert any(v == {"bind": "/data", "mode": "ro"} for v in docker.runs[-1]["volumes"].values())

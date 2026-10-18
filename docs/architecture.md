@@ -107,8 +107,9 @@ tracing does nothing.
 [src/sandbox.py](../src/sandbox.py): every code run or LaTeX compilation is a new container from
 `hapilot-sandbox` ([sandbox/Dockerfile](../sandbox/Dockerfile)) with `network_mode=none`, the invoking
 non-root user, `cap_drop=ALL`, `no-new-privileges`, read-only root filesystem, `/tmp` tmpfs, memory /
-CPU / process limits and a timeout; only the session workspace is mounted (at `/work`). The image is
-never pulled at run time.
+CPU / process limits and a timeout; the session workspace is mounted read-write at `/work`, the company
+documents (the evaluation corpus in eval runs) read-only at `/data`. The coder gets the list of these files
+and the results of earlier plan steps. The image is never pulled at run time.
 
 ## Serving models
 

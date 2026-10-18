@@ -163,9 +163,13 @@ class EvalSession:
         config_hash = "sha256:" + hashlib.sha256(json.dumps(hashed, sort_keys=True, default=str).encode()).hexdigest()
 
         previous = json.loads((self.out / "run.json").read_text()) if (self.out / "run.json").is_file() else None
+        git = _git()
         if previous and previous.get("config", {}).get("config_hash") != config_hash:
             raise ConfigError(f"{self.out} holds a run with a different configuration "
                               f"({previous.get('config', {}).get('config_hash')}); use another output directory")
+        if previous and previous.get("hapilot", {}).get("commit") != git["commit"]:
+            raise ConfigError(f"{self.out} holds a run made with Hapilot {previous.get('hapilot', {}).get('describe')}; "
+                              "results of two code versions are never mixed — use another output directory")
         server = _model_server_info(profile.default_model().base_url)
         served = server.get("models", {})
         models = []
@@ -177,7 +181,7 @@ class EvalSession:
             "run_id": (previous or {}).get("run_id") or f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}",
             "started": (previous or {}).get("started") or datetime.now().astimezone().isoformat(timespec="seconds"),
             "ended": None,
-            "hapilot": _git(),
+            "hapilot": git,
             "config": {**self.cfg.public(), "config_hash": config_hash, "retrieval": retrieval, "chunking": chunking},
             "models": models,
             "embedding_model": {"name": settings.embedding_model, "revision": _embedding_revision(settings.embedding_model)},
@@ -235,7 +239,8 @@ class EvalSession:
         recorder = tracing.TraceRecorder(trace_path, self.out / "blobs", run_id, task.id)
         started = time.monotonic()
         deadline = started + self.cfg.task_timeout_s
-        context = {"session_id": task.id, "profile": self.cfg.profile, "approval_policy": self.cfg.approval_policy,
+        context = {"session_id": task.id, "docs_dir": str(self.cfg.corpus_dir), "profile": self.cfg.profile,
+                   "approval_policy": self.cfg.approval_policy,
                    "today": self.cfg.today, "trace": recorder, "deadline": deadline, "temperature": self.cfg.temperature,
                    "seed": self.cfg.seed, "workspace_root": str(workspace_root), "kb_path": self.corpus.get("path"),
                    "kb_collection": self.corpus.get("collection")}
@@ -260,7 +265,7 @@ class EvalSession:
                 config = run_context.make_config(
                     task.id, profile=self.cfg.profile, approval_policy=self.cfg.approval_policy, today=self.cfg.today,
                     trace=recorder, deadline=deadline, temperature=self.cfg.temperature, seed=self.cfg.seed,
-                    workspace_root=str(workspace_root), kb_path=self.corpus.get("path"),
+                    workspace_root=str(workspace_root), kb_path=self.corpus.get("path"), docs_dir=str(self.cfg.corpus_dir),
                     kb_collection=self.corpus.get("collection"),
                     extra_collections=[list(attached.collection)] if attached.collection else None)
                 state = self.app.invoke(inputs, config=config)

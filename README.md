@@ -40,7 +40,7 @@ knowledge       writer          chat     document_generator   modify_document   
 | Model serving | [tools/modelswap.py](tools/modelswap.py): one local endpoint that loads one llama.cpp model at a time |
 | Knowledge base | ChromaDB embedded in the Hapilot process; hybrid search: `intfloat/multilingual-e5-base` vectors (CPU) and BM25, fused by reciprocal rank fusion; .pdf, .docx, .eml, .xlsx, .txt, .md |
 | Documents | LaTeX templates (letter, report, protocol) in [templates/](templates/), compiled to PDF in the sandbox |
-| Sandbox | Fresh Docker container per run: no network, non-root, read-only root filesystem, CPU/memory/process limits, timeout, only the session's workspace mounted ([src/sandbox.py](src/sandbox.py)) |
+| Sandbox | Fresh Docker container per run: no network, non-root, read-only root filesystem, CPU/memory/process limits, timeout; the session's workspace is the only writable mount, company documents are readable at `/data` ([src/sandbox.py](src/sandbox.py)) |
 | UI | Chainlit, per-session workspace and model profile, optional password login |
 
 Human in the loop: under the default `ask` policy Hapilot asks before running plans longer than two

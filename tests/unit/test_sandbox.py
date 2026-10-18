@@ -23,7 +23,8 @@ def test_python_runs_in_session_workspace(docker, session):
     assert out.startswith("SUKCES") and "338350" in out
     run = docker.runs[-1]
     assert run["network_mode"] == "none"
-    assert list(run["volumes"]) == [str(run_context.workspace_dir().resolve())]
+    writable = [path for path, m in run["volumes"].items() if m["mode"] == "rw"]
+    assert writable == [str(run_context.workspace_dir().resolve())]  # only the session workspace is writable
 
 
 def test_timeout_kills_container(docker, session):
@@ -60,3 +61,12 @@ def test_not_latex_is_rejected(docker, session):
 def test_workspace_file_rejects_paths(session, bad):
     with pytest.raises(ValueError):
         run_context.workspace_file(bad)
+
+
+def test_company_documents_are_mounted_read_only(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    opts = sandbox.container_options(tmp_path / "ws", data_dir=docs)
+    assert opts["volumes"][str(docs.resolve())] == {"bind": "/data", "mode": "ro"}
+    assert opts["volumes"][str((tmp_path / "ws").resolve())] == {"bind": "/work", "mode": "rw"}
+    assert opts["network_mode"] == "none"

@@ -4,7 +4,8 @@ Every run is a fresh, short-lived Docker container:
 - no network (``network_mode="none"``), no Docker socket, all capabilities dropped,
   ``no-new-privileges``, read-only root filesystem with a small /tmp;
 - runs as the invoking (non-root) user, with memory, CPU and process limits;
-- sees only the current session's workspace, mounted at /work;
+- sees only the current session's workspace, mounted at /work, and — read-only, at /data — the
+  company documents (so code can analyse e.g. an .xlsx from the knowledge base);
 - is killed when it exceeds its timeout, and removed afterwards.
 
 The sandbox image is built once by ``scripts/hapilotctl.py setup``; it is never pulled at run time.
@@ -66,15 +67,18 @@ def _user() -> str:
     return f"{uid}:{gid}"
 
 
-def container_options(workdir: Path) -> dict:
+def container_options(workdir: Path, data_dir: Optional[Path] = None) -> dict:
     """Keyword arguments for ``containers.run``; kept separate so tests can check them."""
     s = get_settings()
+    volumes = {str(workdir.resolve()): {"bind": "/work", "mode": "rw"}}
+    if data_dir is not None and Path(data_dir).is_dir():
+        volumes[str(Path(data_dir).resolve())] = {"bind": "/data", "mode": "ro"}
     return {
         "detach": True,
         "network_mode": "none",
         "user": _user(),
         "working_dir": "/work",
-        "volumes": {str(workdir.resolve()): {"bind": "/work", "mode": "rw"}},
+        "volumes": volumes,
         "read_only": True,
         "tmpfs": {"/tmp": "rw,size=256m,mode=1777"},
         "mem_limit": s.sandbox_memory,
@@ -89,8 +93,8 @@ def container_options(workdir: Path) -> dict:
     }
 
 
-def run(command: list[str], workdir: Path, timeout: Optional[int] = None) -> SandboxResult:
-    """Run ``command`` in a fresh sandbox container with ``workdir`` mounted at /work."""
+def run(command: list[str], workdir: Path, timeout: Optional[int] = None, data_dir: Optional[Path] = None) -> SandboxResult:
+    """Run ``command`` in a fresh sandbox container with ``workdir`` at /work (and ``data_dir`` read-only at /data)."""
     s = get_settings()
     client = docker_client()
     try:
@@ -105,7 +109,7 @@ def run(command: list[str], workdir: Path, timeout: Optional[int] = None) -> San
     from src import tracing
 
     started = _time.monotonic()
-    container = client.containers.run(s.sandbox_image, command, **container_options(workdir))
+    container = client.containers.run(s.sandbox_image, command, **container_options(workdir, data_dir))
     timed_out = False
     try:
         try:

@@ -22,6 +22,23 @@ def _task_text(state) -> str:
     return request
 
 
+def _context_text(state, limit: int = 6000) -> str:
+    """Files the code can read and the results of earlier plan steps (e.g. what the knowledge search found)."""
+    from src.agent_graph import _get_current_turn_ai_messages
+    from src.agent_tools import files_for_code
+
+    parts = []
+    files = files_for_code()
+    if files:
+        parts.append("PLIKI DOSTĘPNE DLA KODU:\n" + files)
+    earlier = [m.content for m in _get_current_turn_ai_messages(state["messages"])
+               if getattr(m, "content", "") and not (isinstance(m, AIMessage) and "```python" in m.content)]
+    if earlier:
+        text = "\n---\n".join(earlier)
+        parts.append("DANE Z POPRZEDNICH KROKÓW:\n" + (text[-limit:] if len(text) > limit else text))
+    return "\n\n".join(parts)
+
+
 def run_coder(state):
     """Generate Python code for the task; the code is handed to ``run_execute`` via state."""
     from src.agent_tools import _extract_python_from_llm_output
@@ -30,6 +47,9 @@ def run_coder(state):
     llm, system_prompt = get_coder_chat(role="coder")
     retries = state.get("retry_count", 0)
     task = _task_text(state)
+    context = _context_text(state)
+    if context:
+        task = f"{task}\n\n{context}"
 
     if retries > 0:
         error = next((m.content.replace("WYNIK:\n", "").strip() for m in reversed(state["messages"])

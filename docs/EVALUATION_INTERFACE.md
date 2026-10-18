@@ -149,7 +149,8 @@ so nothing depends on callback propagation.
 `config_hash` covers the resolved profile, the run settings, retrieval and chunking parameters, the
 embedding model, the sandbox image id, the text of all prompts and templates, and the corpus fingerprint —
 two runs with the same hash ran the same configuration on the same corpus (the code itself is identified
-by `hapilot.commit`). Resuming into a directory whose `run.json` has a different hash is refused. No host names or user paths are recorded (model files by base name only).
+by `hapilot.commit`). Resuming into a directory whose `run.json` has a different hash or a different
+Hapilot commit is refused, so one directory never mixes configurations or code versions. No host names or user paths are recorded (model files by base name only).
 
 ## 3. Producing the JSON answer
 
