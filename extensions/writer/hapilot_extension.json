@@ -18,10 +18,10 @@
   "tools": [
     {
       "name": "llm_synthesis",
-      "description": "Napisanie, przeredagowanie lub podsumowanie tekstu przez model językowy",
+      "description": "Napisanie tekstu w czacie (odpowiedź, e-mail, notatka), przeredagowanie lub podsumowanie przez model językowy",
       "when_to_use": "Odpowiedź na podstawie wyników poprzednich kroków, e-mail lub notatka jako tekst w czacie, przeredagowanie poprzedniej odpowiedzi („krócej”, „prościej”)",
       "when_not_to_use": "Gdy użytkownik chce pliku PDF (użyj template_pdf)",
-      "example": "„Co robić w razie awarii serwera?” → rag_search, potem llm_synthesis",
+      "example": "„Co robić w razie awarii serwera?” → rag_search, potem llm_synthesis; „Napisz e-mail do zespołu o jutrzejszym spotkaniu” → llm_synthesis",
       "aliases": [
         "email"
       ]

@@ -21,10 +21,10 @@
   "tools": [
     {
       "name": "template_pdf",
-      "description": "Nowy dokument PDF z szablonu (list/podanie/wniosek, raport, protokół); parametry dokumentu użytkownik może sprawdzić przed wygenerowaniem",
+      "description": "Nowy dokument PDF z szablonu (pismo, podanie, wniosek, raport, protokół); parametry dokumentu użytkownik może sprawdzić przed wygenerowaniem",
       "when_to_use": "Użytkownik prosi o NOWY dokument jako PDF (pismo, podanie, wniosek, raport, protokół)",
-      "when_not_to_use": "Zmiana dokumentu już wygenerowanego (użyj modify_document); odpowiedź na pytanie bez prośby o dokument; prośba „bez PDF” lub „tylko tekst”",
-      "example": "„Napisz podanie o urlop” → template_pdf",
+      "when_not_to_use": "E-mail lub tekst w czacie (użyj llm_synthesis); zmiana dokumentu już wygenerowanego (użyj modify_document); odpowiedź na pytanie bez prośby o dokument; prośba „bez PDF” lub „tylko tekst”",
+      "example": "„Napisz podanie o urlop” → template_pdf; „Przygotuj raport PDF o zasadach zwrotu kosztów delegacji” → rag_search, potem template_pdf",
       "aliases": [
         "latex"
       ]
