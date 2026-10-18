@@ -316,10 +316,10 @@ def _advance_plan_step(state: AgentState) -> dict:
 
 def _fallback_chat(state: AgentState):
     """Minimal chat node used when the chat extension is disabled."""
-    from src.core.tools_common import invoke_llm_and_normalize
+    from src.core.tools_common import invoke_llm_and_normalize, to_valid_chat
 
     llm, system_prompt = get_llm("chat")
-    resp = invoke_llm_and_normalize(llm, [SystemMessage(content=system_prompt)] + state["messages"])
+    resp = invoke_llm_and_normalize(llm, to_valid_chat([SystemMessage(content=system_prompt)] + state["messages"]))
     return {"messages": [resp], **_advance_plan_step(state)}
 
 

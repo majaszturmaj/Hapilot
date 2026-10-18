@@ -158,6 +158,29 @@ def test_edit_request_without_document_is_not_forced(graph, invoke, llm):
 
 def test_messages_from_ui_history_are_respected(graph, invoke, llm):
     llm.on("task_planner", plan(("chat", "Odpowiedz", "")))
-    llm.on("chat", lambda msgs: f"widzę {sum(isinstance(m, HumanMessage) for m in msgs)} wiadomości")
+    llm.on("chat", lambda msgs: "widzę: " + " | ".join(m.content for m in msgs if isinstance(m, HumanMessage)))
     state = invoke(graph, [HumanMessage(content="pierwsza"), HumanMessage(content="druga")], "s-hist")
-    assert last_text(state) == "widzę 2 wiadomości"
+    assert "pierwsza" in last_text(state) and "druga" in last_text(state)  # merged into one user turn
+
+
+# --------------------------------------------------------------------------- bug found on the GPU host (llama.cpp 400)
+
+def _strict_template(messages):
+    """What llama.cpp's chat templates enforce: roles alternate after the system prompt; the list ends with a user turn."""
+    from langchain_core.messages import AIMessage, SystemMessage
+
+    roles = ["ai" if isinstance(m, AIMessage) else "human" for m in messages if not isinstance(m, SystemMessage)]
+    assert roles and roles[-1] == "human", f"conversation must end with a user turn: {roles}"
+    assert all(a != b for a, b in zip(roles, roles[1:])), f"roles must alternate: {roles}"
+    return "odpowiedź czatu"
+
+
+def test_chat_after_other_steps_sends_a_valid_conversation(graph, invoke, llm):
+    llm.on("task_planner", plan(("llm_synthesis", "Szkic", "Szkic"), ("llm_synthesis", "Popraw", "Popraw"),
+                                ("chat", "Odpowiedz krótko", "Odpowiedz krótko")))
+    llm.on("writer", "szkic", "poprawiony szkic")
+    llm.on("chat", _strict_template)
+    state = invoke(graph, "Napisz szkic, popraw i odpowiedz", "s-strict", approval_policy="auto")
+    assert last_text(state) == "odpowiedź czatu"
+    chat_prompt = llm.prompts_for("chat")[0]
+    assert "poprawiony szkic" in chat_prompt and "Odpowiedz krótko" in chat_prompt

@@ -195,3 +195,36 @@ def invoke_llm_and_normalize(llm, messages):
     # Fallback: stringify
     return AIMessage(content=str(resp))
 
+
+
+# --- CONVERSATION FORMAT ---
+
+def to_valid_chat(messages, closing_instruction: Optional[str] = None) -> list:
+    """Make a message list acceptable to strict chat templates (e.g. llama.cpp's).
+
+    One system message first; then user and assistant turns alternate (consecutive messages of the
+    same role are merged); the list ends with a user turn — if it ended with assistant output (earlier
+    steps of the current plan), ``closing_instruction`` is appended as the final user turn.
+    """
+    from langchain_core.messages import HumanMessage
+
+    system_parts = [m.content for m in messages if isinstance(m, SystemMessage) and m.content]
+    turns: list = []
+    for m in messages:
+        if isinstance(m, SystemMessage):
+            continue
+        role = "ai" if isinstance(m, AIMessage) else "human"
+        content = m.content if isinstance(m.content, str) else str(m.content)
+        if not content.strip():
+            continue
+        if turns and turns[-1][0] == role:
+            turns[-1] = (role, turns[-1][1] + "\n\n" + content)
+        else:
+            turns.append((role, content))
+    if turns and turns[0][0] == "ai":
+        turns.insert(0, ("human", "(początek rozmowy)"))
+    if not turns or turns[-1][0] == "ai":
+        turns.append(("human", closing_instruction or "Na podstawie powyższych wyników odpowiedz użytkownikowi."))
+    result = [SystemMessage(content="\n\n".join(system_parts))] if system_parts else []
+    result += [AIMessage(content=c) if r == "ai" else HumanMessage(content=c) for r, c in turns]
+    return result
