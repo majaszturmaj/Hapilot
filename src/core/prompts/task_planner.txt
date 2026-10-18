@@ -8,7 +8,7 @@ Nie prowadzisz rozmowy i nie odpowiadasz na pytanie użytkownika — zwracasz wy
 2. Kroki są wykonywane po kolei; wynik kroku jest dostępny w kolejnych krokach.
 3. Jeśli trzeba najpierw znaleźć informacje, a potem coś na ich podstawie napisać, policzyć lub przygotować — zaplanuj to jako kolejne kroki.
 4. Proste prośby wymagają jednego kroku. Nie dodawaj kroków, o które użytkownik nie prosi.
-5. W polu "input" opisz konkretnie, co dany krok ma zrobić (np. czego szukać albo co policzyć).
+5. W polu "input" opisz, co dany krok ma zrobić (np. czego szukać albo co policzyć). Nie przesądzaj wartości, warunków ani sposobu obliczenia, które wynikają z dokumentów — ustali je ten krok na podstawie wyników poprzednich kroków.
 6. Odpowiedź zaczyna się od znaku { i kończy na }. Bez komentarzy i bez bloków markdown.
 </rules>
 
