@@ -100,6 +100,11 @@ def run(command: list[str], workdir: Path, timeout: Optional[int] = None) -> San
             f"Sandbox image {s.sandbox_image!r} not found — build it with `scripts/hapilotctl.py setup`"
         ) from exc
 
+    import time as _time
+
+    from src import tracing
+
+    started = _time.monotonic()
     container = client.containers.run(s.sandbox_image, command, **container_options(workdir))
     timed_out = False
     try:
@@ -121,4 +126,6 @@ def run(command: list[str], workdir: Path, timeout: Optional[int] = None) -> San
         except Exception:
             pass
     history.append({"command": command[0], "exit_code": exit_code, "timed_out": timed_out, "network_mode": network_mode})
+    tracing.event("sandbox_run", command=command[0], exit_code=exit_code, timed_out=timed_out, network_mode=network_mode,
+                  duration_ms=round((_time.monotonic() - started) * 1000))
     return SandboxResult(exit_code=exit_code, output=output.strip(), timed_out=timed_out, network_mode=network_mode)

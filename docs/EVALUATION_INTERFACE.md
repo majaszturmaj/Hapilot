@@ -2,7 +2,8 @@
 
 **Status: approved 2026-10-18 (open points of §8 decided as recommended: JSON via a formatter call, the agent sees
 the answer format, `sources_used` = files in prompts + attachments, with files cited in the answer reported
-separately, 900 s per task, full texts in traces, attachments inline up to 20,000 characters). Implementation in progress.**
+separately, 900 s per task, full texts in traces, attachments inline up to 20,000 characters). Implemented in
+`src/eval/` (schemas in `docs/schemas/`); verified on the GPU host before tag `eval-v1`.**
 
 This is how an external benchmark harness runs Hapilot without the UI: it gives Hapilot tasks and a
 document corpus, and gets back answers, structured JSON, the sources used, and a complete trace of
@@ -82,6 +83,7 @@ it. The UI's knowledge base is not touched.
  "answer_json": {"odpowiedz": 14, "zrodla": ["regulamin_urlopow.pdf"]},
  "answer_json_valid": true, "answer_json_error": null,
  "sources_used": ["kadry/regulamin_urlopow.pdf"],
+ "sources_cited": ["kadry/regulamin_urlopow.pdf"],
  "files_created": [{"path": "letter_20261020_101533.pdf", "bytes": 17474, "sha256": "…"}],
  "plan_tools": ["rag_search", "llm_synthesis"],
  "duration_s": 21.4, "llm_calls": 4, "prompt_tokens": 6120, "completion_tokens": 410,
@@ -94,6 +96,7 @@ it. The UI's knowledge base is not touched.
 | `answer_text` | the agent's final message to the user, verbatim |
 | `answer_json`, `answer_json_valid` | only with `answer_format`: the parsed object, and whether it is a JSON object with every field in `fields` (and valid against `schema` if given) |
 | `sources_used` | corpus files (path relative to `corpus_dir`) whose text was put into a model prompt during the task, plus attachments. In v1 every retrieved chunk goes into a prompt, so this equals the files of all retrieved chunks; the per-chunk detail is in the trace |
+| `sources_cited` | corpus files named in list-valued fields of `answer_json` (matched by path or base name) — what the answer itself claims as its sources |
 | `files_created` | files in the task workspace at the end that were not attachments |
 | `plan_tools` | tools of the executed plan, in order (detail in the trace) |
 
@@ -108,12 +111,14 @@ strictly increasing within a task. Types:
 | `plan` | `task_plan` as produced by the planner, after the guards (`steps[{id, action, tool, input}]`, `complexity`), `guards_applied` |
 | `node_start` / `node_end` | `node`, `plan_step` (index or null), `duration_ms`, `status`, `next` |
 | `llm_call` | `call_id`, `node`, `role`, `model`, `base_url`, `params` (temperature, max_tokens, seed, extra_body), `messages_ref` (sha256 of the full request messages in `blobs/`), `response_ref`, `prompt_tokens`, `completion_tokens`, `latency_ms`, `finish_reason`, `error` |
-| `tool_call` | `name` (e.g. `rag_search`, `execute_python`, `generate_pdf_from_template`, `modify_document`), `args` (as passed; long strings stored as blob refs), `result_summary` (≤ 500 chars), `duration_ms`, `exception` |
+| `tool_call` | `name` (`rag_search`, `execute_python`, `generate_pdf_from_template`, `compile_latex`, `modify_document`, `read_file`), `depth` (0 = called by a node, 1 = called by another tool), `args` (as passed; long strings stored as blob refs), `result_summary` (≤ 500 chars), `duration_ms`, `exception` |
+| `model_fallback` | `role`, `model` — the role's own model was not served and the profile's default model was used |
+| `attachments` | `files` (name, bytes, sha256, chars, error), `inlined`, `collection` |
 | `retrieval` | `query`, `method` (`hybrid`), `k`, `chunks[{rank, file, chunk_id, page, score, score_dense, score_bm25, text}]` |
 | `sandbox_run` | `command`, `exit_code`, `timed_out`, `network_mode`, `duration_ms` |
 | `file_created` | `path`, `bytes`, `sha256` |
 | `approval` | `kind` (`plan`, `document_form`, `confirm_step`, `email_draft`), `policy`, `decision` (`auto_approved`), `summary` |
-| `answer_format` | `mode`, `messages_ref`, `response_ref`, `valid`, `error`, `attempts` |
+| `answer_format` | `mode`, `valid`, `error`, `attempts` (the formatter's model calls are `llm_call` events with role `answer_formatter`) |
 | `task_end` | `status`, `error`, `duration_s`, totals (`llm_calls`, tokens) |
 
 Blobs: `blobs/<sha256>.json` contains `{"messages": [{"role", "content"}…]}` for requests and
@@ -142,8 +147,9 @@ so nothing depends on callback propagation.
 ```
 
 `config_hash` covers the resolved profile, the run settings, retrieval and chunking parameters, the
-sandbox image id, and the text of all prompts and templates — two runs with the same hash ran the same
-configuration. No host names or user paths are recorded (model files by base name only).
+embedding model, the sandbox image id, the text of all prompts and templates, and the corpus fingerprint —
+two runs with the same hash ran the same configuration on the same corpus (the code itself is identified
+by `hapilot.commit`). Resuming into a directory whose `run.json` has a different hash is refused. No host names or user paths are recorded (model files by base name only).
 
 ## 3. Producing the JSON answer
 

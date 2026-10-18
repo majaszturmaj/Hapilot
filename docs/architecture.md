@@ -76,9 +76,31 @@ and `templates/*.tex` with `{{PARAMETER}}` placeholders. Values are LaTeX-escape
 ## Knowledge base
 
 [src/knowledge_base.py](../src/knowledge_base.py): ChromaDB `PersistentClient` (telemetry off) under
-`HAPILOT_DATA_DIR/chroma`; embeddings `intfloat/multilingual-e5-base` on CPU. Indexing:
-[src/ingest_data.py](../src/ingest_data.py) — .txt, .md, .pdf; chunks of 800 characters with 200
-overlap; each chunk has an id `file#index:sha`; an unchanged corpus is not re-indexed.
+`HAPILOT_DATA_DIR/chroma`; embeddings `intfloat/multilingual-e5-base` on CPU with the E5 prefixes
+(`passage:` / `query:`). Search is hybrid: the dense ranking and a BM25 ranking (lower case, Polish stop
+words, 6-character prefix stemming) are fused by reciprocal rank fusion (k = 60); default top 8. Several
+collections can be searched together (the corpus plus a session's attachments).
+
+Indexing: [src/ingest_data.py](../src/ingest_data.py) with [src/extractors.py](../src/extractors.py) —
+.pdf (per page), .docx (paragraphs and tables in order), .eml (headers, body, attached files), .xlsx (rows
+per sheet, values), .txt, .md; chunks of 800 characters with 200 overlap (spreadsheet chunks start with
+the column names); each chunk keeps its relative file path, page or sheet and an id `path#index:sha`.
+Unreadable files are listed, not dropped. An unchanged corpus is not re-indexed.
+
+## Attachments
+
+[src/attachments.py](../src/attachments.py) (UI uploads and evaluation tasks): files are copied into the
+session workspace (readable by sandboxed code) and their text is added to the message (up to 20,000
+characters) or indexed into a per-session collection.
+
+## Evaluation and tracing
+
+[src/eval/](../src/eval/) implements [EVALUATION_INTERFACE.md](EVALUATION_INTERFACE.md).
+[src/tracing.py](../src/tracing.py) records events when a recorder is attached to the run: nodes are
+wrapped at graph build time (`node_start`/`node_end`, deadline check), every model goes through
+`TracedModel` in `get_llm` (`llm_call`, full messages in `blobs/`), tool functions carry `@traced_tool`,
+and retrieval, sandbox runs, approvals and the plan emit their own events. Without a recorder (the UI)
+tracing does nothing.
 
 ## Sandbox
 

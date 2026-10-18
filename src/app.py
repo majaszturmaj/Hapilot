@@ -7,6 +7,7 @@ settings panel from the profiles defined by the operator in config/profiles.yaml
 
 import os
 import sys
+from pathlib import Path
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 sys.path.insert(0, ROOT_DIR)
@@ -19,7 +20,7 @@ import chainlit as cl  # noqa: E402
 from chainlit.input_widget import Select  # noqa: E402
 from langchain_core.messages import HumanMessage  # noqa: E402
 
-from src import run_context  # noqa: E402
+from src import attachments, run_context  # noqa: E402
 from src.agent_graph import get_app  # noqa: E402
 from src.config import get_settings  # noqa: E402
 from src.graph_runner import (extract_hitl_request, final_text, generated_pdf_name, last_generated_file,  # noqa: E402
@@ -132,7 +133,8 @@ async def settings_update(values: dict):
 
 
 def _run_config() -> dict:
-    return run_context.make_config(cl.context.session.id, profile=cl.user_session.get("profile"))
+    return run_context.make_config(cl.context.session.id, profile=cl.user_session.get("profile"),
+                                   extra_collections=cl.user_session.get("extra_collections") or None)
 
 
 def _inputs(history: list, hitl_response=None) -> dict:
@@ -190,10 +192,27 @@ async def _finish(history: list, run) -> None:
     await cl.Message(content=text, elements=elements, author="Hapilot").send()
 
 
+def _attach(message: cl.Message) -> str:
+    """Uploaded files → workspace + text for the message (same code as evaluation tasks)."""
+    files = [e for e in (message.elements or []) if getattr(e, "path", None)]
+    if not files:
+        return ""
+    with run_context.use_context(session_id=cl.context.session.id):
+        prepared = attachments.prepare([Path(e.path) for e in files], display_names=[e.name for e in files],
+                                       index_path=get_settings().data_dir / "attachments_index")
+    if prepared.collection:
+        collections = cl.user_session.get("extra_collections") or []
+        if list(prepared.collection) not in collections:
+            collections.append(list(prepared.collection))
+        cl.user_session.set("extra_collections", collections)
+    return prepared.message_block
+
+
 @cl.on_message
 async def main(message: cl.Message):
     history = cl.user_session.get("messages")
-    history.append(HumanMessage(content=message.content))
+    block = await cl.make_async(_attach)(message)
+    history.append(HumanMessage(content=message.content + block))
     run = await _run(_inputs(history), message.content)
     await _finish(history, run)
 

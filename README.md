@@ -38,7 +38,7 @@ knowledge       writer          chat     document_generator   modify_document   
 | Orchestration | LangGraph graph built from the loaded extensions ([src/agent_graph.py](src/agent_graph.py)) |
 | Models | Any OpenAI-compatible local server; roles mapped to models by **profiles** ([config/profiles.yaml](config/profiles.yaml)) |
 | Model serving | [tools/modelswap.py](tools/modelswap.py): one local endpoint that loads one llama.cpp model at a time |
-| Knowledge base | ChromaDB embedded in the Hapilot process, `intfloat/multilingual-e5-base` embeddings on CPU |
+| Knowledge base | ChromaDB embedded in the Hapilot process; hybrid search: `intfloat/multilingual-e5-base` vectors (CPU) and BM25, fused by reciprocal rank fusion; .pdf, .docx, .eml, .xlsx, .txt, .md |
 | Documents | LaTeX templates (letter, report, protocol) in [templates/](templates/), compiled to PDF in the sandbox |
 | Sandbox | Fresh Docker container per run: no network, non-root, read-only root filesystem, CPU/memory/process limits, timeout, only the session's workspace mounted ([src/sandbox.py](src/sandbox.py)) |
 | UI | Chainlit, per-session workspace and model profile, optional password login |
@@ -130,9 +130,22 @@ set `HAPILOT_UI_USERS_FILE` in `.env`.
 
 ### Your documents
 
-Put company documents (.txt, .md, .pdf) in a folder, set `HAPILOT_DOCS_DIR` in `.env`, and run
+Put company documents (.pdf, .docx, .eml, .xlsx, .txt, .md) in a folder, set `HAPILOT_DOCS_DIR` in `.env`, and run
 `hapilotctl.py ingest`. The default is the fictional demo company in
 [examples/demo_company/](examples/demo_company/). `data/private_docs/` is ignored by git.
+
+## Evaluation (headless)
+
+Benchmark harnesses run Hapilot without the UI through the evaluation interface
+([docs/EVALUATION_INTERFACE.md](docs/EVALUATION_INTERFACE.md)): tasks in JSONL, a document corpus, the date to
+treat as today and a profile in; answers, JSON answers, sources, created files and a full trace per task
+(plan, every model and tool call, every retrieval with chunk texts, sandbox runs, approvals) out.
+
+```bash
+.venv/bin/python scripts/hapilotctl.py eval --tasks tests/eval/dev_tasks.jsonl --corpus examples/demo_company/docs \
+    --today 2026-10-14 --profile best-local --out var/runs/dev
+.venv/bin/python -m src.eval validate var/runs/dev
+```
 
 ## Configuration
 

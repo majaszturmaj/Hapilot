@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hapilot.task/1",
+  "title": "Hapilot evaluation task (one line of tasks.jsonl)",
+  "type": "object",
+  "required": ["id", "instruction"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": "hapilot.task/1"},
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,64}$"},
+    "instruction": {"type": "string", "minLength": 1},
+    "answer_format": {
+      "type": "object",
+      "required": ["fields"],
+      "properties": {
+        "description": {"type": "string"},
+        "fields": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string"}},
+        "schema": {"type": "object"}
+      }
+    },
+    "attachments": {"type": "array", "items": {"type": "string"}}
+  }
+}

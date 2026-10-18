@@ -139,6 +139,10 @@ Odpowiedz WYŁĄCZNIE w formacie JSON:
 
     if run_context.approval_policy() == "auto":
         print(f"      ✅ [DOC GEN] Polityka auto — generuję PDF bez formularza (szablon={template_id})")
+        from src import tracing
+
+        tracing.event("approval", kind="document_form", policy="auto", decision="auto_approved",
+                      summary=f"template {template_id}, {len(parameters)} parameters")
         return _generate(state, template_id, normalize_template_params(template_id, parameters))
 
     hitl_req = build_document_hitl_form(template_id, parameters, _load_templates_metadata())

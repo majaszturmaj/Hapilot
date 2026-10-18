@@ -71,8 +71,9 @@ def today() -> date:
 
 
 def workspace_dir() -> Path:
-    """The current session's workspace (created on demand)."""
-    path = get_settings().workspace_root / session_id()
+    """The current session's workspace (created on demand). Evaluation runs set ``workspace_root``."""
+    root = current("workspace_root")
+    path = (Path(root) if root else get_settings().workspace_root) / session_id()
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -94,6 +95,7 @@ def make_config(
     today: Optional[str] = None,
     recursion_limit: Optional[int] = None,
     callbacks: Optional[list] = None,
+    **extra: Any,
 ) -> dict:
     """RunnableConfig for one graph invocation."""
     settings = get_settings()
@@ -101,6 +103,7 @@ def make_config(
                     "approval_policy": approval_policy or settings.approval_policy}
     if today:
         configurable["today"] = today
+    configurable.update({k: v for k, v in extra.items() if v is not None})
     config: dict = {"recursion_limit": recursion_limit or settings.recursion_limit, "configurable": configurable}
     if callbacks:
         config["callbacks"] = callbacks

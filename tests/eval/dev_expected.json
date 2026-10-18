@@ -1,0 +1,103 @@
+{
+ "D01": {
+  "json": {
+   "odpowiedz": {
+    "number": 14
+   }
+  },
+  "sources_used": [
+   "regulamin_urlopow.txt"
+  ]
+ },
+ "D02": {
+  "json": {
+   "kwota_brutto": {
+    "number": 430.5
+   }
+  },
+  "sources_used": [
+   "cennik_uslug_2026.pdf"
+  ]
+ },
+ "D03": {
+  "json": {
+   "kara_zl": {
+    "number": 300
+   }
+  },
+  "sources_used": [
+   "umowa_serwisowa_7_2026.docx"
+  ]
+ },
+ "D04": {
+  "json": {
+   "zglaszajacy": {
+    "contains": "Anna Nowak"
+   },
+   "urzadzenie": {
+    "contains": "DR-2"
+   },
+   "kod_bledu": {
+    "contains": "E-52"
+   }
+  },
+  "sources_used": [
+   "zgloszenie_awarii_2026-10-12.eml"
+  ]
+ },
+ "D05": {
+  "json": {
+   "liczba": {
+    "number": 2
+   },
+   "kwota_zl": {
+    "number": 2280
+   }
+  },
+  "sources_used": [
+   "rejestr_reklamacji_2026.xlsx"
+  ]
+ },
+ "D06": {
+  "json": {
+   "suma_zl": {
+    "number": 1699.75
+   }
+  },
+  "plan_tools": [
+   "python"
+  ]
+ },
+ "D07": {
+  "json": {
+   "plik_pdf": {
+    "contains": ".pdf"
+   }
+  },
+  "files_created_suffix": ".pdf"
+ },
+ "D08": {
+  "json": {
+   "znaleziono": {
+    "bool": false
+   }
+  }
+ },
+ "D09": {
+  "json": {
+   "zgodne": {
+    "bool": false
+   }
+  }
+ },
+ "D10": {
+  "json": {
+   "reklamacja_dni": {
+    "number": 14
+   },
+   "utrata_sprzetu_godzin": {
+    "number": 2
+   }
+  }
+ }
+}

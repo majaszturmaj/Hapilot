@@ -16,6 +16,7 @@ from typing import Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from src import knowledge_base, run_context, sandbox
+from src.tracing import traced_tool
 from src.config import PROJECT_ROOT, get_settings
 from src.core.tools_common import (  # re-exported for extensions
     TaskState,
@@ -39,6 +40,7 @@ TEMPLATES_METADATA_FILE = TEMPLATES_DIR / "templates.json"
 
 # =========================================================================== knowledge base
 
+@traced_tool("rag_search")
 def rag_search(query: str, k: Optional[int] = None) -> list[knowledge_base.Chunk]:
     """Structured search in the company knowledge base."""
     print(f"🔎 [TOOL USE] RAG Search: '{query[:120]}'")
@@ -257,6 +259,7 @@ def _params_path(tex_name: str) -> Path:
     return run_context.workspace_file(Path(tex_name).stem + ".params.json")
 
 
+@traced_tool("generate_pdf_from_template")
 def tool_generate_pdf_from_template(template_id: str, parameters: dict) -> str:
     """Fill a template, store its parameters next to the .tex, and compile it to PDF."""
     print(f"📄 [TOOL USE] Generate PDF from template: {template_id}")
@@ -286,6 +289,7 @@ def tool_generate_pdf_from_template(template_id: str, parameters: dict) -> str:
 
 # =========================================================================== sandbox: LaTeX and Python
 
+@traced_tool("compile_latex")
 def tool_generate_pdf(latex_content: str, filename: Optional[str] = None) -> str:
     """Compile LaTeX to PDF in the sandbox; the files stay in the session workspace."""
     filename = filename or _generate_unique_filename()
@@ -323,6 +327,7 @@ def tool_generate_pdf(latex_content: str, filename: Optional[str] = None) -> str
     return f"BŁĄD KOMPILACJI (exit_code={result.exit_code}):\n{detail}"
 
 
+@traced_tool("execute_python")
 def tool_execute_python(code: str) -> str:
     """Run Python code in the sandbox. ``code`` may be raw code or an LLM answer with a code block."""
     clean_code = _extract_python_from_llm_output(code)
@@ -414,6 +419,7 @@ def _extract_latex_from_llm_output(raw_content: str) -> str:
     return raw_content.strip()
 
 
+@traced_tool("read_file")
 def tool_read_sandbox_file(filename: str) -> str:
     """Read a text file from the current session's workspace."""
     try:
@@ -437,6 +443,7 @@ def _latest_tex_in_session() -> Optional[Path]:
     return files[0] if files else None
 
 
+@traced_tool("modify_document")
 def tool_modify_document(tex_filename: str, modifications_prompt: str, context: str = "") -> str:
     """Apply a requested change to a document generated in this session and recompile it.
 

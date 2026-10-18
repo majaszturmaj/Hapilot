@@ -330,6 +330,25 @@ def cmd_add_user(args) -> None:
     say(f"user {args.name} saved in {path}; set HAPILOT_UI_USERS_FILE={path} in .env to enable login")
 
 
+def cmd_eval(args) -> None:
+    """Evaluation run (docs/EVALUATION_INTERFACE.md): model proxy up if needed, run, and stop what was started."""
+    started_here = not owned("modelswap")
+    if started_here:
+        models_up(args.profile)
+    cmd = [str(PY), "-m", "src.eval", "run", "--tasks", str(args.tasks), "--corpus", str(args.corpus), "--today", args.today,
+           "--out", str(args.out)]
+    for flag, value in (("--profile", args.profile), ("--answer-mode", args.answer_mode), ("--timeout", args.timeout),
+                        ("--only", args.only)):
+        if value is not None:
+            cmd += [flag, str(value)]
+    if args.retry_failed:
+        cmd.append("--retry-failed")
+    code = subprocess.run(cmd, cwd=ROOT, env={**os.environ, "HAPILOT_MODEL_URL": f"http://127.0.0.1:{PROXY_PORT}/v1"}).returncode
+    if started_here:
+        models_down()
+    raise SystemExit(code)
+
+
 def cmd_smoke(args) -> None:
     if not owned("modelswap"):
         models_up(args.profile)
@@ -438,6 +457,17 @@ def main() -> None:
         p.set_defaults(func=func)
     for name, func in (("down", cmd_down), ("status", cmd_status), ("tunnel", cmd_tunnel)):
         sub.add_parser(name).set_defaults(func=func, profile=None)
+    p = sub.add_parser("eval")
+    p.add_argument("--tasks", type=Path, required=True)
+    p.add_argument("--corpus", type=Path, required=True)
+    p.add_argument("--today", required=True)
+    p.add_argument("--out", type=Path, required=True)
+    p.add_argument("--profile")
+    p.add_argument("--answer-mode", choices=["formatter", "parse"])
+    p.add_argument("--timeout", type=float)
+    p.add_argument("--only")
+    p.add_argument("--retry-failed", action="store_true")
+    p.set_defaults(func=cmd_eval)
     p = sub.add_parser("add-user")
     p.add_argument("name")
     p.set_defaults(func=cmd_add_user)

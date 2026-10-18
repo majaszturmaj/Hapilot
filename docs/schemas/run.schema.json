@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hapilot.run/1",
+  "title": "Hapilot evaluation run metadata (run.json)",
+  "type": "object",
+  "required": ["schema", "run_id", "started", "ended", "hapilot", "config", "models", "embedding_model", "corpus",
+               "libraries", "gpu", "egress_guard", "tasks"],
+  "properties": {
+    "schema": {"const": "hapilot.run/1"},
+    "run_id": {"type": "string"},
+    "started": {"type": "string"},
+    "ended": {"type": ["string", "null"]},
+    "hapilot": {"type": "object", "required": ["commit", "describe", "dirty"]},
+    "config": {"type": "object", "required": ["profile", "config_hash", "today", "seed", "temperature", "approval_policy",
+                                             "task_timeout_s", "answer_mode", "retrieval", "chunking"]},
+    "models": {"type": "array", "items": {"type": "object", "required": ["name"]}},
+    "embedding_model": {"type": "object", "required": ["name", "revision"]},
+    "corpus": {"type": "object", "required": ["fingerprint", "files", "chunks", "collection", "skipped"]},
+    "libraries": {"type": "object", "required": ["python"]},
+    "gpu": {"type": ["string", "null"]},
+    "egress_guard": {"type": "boolean"},
+    "tasks": {"type": "object", "required": ["total", "ok", "error", "timeout"]}
+  }
+}

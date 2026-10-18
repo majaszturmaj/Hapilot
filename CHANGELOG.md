@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased (stage 1: safety and correctness)
+## Unreleased (stage 2: evaluation readiness)
+
+- Evaluation interface v1 (`src/eval/`, `docs/EVALUATION_INTERFACE.md`, `docs/schemas/`): tasks in JSONL, results,
+  per-task JSONL traces with content-addressed prompts, run metadata, resumable batch runs, schema validation,
+  `hapilotctl.py eval`.
+- Tracing of nodes, model calls, tool calls, retrievals, sandbox runs, approvals; per-task time budget.
+- Documents: .docx, .eml and .xlsx alongside .pdf/.txt/.md (`src/extractors.py`); chunk metadata (relative path,
+  page, sheet); unreadable files listed.
+- Retrieval: hybrid E5 + BM25 with reciprocal rank fusion (default top 8); E5 passage/query prefixes.
+- Attachments: one module for UI uploads and evaluation tasks; uploads enabled in the UI for the supported formats.
+- Demo company documents in all formats; ten development tasks with a checker (`scripts/dev_eval_check.py`).
+
+## Stage 1: safety and correctness
 
 ### Security and privacy
 - Generated code and LaTeX run in a fresh container per run: no network, non-root, read-only root

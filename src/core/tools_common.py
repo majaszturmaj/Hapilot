@@ -147,8 +147,12 @@ def invoke_llm_and_normalize(llm, messages):
     or similar). On irrecoverable errors returns a simple AIMessage-like
     object containing the error text.
     """
+    from src.tracing import TaskTimeout
+
     try:
         resp = llm.invoke(messages)
+    except TaskTimeout:
+        raise
     except Exception as e:
         try:
             return AIMessage(content=f"[LLM INVOKE ERROR] {e}")

@@ -50,6 +50,28 @@ class Backend:
         self.proc: subprocess.Popen | None = None
         self.model: str | None = None
         self.lock = threading.Lock()
+        self._version: str | None = None
+
+    def server_version(self) -> str:
+        """`llama-server --version` (first line), cached."""
+        if self._version is None:
+            server = self.config["llama_server"]
+            env = {**os.environ, "LD_LIBRARY_PATH": f"{server.parent}:{os.environ.get('LD_LIBRARY_PATH', '')}"}
+            try:
+                out = subprocess.run([str(server), "--version"], capture_output=True, text=True, timeout=30, env=env)
+                lines = [ln.strip() for ln in (out.stdout + out.stderr).splitlines() if ln.strip().startswith("version")]
+                self._version = "llama.cpp " + (lines[0] if lines else "unknown version")
+            except Exception as exc:
+                self._version = f"llama.cpp (version unavailable: {exc})"
+        return self._version
+
+    def info(self) -> dict:
+        models = {}
+        for name, m in self.config["models"].items():
+            path = m["gguf"]
+            models[name] = {"file": path.name, "bytes": path.stat().st_size if path.is_file() else None, "ctx": m["ctx"],
+                            "args": m["args"]}
+        return {"models": models, "server": self.server_version(), "loaded": self.model}
 
     def _healthy(self) -> bool:
         try:
@@ -132,6 +154,8 @@ def make_handler(backend: Backend):
         def do_GET(self):
             if self.path == "/health":
                 self._send(200, {"status": "ok", "loaded": backend.model})
+            elif self.path == "/admin/info":
+                self._send(200, backend.info())
             elif self.path in ("/v1/models", "/models"):
                 self._send(200, {"object": "list", "data": [{"id": n, "object": "model", "owned_by": "local"}
                                                             for n in backend.config["models"]]})

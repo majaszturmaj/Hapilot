@@ -64,6 +64,7 @@ class ModelSpec:
     max_tokens: Optional[int] = 2500
     timeout: float = 600.0
     extra_body: Mapping[str, Any] = field(default_factory=dict)
+    seed: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -213,7 +214,7 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         chroma_path=path("HAPILOT_CHROMA_DIR", data_dir / "chroma"),
         collection=get("HAPILOT_COLLECTION", "company_knowledge"),
         embedding_model=get("HAPILOT_EMBEDDING_MODEL", "intfloat/multilingual-e5-base"),
-        rag_top_k=int(get("HAPILOT_RAG_TOP_K", "4")),
+        rag_top_k=int(get("HAPILOT_RAG_TOP_K", "8")),
         profiles=profiles,
         default_profile=default_profile,
         plan_mode=plan_mode,

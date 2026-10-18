@@ -19,7 +19,7 @@ from typing import Annotated, List, Optional, TypedDict
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 
-from src import run_context
+from src import run_context, tracing
 from src.agent_tools import TaskState, create_hitl_confirm_request, tool_plan_task
 from src.config import get_settings
 from src.llm_config import get_llm
@@ -181,6 +181,7 @@ def task_planner_node(state: AgentState):
     steps = [s for s in task_plan.get("steps", []) if isinstance(s, dict)]
     complexity = task_plan.get("complexity", "low")
     has_document = bool(state.get("last_generated_file"))
+    guards: list[str] = []
 
     # Guard 1: an edit of an existing document is a single modify_document step.
     if is_modification_request(last_user_msg, has_document) and not any(s.get("tool") == "modify_document" for s in steps):
@@ -188,11 +189,13 @@ def task_planner_node(state: AgentState):
         steps = [{"id": 1, "action": "Zmodyfikuj istniejący dokument zgodnie z instrukcjami użytkownika",
                   "tool": "modify_document", "input": last_user_msg}]
         complexity = "low"
+        guards.append("forced_modify_document")
     # Guard 2: no new document unless the user asked for one (and did not say "no PDF").
     elif not wants_document(last_user_msg):
         kept = [s for s in steps if s.get("tool") != "template_pdf"]
         if len(kept) < len(steps):
             print(f"🔒 [PLANNER GUARD] Usunięto {len(steps) - len(kept)} krok(i) template_pdf — użytkownik nie prosił o dokument")
+            guards.append(f"removed_template_pdf:{len(steps) - len(kept)}")
             steps = kept
             if not steps:
                 steps = [{"id": 1, "action": "Odpowiedz na wiadomość", "tool": "llm_synthesis", "input": last_user_msg}]
@@ -200,6 +203,9 @@ def task_planner_node(state: AgentState):
     task_plan["complexity"] = complexity if len(steps) > 1 else "low"
     is_complex = task_plan["complexity"] in ("medium", "high")
     print(f"📋 Plan: {task_plan['complexity'].upper()} ({len(steps)} kroków)")
+    tracing.event("plan", task_plan=task_plan, guards_applied=guards)
+    if len(steps) > 2 and _approval_policy() == "auto":
+        tracing.event("approval", kind="plan", policy="auto", decision="auto_approved", summary=f"{len(steps)} steps")
 
     if len(steps) > 2 and _approval_policy() == "ask":
         lines = [f"  {s.get('id', i + 1)}. **{s.get('tool', '?')}** → {s.get('action', s.get('input', '?'))}"
@@ -332,6 +338,8 @@ def run_hitl_confirm(state: AgentState):
         step = task_plan["steps"][current_step]
     if _approval_policy() == "auto":
         print("   --> ✅ [NODE: HITL CONFIRM] Polityka auto — potwierdzam automatycznie.")
+        tracing.event("approval", kind="confirm_step", policy="auto", decision="auto_approved",
+                      summary=str(step.get("action") or step.get("input") or "")[:200])
         return {"messages": [AIMessage(content="(Potwierdzono automatycznie.)")], **_advance_plan_step(state)}
 
     print("   --> 🛑 [NODE: HITL CONFIRM] Oczekuję na potwierdzenie użytkownika...")
@@ -367,6 +375,31 @@ def _build_dynamic_tool_map() -> dict:
     return tool_map
 
 
+def _instrument(name: str, func):
+    """Wrap a node: deadline check, node_start/node_end trace events, node name in the run context."""
+    import functools
+
+    @functools.wraps(func)
+    def node(state):
+        tracing.check_deadline(f"node {name}")
+        step = state.get("current_step")
+        tracing.event("node_start", node=name, plan_step=step)
+        started = time.monotonic()
+        with run_context.use_context(node=name):
+            try:
+                out = func(state) or {}
+            except Exception as exc:
+                tracing.event("node_end", node=name, plan_step=step, duration_ms=round((time.monotonic() - started) * 1000),
+                              status="exception", next=None, error=f"{type(exc).__name__}: {exc}")
+                raise
+        tracing.event("node_end", node=name, plan_step=step, duration_ms=round((time.monotonic() - started) * 1000),
+                      status=out.get("execution_status") or ("hitl_request" if out.get("hitl_request") else "ok"),
+                      next=out.get("next_step"))
+        return out
+
+    return node
+
+
 def build_dynamic_graph(ext_manager=None):
     """Compile the LangGraph StateGraph from the loaded extensions."""
     from src.core.extension_manager import extension_manager as _em
@@ -376,16 +409,16 @@ def build_dynamic_graph(ext_manager=None):
         ext_manager.discover_and_load()
 
     workflow = StateGraph(AgentState)
-    workflow.add_node("task_planner", task_planner_node)
-    workflow.add_node("router", router_node)
-    workflow.add_node("hitl_confirm", run_hitl_confirm)
+    workflow.add_node("task_planner", _instrument("task_planner", task_planner_node))
+    workflow.add_node("router", _instrument("router", router_node))
+    workflow.add_node("hitl_confirm", _instrument("hitl_confirm", run_hitl_confirm))
 
     node_names = set()
     for name, func in ext_manager.get_all_node_functions().items():
-        workflow.add_node(name, func)
+        workflow.add_node(name, _instrument(name, func))
         node_names.add(name)
     if "chat" not in node_names:
-        workflow.add_node("chat", _fallback_chat)
+        workflow.add_node("chat", _instrument("chat", _fallback_chat))
         node_names.add("chat")
 
     workflow.set_entry_point("task_planner")

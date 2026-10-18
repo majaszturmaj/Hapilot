@@ -58,8 +58,8 @@ reaction_on_message_received = false
 
 # Authorize users to spontaneously upload files with messages
 [features.spontaneous_file_upload]
-    # File attachments are not processed yet — kept off so the UI does not accept files it would ignore.
-    enabled = false
+    # Attachments are handled by src/attachments.py (same code as evaluation tasks).
+    enabled = true
     # Define accepted file types using MIME types
     # Examples:
     # 1. For specific file types:
@@ -69,9 +69,9 @@ reaction_on_message_received = false
     # 3. For specific file extensions:
     #    accept = { "application/octet-stream" = [".xyz", ".pdb"] }
     # Note: Using "*/*" is not recommended as it may cause browser warnings
-    accept = ["*/*"]
-    max_files = 20
-    max_size_mb = 500
+    accept = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "message/rfc822", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain", "text/markdown"]
+    max_files = 5
+    max_size_mb = 20
 
 [features.audio]
     # Enable audio features

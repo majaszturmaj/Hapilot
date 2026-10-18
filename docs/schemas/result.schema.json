@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hapilot.result/1",
+  "title": "Hapilot evaluation result (one line of results.jsonl)",
+  "type": "object",
+  "required": ["schema", "run_id", "task_id", "status", "error", "answer_text", "answer_json", "answer_json_valid",
+               "answer_json_error", "sources_used", "sources_cited", "files_created", "plan_tools", "duration_s",
+               "llm_calls", "prompt_tokens", "completion_tokens", "trace"],
+  "properties": {
+    "schema": {"const": "hapilot.result/1"},
+    "run_id": {"type": "string"},
+    "task_id": {"type": "string"},
+    "status": {"enum": ["ok", "error", "timeout"]},
+    "error": {"type": ["string", "null"]},
+    "answer_text": {"type": "string"},
+    "answer_json": {"type": ["object", "null"]},
+    "answer_json_valid": {"type": ["boolean", "null"]},
+    "answer_json_error": {"type": ["string", "null"]},
+    "sources_used": {"type": "array", "items": {"type": "string"}},
+    "sources_cited": {"type": "array", "items": {"type": "string"}},
+    "files_created": {"type": "array", "items": {"type": "object", "required": ["path", "bytes", "sha256"]}},
+    "plan_tools": {"type": "array", "items": {"type": "string"}},
+    "duration_s": {"type": "number"},
+    "llm_calls": {"type": "integer"},
+    "prompt_tokens": {"type": "integer"},
+    "completion_tokens": {"type": "integer"},
+    "trace": {"type": "string"}
+  }
+}

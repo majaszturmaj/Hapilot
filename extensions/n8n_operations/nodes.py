@@ -95,6 +95,10 @@ def _email(state) -> dict:
     preview = f"**Do:** {draft['to'] or '(uzupełnij w Outlooku)'}\n**Temat:** {draft['subject']}\n\n{draft['body']}"
 
     if run_context.approval_policy() == "auto":
+        from src import tracing
+
+        tracing.event("approval", kind="email_draft", policy="auto", decision="not_created",
+                      summary="drafts are created only after a user's confirmation")
         return {"messages": [AIMessage(content=f"Wersja robocza e-maila (nie utworzono jej w Outlooku bez potwierdzenia):\n\n{preview}")],
                 **_advance_plan_step(state)}
     hitl = create_hitl_confirm_request(

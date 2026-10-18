@@ -10,13 +10,14 @@ Tests replace the model factory with ``set_llm_factory``.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import time
 import urllib.request
 from functools import lru_cache
 from typing import Any, Callable, Optional
 
-from src import run_context
+from src import run_context, tracing
 from src.config import PROJECT_ROOT, ModelSpec, assert_local_url, get_settings
 
 PROJECT_CONTEXT_FILE = PROJECT_ROOT / "PROJECT_CONTEXT.md"
@@ -49,6 +50,8 @@ FALLBACK_ROLE_PROMPTS = {
     "chat": "Jesteś Hapilot — ciepły, pomocny asystent AI, który rozmawia jak przyjazny kolega z pracy.",
     "writer": "Jesteś Hapilot — tworzysz profesjonalne, czytelne teksty.",
     "coder": "You are a Python coder. Return only a complete Python program in a ```python block.",
+    "answer_formatter": ("Jesteś Hapilot — przepisujesz gotową odpowiedź asystenta do wymaganego formatu JSON. "
+                         "Nie dodajesz faktów spoza odpowiedzi i wyników narzędzi. Zwracasz wyłącznie obiekt JSON."),
 }
 
 PL_MONTHS = ["", "stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia",
@@ -91,7 +94,59 @@ def _openai_compatible(spec: ModelSpec, role: str) -> Any:
         kwargs["max_tokens"] = int(spec.max_tokens)
     if spec.extra_body:
         kwargs["extra_body"] = dict(spec.extra_body)
+    if spec.seed is not None:
+        kwargs["seed"] = int(spec.seed)
     return ChatOpenAI(**kwargs)
+
+
+_ROLE_NAMES = {"system": "system", "human": "user", "ai": "assistant", "tool": "tool"}
+
+
+class TracedModel:
+    """Wraps a chat model: checks the task deadline and records every call in the run's trace."""
+
+    def __init__(self, inner: Any, spec: ModelSpec, role: str):
+        self._inner, self._spec, self._role = inner, spec, role
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+    def invoke(self, messages: Any, *args: Any, **kwargs: Any) -> Any:
+        tracing.check_deadline(f"model call ({self._role})")
+        rec = tracing.current()
+        if rec is None:
+            return self._inner.invoke(messages, *args, **kwargs)
+        spec = self._spec
+        request = {"messages": [{"role": _ROLE_NAMES.get(getattr(m, "type", ""), getattr(m, "type", "user")),
+                                 "content": getattr(m, "content", str(m))} for m in messages]}
+        common = {"call_id": f"llm-{rec.llm_calls + 1}", "node": run_context.current("node"), "role": self._role,
+                  "model": spec.model, "base_url": spec.base_url,
+                  "params": {"temperature": spec.temperature, "max_tokens": spec.max_tokens, "seed": spec.seed,
+                             "extra_body": dict(spec.extra_body), "timeout_s": spec.timeout},
+                  "messages_ref": rec.blob(request)}
+        rec.llm_calls += 1
+        started = time.monotonic()
+        try:
+            response = self._inner.invoke(messages, *args, **kwargs)
+        except Exception as exc:
+            rec.emit("llm_call", **common, response_ref=None, prompt_tokens=None, completion_tokens=None,
+                     latency_ms=round((time.monotonic() - started) * 1000), finish_reason=None,
+                     error=f"{type(exc).__name__}: {exc}")
+            raise
+        latency = round((time.monotonic() - started) * 1000)
+        meta = getattr(response, "response_metadata", {}) or {}
+        usage = getattr(response, "usage_metadata", None) or {}
+        token_usage = meta.get("token_usage") or {}
+        prompt_tokens = usage.get("input_tokens", token_usage.get("prompt_tokens"))
+        completion_tokens = usage.get("output_tokens", token_usage.get("completion_tokens"))
+        rec.prompt_tokens += prompt_tokens or 0
+        rec.completion_tokens += completion_tokens or 0
+        reasoning = (getattr(response, "additional_kwargs", {}) or {}).get("reasoning_content")
+        response_ref = rec.blob({"content": getattr(response, "content", ""), "reasoning_content": reasoning,
+                                 "usage": token_usage or usage, "finish_reason": meta.get("finish_reason")})
+        rec.emit("llm_call", **common, response_ref=response_ref, prompt_tokens=prompt_tokens,
+                 completion_tokens=completion_tokens, latency_ms=latency, finish_reason=meta.get("finish_reason"), error=None)
+        return response
 
 
 _factory: Callable[[ModelSpec, str], Any] = _openai_compatible
@@ -140,9 +195,25 @@ def resolve_model(role: str) -> tuple[ModelSpec, bool]:
     return spec, False
 
 
+def _apply_run_overrides(spec: ModelSpec) -> ModelSpec:
+    """Evaluation runs fix temperature and seed for every role and cap the timeout at the task's remaining time."""
+    changes: dict = {}
+    temperature = run_context.current("temperature")
+    if temperature is not None:
+        changes["temperature"] = float(temperature)
+    seed = run_context.current("seed")
+    if seed is not None:
+        changes["seed"] = int(seed)
+    left = tracing.remaining()
+    if left is not None:
+        changes["timeout"] = max(1.0, min(spec.timeout, left))
+    return dataclasses.replace(spec, **changes) if changes else spec
+
+
 def get_llm(role: str) -> tuple[Any, str]:
     """(chat model, system prompt) for a role."""
     spec, fallback = resolve_model(role)
+    spec = _apply_run_overrides(spec)
     prompt_role = role
     if fallback:
         try:
@@ -156,7 +227,9 @@ def get_llm(role: str) -> tuple[Any, str]:
     if role != "coder":
         system_prompt += SECURITY_RULES + _load_project_context()
     system_prompt += _time_context()
-    return _factory(spec, role), system_prompt
+    if fallback:
+        tracing.event("model_fallback", role=role, model=spec.model)
+    return TracedModel(_factory(spec, role), spec, role), system_prompt
 
 
 # Backwards-compatible names used by extensions
