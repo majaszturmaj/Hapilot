@@ -8,7 +8,9 @@ calculations — with local language models, on your own hardware.
   LaTeX run in a throwaway container without network. Model endpoints must be local/LAN addresses.
 - **Orchestrated with LangGraph.** A planner splits a request into steps; each step goes to a
   specialised node (knowledge search, writer, document generator, Python coder, …).
-- **Extensible.** Capabilities are extensions in `extensions/<name>/` with a JSON manifest.
+- **Extensible.** Capabilities are extensions: a folder with a JSON manifest and Python nodes. The planner, router
+  and graph are built from the manifests; a new tool needs no change to the core (example:
+  [examples/extensions/vat_calculator](examples/extensions/vat_calculator)).
 
 > Status: under active development (version 0.1). See [CHANGELOG.md](CHANGELOG.md).
 
@@ -160,7 +162,7 @@ Unit tests need no model, GPU or network (a guard fails any test that tries to c
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements-test.txt
 .venv/bin/pytest
-.venv/bin/ruff check src extensions tests scripts tools
+.venv/bin/ruff check src extensions examples tests scripts tools
 ```
 
 Smoke scenarios with real models (GPU host): `.venv/bin/python scripts/hapilotctl.py smoke --profile best-local`

@@ -1,13 +1,12 @@
 {
+  "manifest_version": 1,
   "id": "writer",
   "name": "Text Writer / Synthesizer",
-  "version": "1.0.0",
-  "description": "Text synthesis, drafting emails, and content generation",
+  "version": "1.1.0",
+  "description": "Text synthesis, drafting e-mails and other texts",
   "author": "Hapilot Team",
   "license": "MIT",
-
-  "routes": [],
-
+  "enabled": true,
   "nodes": [
     {
       "name": "writer",
@@ -16,15 +15,18 @@
       "description": "Synteza i redakcja tekstu formalnego"
     }
   ],
-
   "tools": [
     {
       "name": "llm_synthesis",
-      "planner_description": "Generate or synthesize text using the main LLM",
-      "planner_when_to_use": "Summarizing long texts, drafting emails, synthesizing RAG results before document generation"
+      "description": "Napisanie, przeredagowanie lub podsumowanie tekstu przez model językowy",
+      "when_to_use": "Odpowiedź na podstawie wyników poprzednich kroków, e-mail lub notatka jako tekst w czacie, przeredagowanie poprzedniej odpowiedzi („krócej”, „prościej”)",
+      "when_not_to_use": "Gdy użytkownik chce pliku PDF (użyj template_pdf)",
+      "example": "„Co robić w razie awarii serwera?” → rag_search, potem llm_synthesis",
+      "aliases": [
+        "email"
+      ]
     }
   ],
-
   "prompts": {
     "writer": "prompts/writer.txt"
   }

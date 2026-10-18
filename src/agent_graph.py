@@ -182,16 +182,18 @@ def task_planner_node(state: AgentState):
     complexity = task_plan.get("complexity", "low")
     has_document = bool(state.get("last_generated_file"))
     guards: list[str] = []
+    tool_names = set(_build_dynamic_tool_map())  # guards for the built-in document tools apply only if they are loaded
 
     # Guard 1: an edit of an existing document is a single modify_document step.
-    if is_modification_request(last_user_msg, has_document) and not any(s.get("tool") == "modify_document" for s in steps):
+    if ("modify_document" in tool_names and is_modification_request(last_user_msg, has_document)
+            and not any(s.get("tool") == "modify_document" for s in steps)):
         print("📝 [PLANNER] Wykryto zapytanie o modyfikację dokumentu → modify_document")
         steps = [{"id": 1, "action": "Zmodyfikuj istniejący dokument zgodnie z instrukcjami użytkownika",
                   "tool": "modify_document", "input": last_user_msg}]
         complexity = "low"
         guards.append("forced_modify_document")
     # Guard 2: no new document unless the user asked for one (and did not say "no PDF").
-    elif not wants_document(last_user_msg):
+    elif "template_pdf" in tool_names and not wants_document(last_user_msg):
         kept = [s for s in steps if s.get("tool") != "template_pdf"]
         if len(kept) < len(steps):
             print(f"🔒 [PLANNER GUARD] Usunięto {len(steps) - len(kept)} krok(i) template_pdf — użytkownik nie prosił o dokument")
@@ -265,7 +267,11 @@ def _resume_after_hitl(state: AgentState, hitl_response: dict) -> dict:
 # =========================================================================== router
 
 def router_node(state: AgentState):
-    """Map the current plan step's tool to a graph node (no model call)."""
+    """Map the current plan step's tool to a graph node (no model call). Extension hooks may redirect."""
+    hooked = _manager().before_route(dict(state))
+    if hooked and hooked.get("next_step"):
+        print(f"🔀 [ROUTER] Hook → {hooked['next_step']}")
+        return {"retry_count": 0, **hooked}
     if state.get("hitl_response") and state.get("next_step"):
         target = state["next_step"]
         print(f"🔀 [ROUTER] Kontynuacja HITL → {target}")
@@ -353,30 +359,22 @@ def run_hitl_confirm(state: AgentState):
 
 # =========================================================================== graph
 
-def _build_dynamic_tool_map() -> dict:
-    """Planner tool name → graph node name, from extension manifests plus core aliases."""
-    tool_map: dict = {}
-    try:
-        from src.core.extension_manager import extension_manager
+def _manager():
+    from src.core.extension_manager import get_active
 
-        manifests = {m.id: m for m in extension_manager.get_all_manifests()}
-        for tool in extension_manager.get_all_tools():
-            manifest = manifests.get(tool.extension_id)
-            if manifest and manifest.nodes:
-                tool_map[tool.name] = manifest.nodes[0]["name"]
-    except Exception:
-        pass
-    for tool, node in {"rag_search": "knowledge", "python": "coder", "template_pdf": "document_generator",
-                       "latex": "document_generator", "coder": "coder", "llm_synthesis": "writer",
-                       "email": "writer", "modify_document": "modify_document",
-                       "read_previous_output": "modify_document", "hitl_confirm": "hitl_confirm",
-                       "chat": "chat"}.items():
-        tool_map.setdefault(tool, node)
-    return tool_map
+    manager = get_active()
+    if not manager.is_loaded():
+        manager.discover_and_load()
+    return manager
+
+
+def _build_dynamic_tool_map() -> dict:
+    """Planner tool name (or alias) → graph node, from the loaded extensions."""
+    return _manager().tool_node_map()
 
 
 def _instrument(name: str, func):
-    """Wrap a node: deadline check, node_start/node_end trace events, node name in the run context."""
+    """Wrap a node: deadline check, trace events, node name in the run context, hooks after the node."""
     import functools
 
     @functools.wraps(func)
@@ -392,6 +390,7 @@ def _instrument(name: str, func):
                 tracing.event("node_end", node=name, plan_step=step, duration_ms=round((time.monotonic() - started) * 1000),
                               status="exception", next=None, error=f"{type(exc).__name__}: {exc}")
                 raise
+        out = _manager().after_node(name, state, out)
         tracing.event("node_end", node=name, plan_step=step, duration_ms=round((time.monotonic() - started) * 1000),
                       status=out.get("execution_status") or ("hitl_request" if out.get("hitl_request") else "ok"),
                       next=out.get("next_step"))
@@ -401,26 +400,30 @@ def _instrument(name: str, func):
 
 
 def build_dynamic_graph(ext_manager=None):
-    """Compile the LangGraph StateGraph from the loaded extensions."""
-    from src.core.extension_manager import extension_manager as _em
+    """Compile the LangGraph StateGraph from the loaded extensions.
 
-    ext_manager = ext_manager or _em
+    Every node continues according to its manifest: ``then`` (always that node), ``after.policy``
+    ``plan`` (the next plan step's node, or end), ``on_success`` (as ``plan`` if the step succeeded,
+    else end) or ``retry`` (as ``plan`` on success; otherwise back to ``retry_to`` until
+    ``max_attempts`` is reached).
+    """
+    from src.core.extension_manager import NodeSpec, extension_manager, set_active
+
+    ext_manager = ext_manager or extension_manager
     if not ext_manager.is_loaded():
         ext_manager.discover_and_load()
+    set_active(ext_manager)
+
+    specs = ext_manager.get_node_specs()
+    if "chat" not in specs:
+        specs["chat"] = NodeSpec(name="chat", extension_id="core", func=_fallback_chat)
 
     workflow = StateGraph(AgentState)
     workflow.add_node("task_planner", _instrument("task_planner", task_planner_node))
     workflow.add_node("router", _instrument("router", router_node))
     workflow.add_node("hitl_confirm", _instrument("hitl_confirm", run_hitl_confirm))
-
-    node_names = set()
-    for name, func in ext_manager.get_all_node_functions().items():
-        workflow.add_node(name, _instrument(name, func))
-        node_names.add(name)
-    if "chat" not in node_names:
-        workflow.add_node("chat", _instrument("chat", _fallback_chat))
-        node_names.add("chat")
-
+    for name, spec in specs.items():
+        workflow.add_node(name, _instrument(name, spec.func))
     workflow.set_entry_point("task_planner")
 
     def planner_next(state: AgentState):
@@ -428,61 +431,59 @@ def build_dynamic_graph(ext_manager=None):
 
     workflow.add_conditional_edges("task_planner", planner_next, {"router": "router", "end": END})
 
-    targets = {name: name for name in node_names}
-    targets["hitl_confirm"] = "hitl_confirm"
+    known = set(specs) | {"hitl_confirm"}
+    targets = {name: name for name in known}
     targets["end"] = END
-    tool_map_known = set(targets)
 
-    def _next_from_plan(state: AgentState) -> str:
+    def next_from_plan(state: AgentState) -> str:
         current_step = state.get("current_step")
         steps = (state.get("task_plan") or {}).get("steps", [])
         if current_step is not None and 0 <= current_step < len(steps):
             mapped = _build_dynamic_tool_map().get(steps[current_step].get("tool", ""), "chat")
-            return mapped if mapped in tool_map_known else "chat"
+            return mapped if mapped in known else "chat"
         return "end"
 
     def route_from_router(state: AgentState) -> str:
         target = state.get("next_step") or "chat"
-        return target if target in tool_map_known else "chat"
+        return target if target in known else "chat"
 
     workflow.add_conditional_edges("router", route_from_router, dict(targets))
 
-    def after_document(state: AgentState) -> str:
+    def plan_policy(state: AgentState) -> str:
+        return "end" if state.get("hitl_request") else next_from_plan(state)
+
+    def on_success_policy(state: AgentState) -> str:
         if state.get("hitl_request") or state.get("execution_status") != "success":
             return "end"
-        return _next_from_plan(state)
+        return next_from_plan(state)
 
-    def after_execute(state: AgentState) -> str:
-        if state.get("execution_status") == "success":
-            return _next_from_plan(state)
-        if state.get("retry_count", 0) >= 3:
-            print("      🛑 Przekroczono limit prób naprawy kodu. Kończę.")
-            return "end"
-        print(f"      🔄 Wykryto błąd! (Próba {state.get('retry_count', 0)}/3). Wracam do Codera...")
-        return "retry"
+    def retry_policy(max_attempts: int):
+        def decide(state: AgentState) -> str:
+            if state.get("execution_status") == "success":
+                return next_from_plan(state)
+            if state.get("retry_count", 0) >= max_attempts:
+                print("      🛑 Przekroczono limit prób. Kończę.")
+                return "end"
+            print(f"      🔄 Wykryto błąd (próba {state.get('retry_count', 0)}/{max_attempts}) — ponawiam.")
+            return "retry"
+        return decide
 
-    def after_generic(state: AgentState) -> str:
-        if state.get("hitl_request"):
-            return "end"
-        return _next_from_plan(state)
-
-    for name in node_names:
-        if name in ("document_generator", "modify_document"):
-            workflow.add_conditional_edges(name, after_document, dict(targets))
-        elif name == "execute":
-            workflow.add_conditional_edges(name, after_execute, {**targets, "retry": "coder"})
-        elif name == "coder":
-            if "execute" in node_names:
-                workflow.add_edge("coder", "execute")
-            else:
-                workflow.add_conditional_edges(name, after_generic, dict(targets))
+    for name, spec in specs.items():
+        if spec.then:
+            workflow.add_edge(name, spec.then)
+            continue
+        policy = spec.after.get("policy", "plan")
+        if policy == "on_success":
+            workflow.add_conditional_edges(name, on_success_policy, dict(targets))
+        elif policy == "retry":
+            workflow.add_conditional_edges(name, retry_policy(int(spec.after.get("max_attempts", 3))),
+                                           {**targets, "retry": spec.after["retry_to"]})
         else:
-            workflow.add_conditional_edges(name, after_generic, dict(targets))
-
-    workflow.add_conditional_edges("hitl_confirm", after_generic, dict(targets))
+            workflow.add_conditional_edges(name, plan_policy, dict(targets))
+    workflow.add_conditional_edges("hitl_confirm", plan_policy, dict(targets))
 
     compiled = workflow.compile()
-    print(f"✅ [GRAPH] Compiled graph with {len(node_names)} extension nodes + 3 core nodes")
+    print(f"✅ [GRAPH] Compiled graph with {len(specs)} extension nodes + 3 core nodes")
     return compiled
 
 

@@ -58,77 +58,45 @@ def tool_rag_search(query: str) -> str:
 
 # =========================================================================== planning
 
-# Planner-facing descriptions of the tools; only tools registered by enabled extensions are offered.
-PLANNER_TOOL_DESCRIPTIONS = {
-    "rag_search": "Wyszukiwanie w dokumentach firmowych (RAG)",
-    "llm_synthesis": "Generowanie/synteza tekstu przez model językowy",
-    "template_pdf": "Generowanie PDF z szablonu LaTeX (list, raport, protokół). Parametry dokumentu są pokazywane użytkownikowi do potwierdzenia.",
-    "modify_document": "Modyfikacja wcześniej wygenerowanego dokumentu (zmiana daty, adresu, treści) i ponowne wygenerowanie PDF",
-    "python": "Wykonanie kodu Python w izolowanym sandboxie (obliczenia, analiza danych, wykresy); kod może czytać dokumenty firmy (np. arkusze .xlsx) i załączniki",
-    "calendar": "Sprawdzenie kalendarza (integracja n8n)",
-    "email": "Przygotowanie wersji roboczej e-maila (nic nie jest wysyłane automatycznie)",
-    "chat": "Zwykła rozmowa z użytkownikiem (luźne pytania, powitania, zgoda/odmowa)",
-    "hitl_confirm": "Zatrzymaj się i poproś użytkownika o potwierdzenie/decyzję. NIE dodawaj przed template_pdf — to jest automatyczne.",
-}
+def planner_catalog() -> list:
+    """Tools the planner may use, as declared by the loaded extensions (plus the core ones)."""
+    from src.core.extension_manager import get_active
 
-ALWAYS_AVAILABLE_TOOLS = ("llm_synthesis", "chat", "hitl_confirm")
+    manager = get_active()
+    if not manager.is_loaded():
+        manager.discover_and_load()
+    return manager.get_tools()
 
 
 def available_planner_tools() -> list[str]:
-    """Tool names the planner may use: the core ones plus those registered by enabled extensions."""
-    names = list(ALWAYS_AVAILABLE_TOOLS)
-    try:
-        from src.core.extension_manager import extension_manager
+    return [t.name for t in planner_catalog()]
 
-        registered = set(extension_manager.get_planner_tool_names())
-    except Exception:
-        registered = set(PLANNER_TOOL_DESCRIPTIONS)
-    for name in PLANNER_TOOL_DESCRIPTIONS:
-        if name in registered and name not in names:
-            names.append(name)
-    return names
+
+def _catalog_text(tools: list) -> str:
+    lines = []
+    for t in tools:
+        lines.append(f"- {t.name}: {t.description}")
+        if t.when_to_use:
+            lines.append(f"  KIEDY: {t.when_to_use}")
+        if t.when_not_to_use:
+            lines.append(f"  KIEDY NIE: {t.when_not_to_use}")
+        if t.example:
+            lines.append(f"  PRZYKŁAD: {t.example}")
+    return "\n".join(lines)
 
 
 def tool_plan_task(query: str, plan_mode: str = "auto", history_context: str = "") -> str:
     """Ask the planner model for a JSON plan (task name, complexity, steps with tools)."""
     print(f"📋 [TOOL USE] Task Planning (mode={plan_mode}): '{query[:50]}...'")
     llm, system_prompt = get_llm("task_planner")
-    tools = available_planner_tools()
-    tool_lines = "\n".join(f"- {name}: {PLANNER_TOOL_DESCRIPTIONS[name]}" for name in tools)
-    history = f"HISTORIA OSTATNICH AKCJI I DOKUMENTÓW (jako kontekst, nie odpowiadaj na to wprost):\n{history_context}\n" if history_context else ""
+    tools = planner_catalog()
+    history = f"HISTORIA OSTATNICH AKCJI I DOKUMENTÓW (kontekst, nie odpowiadaj na nią wprost):\n{history_context}\n\n" if history_context else ""
+    prompt = f"""{history}ZAPYTANIE UŻYTKOWNIKA: "{query}"
 
-    prompt = f"""Przeanalizuj to zapytanie i wygeneruj strukturalny plan wykonania.
-Rozbijaj zadania na małe, niezależne kroki.
+DOSTĘPNE NARZĘDZIA (używaj wyłącznie tych nazw):
+{_catalog_text(tools)}
 
-{history}ZAPYTANIE: "{query}"
-
-GENERUJ ODPOWIEDŹ W JSON Z PONIŻSZĄ STRUKTURĄ:
-{{
-  "task_name": "krótka nazwa zadania",
-  "complexity": "low|medium|high",
-  "steps": [
-    {{"id": 1, "action": "opis akcji", "tool": "{'|'.join(tools)}", "input": "konkretny input"}}
-  ]
-}}
-
-DOSTĘPNE NARZĘDZIA (używaj wyłącznie tych):
-{tool_lines}
-
-PRZYKŁADY:
-1. "Co robić w razie awarii serwera i napisz o tym raport PDF"
-   - Krok 1: rag_search (szukanie procedury), Krok 2: llm_synthesis (synteza), Krok 3: template_pdf (raport)
-2. "Napisz podanie o urlop" — Krok 1: template_pdf
-3. "Jak tam dzień minął?" — Krok 1: chat
-4. "Zmień datę w tym piśmie na 7 marca 2026" — Krok 1: modify_document
-5. "Policz średnią z liczb 3, 5 i 10" — Krok 1: python (w polu input opisz zadanie obliczeniowe)
-
-INSTRUKCJE:
-- Gdy użytkownik prosi o zmianę ISTNIEJĄCEGO dokumentu (zmień, popraw, zaktualizuj w wygenerowanym piśmie) -> modify_document
-- Kontynuacja rozmowy ("krócej", "napisz to prościej", "nie, dzięki", "jak się masz") -> bez rag_search; użyj chat lub llm_synthesis
-- Jeśli trzeba NAJPIERW znaleźć informacje, POTEM coś napisać -> co najmniej 2 kroki
-- Nowe dokumenty PDF tylko narzędziem template_pdf, i tylko gdy użytkownik o dokument prosi
-- Brak wyników RAG nie blokuje planu generowania PDF
-- Odpowiedz wyłącznie obiektem JSON
+Zwróć plan jako obiekt JSON: {{"task_name": "...", "complexity": "low|medium|high", "steps": [{{"id": 1, "action": "...", "tool": "{'|'.join(t.name for t in tools)}", "input": "..."}}]}}
 """
 
     try:

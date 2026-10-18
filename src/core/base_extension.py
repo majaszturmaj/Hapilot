@@ -1,11 +1,11 @@
 """
-BaseExtension — Optional abstract base class for Hapilot extensions.
+BaseExtension — optional base class for extension hooks.
 
-Extensions can implement lifecycle hooks by subclassing BaseExtension
-and specifying the class path in their hapilot_extension.json manifest.
+An extension that needs lifecycle hooks subclasses BaseExtension and names the class in its
+manifest: ``"hooks": "hooks:MyHooks"``. The manager creates it with the extension id and the
+manifest's ``config`` object. Extensions that only provide nodes, tools and prompts do not need it.
 
-This is OPTIONAL — simple extensions that only provide nodes/tools/prompts
-do not need to subclass this. They just need entry_point functions.
+A hook that raises is logged and ignored; it never stops the graph.
 """
 
 from typing import Any, Dict, Optional
@@ -28,38 +28,39 @@ class BaseExtension:
     def on_load(self) -> None:
         """Called once when the extension is loaded.
 
-        Use this for one-time initialization (DB connections, model loading, etc.).
+        Use this for one-time initialisation (read config, open local resources).
         """
         pass
 
     def on_unload(self) -> None:
-        """Called when the extension is disabled or the system shuts down.
+        """Called when the process exits (registered with atexit).
 
         Use this for cleanup (close connections, flush caches, etc.).
         """
         pass
 
     def on_before_route(self, state: dict) -> Optional[dict]:
-        """Called before the router classifies the user's message.
+        """Called before the router maps the current plan step to a node.
 
         Args:
-            state: The current AgentState dict.
+            state: A copy of the current AgentState dict.
 
         Returns:
-            Modified state dict, or None to leave state unchanged.
-            Return a dict with 'next_step' to short-circuit routing.
+            None to let the router follow the plan, or a state update with ``next_step`` (a node name)
+            to send this step elsewhere. An unknown node falls back to ``chat``. With several
+            extensions, the last non-empty answer wins.
         """
         return None
 
     def on_after_node(self, node_name: str, state: dict, output: dict) -> Optional[dict]:
-        """Called after a node has finished executing.
+        """Called after every node (of any extension) has returned.
 
         Args:
-            node_name: Name of the node that just executed.
-            state: The current AgentState dict.
-            output: The output produced by the node.
+            node_name: Name of the node that just ran.
+            state: The AgentState the node received.
+            output: The state update the node returned.
 
         Returns:
-            Modified output dict, or None to leave output unchanged.
+            A replacement state update, or None to keep the node's output unchanged.
         """
         return None

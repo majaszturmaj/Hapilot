@@ -1,446 +1,374 @@
-"""
-ExtensionManager — Discovers, validates, and loads Hapilot extensions.
+"""ExtensionManager — discovers, validates and loads Hapilot extensions (manifest version 1).
 
-This is the heart of the plug-and-play system. It:
-1. Scans the extensions/ directory for hapilot_extension.json manifests
-2. Validates manifests against the expected schema
-3. Imports Python modules from extension directories
-4. Registers routes, nodes, tools, and prompts into central registries
-5. Provides lifecycle hooks (on_load, on_unload)
-6. Builds the dynamic LangGraph workflow from all loaded extensions
+An extension is a folder with ``hapilot_extension.json`` (schema: docs/schemas/extension.schema.json).
+The manager
+1. finds extensions in ``extensions/`` and in the folders listed in ``HAPILOT_EXTENSIONS_DIRS``;
+2. validates each manifest against the schema and checks names (no duplicate extensions, nodes or tools;
+   ``then`` / ``retry_to`` / ``tool.node`` must point at existing nodes) — an invalid extension is skipped
+   as a whole and the reason is recorded in ``errors``;
+3. imports node functions and the optional hooks class, registers prompts;
+4. provides the planner's tool catalog, the tool → node map and the node edge rules to the graph builder.
 
-Usage:
-    from src.core.extension_manager import extension_manager
-    extension_manager.discover_and_load()    # Call once at startup
-    graph = extension_manager.build_graph()  # Get the compiled LangGraph
+Check extensions without starting Hapilot:  ``python -m src.core.extension_manager [DIR ...]``
 """
 
-import importlib
+from __future__ import annotations
+
+import atexit
 import importlib.util
 import json
 import os
 import sys
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Callable, Optional
 
 from src.core.base_extension import BaseExtension
 from src.core.prompt_registry import prompt_registry
-from src.core.route_registry import RouteDefinition, route_registry
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+MANIFEST = "hapilot_extension.json"
+SCHEMA_FILE = PROJECT_ROOT / "docs" / "schemas" / "extension.schema.json"
+CORE_PROMPTS = Path(__file__).resolve().parent / "prompts"
 
 
-# --- Extension Manifest Dataclass ---
-
-@dataclass
-class ToolDefinition:
-    """A tool that the planner can reference."""
-    name: str
-    planner_description: str = ""
-    planner_when_to_use: str = ""
-    planner_when_not_to_use: str = ""
-    extension_id: str = ""
+class ExtensionError(RuntimeError):
+    pass
 
 
 @dataclass
-class NodeDefinition:
-    """A graph node provided by an extension."""
+class ToolSpec:
+    """A tool the planner can put into a plan step; steps with this tool go to ``node``."""
+
     name: str
-    entry_point: str          # e.g. "nodes:run_coder" (module:function)
-    edges: Dict[str, str] = field(default_factory=dict)  # e.g. {"success": "__end__"}
-    extension_id: str = ""
+    node: str
+    extension_id: str
+    description: str
+    when_to_use: str = ""
+    when_not_to_use: str = ""
+    example: str = ""
+    aliases: list[str] = field(default_factory=list)
+
+
+@dataclass
+class NodeSpec:
+    name: str
+    extension_id: str
+    func: Callable
+    label: str = ""
+    description: str = ""
+    then: Optional[str] = None
+    after: dict = field(default_factory=lambda: {"policy": "plan"})
 
 
 @dataclass
 class ExtensionManifest:
-    """Parsed extension manifest (hapilot_extension.json)."""
     id: str
     name: str
-    version: str = "0.1.0"
-    description: str = ""
-    author: str = ""
-    license: str = ""
-    enabled: bool = True
-    directory: str = ""      # Absolute path to extension directory
+    version: str
+    description: str
+    author: str
+    license: str
+    enabled: bool
+    directory: str
+    raw: dict
 
-    routes: List[dict] = field(default_factory=list)
-    nodes: List[dict] = field(default_factory=list)
-    tools: List[dict] = field(default_factory=list)
-    prompts: Dict[str, str] = field(default_factory=dict)
-    config_schema: Dict[str, dict] = field(default_factory=dict)
-    dependencies: Dict[str, list] = field(default_factory=dict)
-
-    # UI metadata
-    node_label: str = ""
-    node_description: str = ""
+    @property
+    def nodes(self) -> list[dict]:  # kept for callers that read manifest.nodes
+        return self.raw.get("nodes", [])
 
 
-# --- Extension Manager ---
+# Tools provided by the core graph itself
+CORE_TOOLS = [
+    ToolSpec(name="hitl_confirm", node="hitl_confirm", extension_id="core",
+             description="Zatrzymanie i prośba do użytkownika o potwierdzenie przed ważnym krokiem",
+             when_to_use="Przed krokiem, który użytkownik powinien zatwierdzić (np. utworzenie wersji roboczej e-maila)",
+             when_not_to_use="Przed template_pdf — parametry dokumentu i tak są pokazywane do potwierdzenia"),
+]
+
+
+def default_dirs() -> list[Path]:
+    dirs = [PROJECT_ROOT / "extensions"]
+    for part in os.environ.get("HAPILOT_EXTENSIONS_DIRS", "").split(os.pathsep):
+        if part.strip():
+            dirs.append(Path(part.strip()).expanduser())
+    return dirs
+
+
+def _schema() -> dict:
+    return json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))
+
+
+def validate_manifest(data: Any) -> list[str]:
+    """Schema problems of a manifest (empty list = valid)."""
+    import jsonschema
+
+    validator = jsonschema.Draft202012Validator(_schema())
+    return [f"{'/'.join(map(str, e.absolute_path)) or '(root)'}: {e.message}" for e in validator.iter_errors(data)]
+
 
 class ExtensionManager:
-    """Singleton manager for all extensions.
+    def __init__(self, dirs: Optional[list[Path]] = None):
+        self.dirs = [Path(d) for d in dirs] if dirs is not None else None
+        self.reset()
 
-    Import the module-level `extension_manager` instance.
-    """
-
-    _instance: Optional["ExtensionManager"] = None
-
-    def __new__(cls) -> "ExtensionManager":
-        if cls._instance is None:
-            inst = super().__new__(cls)
-            inst._manifests: Dict[str, ExtensionManifest] = {}
-            inst._node_functions: Dict[str, Callable] = {}
-            inst._tool_definitions: List[ToolDefinition] = []
-            inst._extension_instances: Dict[str, BaseExtension] = {}
-            inst._loaded: bool = False
-            inst._node_labels: Dict[str, str] = {}
-            inst._node_descriptions: Dict[str, str] = {}
-            inst._node_edges: Dict[str, Dict[str, str]] = {}
-            cls._instance = inst
-        return cls._instance
-
-    # ------------------------------------------------------------------ #
-    # Discovery & Loading                                                  #
-    # ------------------------------------------------------------------ #
-
-    def discover_and_load(self, extensions_dir: str = None) -> None:
-        """Discover and load all extensions from the extensions/ directory.
-
-        Args:
-            extensions_dir: Path to the extensions directory.
-                            Defaults to <project_root>/extensions/
-        """
-        if self._loaded:
-            print("⚠️ [EXT MANAGER] Extensions already loaded, skipping re-discovery")
-            return
-
-        if extensions_dir is None:
-            project_root = os.path.abspath(
-                os.path.join(os.path.dirname(__file__), "..", "..")
-            )
-            extensions_dir = os.path.join(project_root, "extensions")
-
-        if not os.path.isdir(extensions_dir):
-            print(f"⚠️ [EXT MANAGER] Extensions directory not found: {extensions_dir}")
-            os.makedirs(extensions_dir, exist_ok=True)
-            print(f"📁 [EXT MANAGER] Created empty extensions directory: {extensions_dir}")
-            self._loaded = True
-            return
-
-        # Scan for extension directories containing manifest
-        discovered = []
-        for entry in sorted(os.listdir(extensions_dir)):
-            ext_dir = os.path.join(extensions_dir, entry)
-            manifest_path = None
-            for candidate in ["hapilot_extension.json", "extension.json"]:
-                cp = os.path.join(ext_dir, candidate)
-                if os.path.isfile(cp):
-                    manifest_path = cp
-                    break
-
-            if os.path.isdir(ext_dir) and manifest_path:
-                try:
-                    manifest = self._load_manifest(manifest_path, ext_dir)
-                    if manifest.enabled:
-                        discovered.append(manifest)
-                    else:
-                        print(f"   ⏸️  [{manifest.id}] Disabled — skipping")
-                except Exception as e:
-                    print(f"   ❌ [{entry}] Manifest error: {e}")
-
-        print(f"🔍 [EXT MANAGER] Discovered {len(discovered)} extension(s) in {extensions_dir}")
-
-        # Load extensions in order (respecting dependencies would go here)
-        for manifest in discovered:
-            try:
-                self._load_extension(manifest, extensions_dir)
-            except Exception as e:
-                print(f"   ❌ [{manifest.id}] Load error: {e}")
-                import traceback
-                traceback.print_exc()
-
-        self._loaded = True
-        print(
-            f"✅ [EXT MANAGER] Loaded {len(self._manifests)} extension(s): "
-            f"{', '.join(self._manifests.keys())}"
-        )
-
-    def _load_manifest(self, manifest_path: str, ext_dir: str) -> ExtensionManifest:
-        """Parse and validate an extension manifest JSON file."""
-        with open(manifest_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        required_fields = ["id", "name"]
-        for field_name in required_fields:
-            if field_name not in data:
-                raise ValueError(f"Missing required field: {field_name}")
-
-        manifest = ExtensionManifest(
-            id=data["id"],
-            name=data["name"],
-            version=data.get("version", "0.1.0"),
-            description=data.get("description", ""),
-            author=data.get("author", ""),
-            license=data.get("license", ""),
-            enabled=data.get("enabled", True),
-            directory=os.path.abspath(ext_dir),
-            routes=data.get("routes", []),
-            nodes=data.get("nodes", []),
-            tools=data.get("tools", []),
-            prompts=data.get("prompts", {}),
-            config_schema=data.get("config_schema", {}),
-            dependencies=data.get("dependencies", {}),
-            node_label=data.get("node_label", ""),
-            node_description=data.get("node_description", ""),
-        )
-        return manifest
-
-    def _load_extension(self, manifest: ExtensionManifest, extensions_dir: str) -> None:
-        """Load a single extension: register its routes, nodes, tools, prompts."""
-        ext_id = manifest.id
-        ext_dir = manifest.directory
-
-        print(f"   📦 Loading [{ext_id}] v{manifest.version}: {manifest.name}")
-
-        # Add extension directory to sys.path so its modules can be imported
-        if ext_dir not in sys.path:
-            sys.path.insert(0, ext_dir)
-
-        # 1. Register routes
-        for route_data in manifest.routes:
-            route = RouteDefinition(
-                id=route_data.get("id", ""),
-                name=route_data.get("name", ext_id),
-                description=route_data.get("description", manifest.description),
-                keywords_hint=route_data.get("keywords_hint", []),
-                router_example=route_data.get("router_example", ""),
-                extension_id=ext_id,
-                priority=route_data.get("priority", 0),
-            )
-            route_registry.register(route)
-
-        # 2. Register nodes (import the actual Python functions)
-        for node_data in manifest.nodes:
-            node_name = node_data["name"]
-            entry_point = node_data.get("entry_point", "")
-
-            if entry_point:
-                func = self._import_entry_point(entry_point, ext_dir)
-                if func:
-                    self._node_functions[node_name] = func
-                    print(f"      🔧 Node '{node_name}' → {entry_point}")
-
-            # Store edge definitions for graph construction
-            edges = node_data.get("edges", {})
-            if edges:
-                self._node_edges[node_name] = edges
-
-        # Store UI metadata
-        if manifest.node_label:
-            for node_data in manifest.nodes:
-                self._node_labels[node_data["name"]] = manifest.node_label
-        if manifest.node_description:
-            for node_data in manifest.nodes:
-                self._node_descriptions[node_data["name"]] = manifest.node_description
-
-        # Also check per-node labels
-        for node_data in manifest.nodes:
-            if "label" in node_data:
-                self._node_labels[node_data["name"]] = node_data["label"]
-            if "description" in node_data:
-                self._node_descriptions[node_data["name"]] = node_data["description"]
-
-        # 3. Register tools
-        for tool_data in manifest.tools:
-            tool_def = ToolDefinition(
-                name=tool_data.get("name", ""),
-                planner_description=tool_data.get("planner_description", ""),
-                planner_when_to_use=tool_data.get("planner_when_to_use", ""),
-                planner_when_not_to_use=tool_data.get("planner_when_not_to_use", ""),
-                extension_id=ext_id,
-            )
-            self._tool_definitions.append(tool_def)
-            print(f"      🔧 Tool '{tool_def.name}'")
-
-        # 4. Register prompts
-        for role, prompt_source in manifest.prompts.items():
-            if prompt_source.endswith(".txt"):
-                # Load from file
-                prompt_path = os.path.join(ext_dir, prompt_source)
-                if os.path.isfile(prompt_path):
-                    with open(prompt_path, "r", encoding="utf-8") as f:
-                        prompt_text = f.read()
-                    prompt_registry.register(role, prompt_text, source=ext_id)
-                else:
-                    print(f"      ⚠️ Prompt file not found: {prompt_path}")
-            else:
-                # Inline prompt string
-                prompt_registry.register(role, prompt_source, source=ext_id)
-
-        # 5. Store manifest
-        self._manifests[ext_id] = manifest
-
-        # 6. Instantiate extension class if provided
-        ext_class_entry = None
-        for node_data in manifest.nodes:
-            if "extension_class" in node_data:
-                ext_class_entry = node_data["extension_class"]
-                break
-
-        if ext_class_entry:
-            ext_class = self._import_entry_point(ext_class_entry, ext_dir)
-            if ext_class and isinstance(ext_class, type) and issubclass(ext_class, BaseExtension):
-                config = {}  # Could load from config file
-                instance = ext_class(ext_id, config)
-                instance.on_load()
-                self._extension_instances[ext_id] = instance
-
-    def _import_entry_point(self, entry_point: str, ext_dir: str) -> Optional[Callable]:
-        """Import a function or class from an entry point string.
-
-        Format: "module_name:function_name" (e.g. "nodes:run_coder")
-        """
-        if ":" not in entry_point:
-            print(f"      ⚠️ Invalid entry_point format: {entry_point} (expected 'module:name')")
-            return None
-
-        module_name, attr_name = entry_point.split(":", 1)
-
-        try:
-            # Try importing as a module within the extension directory
-            module_path = os.path.join(ext_dir, f"{module_name}.py")
-            if os.path.isfile(module_path):
-                spec = importlib.util.spec_from_file_location(
-                    f"ext_{os.path.basename(ext_dir)}_{module_name}",
-                    module_path,
-                )
-                module = importlib.util.module_from_spec(spec)
-                sys.modules[spec.name] = module
-                spec.loader.exec_module(module)
-                return getattr(module, attr_name, None)
-            else:
-                # Try standard import
-                module = importlib.import_module(module_name)
-                return getattr(module, attr_name, None)
-        except Exception as e:
-            print(f"      ❌ Failed to import {entry_point}: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-
-    # ------------------------------------------------------------------ #
-    # Queries                                                               #
-    # ------------------------------------------------------------------ #
-
-    def get_all_node_functions(self) -> Dict[str, Callable]:
-        """Return all registered node functions: {name: callable}."""
-        return dict(self._node_functions)
-
-    def get_all_tools(self) -> List[ToolDefinition]:
-        """Return all registered tool definitions."""
-        return list(self._tool_definitions)
-
-    def get_all_manifests(self) -> List[ExtensionManifest]:
-        """Return all loaded extension manifests."""
-        return list(self._manifests.values())
-
-    def get_node_labels(self) -> Dict[str, str]:
-        """Return node_name -> UI label mapping."""
-        return dict(self._node_labels)
-
-    def get_node_descriptions(self) -> Dict[str, str]:
-        """Return node_name -> UI description mapping."""
-        return dict(self._node_descriptions)
-
-    def get_node_edges(self) -> Dict[str, Dict[str, str]]:
-        """Return node_name -> edges mapping."""
-        return dict(self._node_edges)
-
-    def get_planner_tools_fragment(self) -> str:
-        """Generate the dynamic tools section for the planner prompt.
-
-        Returns a formatted string listing all registered tools with their
-        descriptions, suitable for injection into the planner system prompt.
-        """
-        lines = []
-        for tool in self._tool_definitions:
-            line = f"- {tool.name}"
-            if tool.planner_when_to_use:
-                line += f"\n  KIEDY UŻYWAĆ: {tool.planner_when_to_use}"
-            elif tool.planner_description:
-                line += f"\n  {tool.planner_description}"
-            if tool.planner_when_not_to_use:
-                line += f"\n  KIEDY NIE UŻYWAĆ: {tool.planner_when_not_to_use}"
-            lines.append(line)
-        return "\n".join(lines)
-
-    def get_planner_tool_names(self) -> List[str]:
-        """Return list of all tool names known to the planner."""
-        return [t.name for t in self._tool_definitions]
-
-    # ------------------------------------------------------------------ #
-    # Lifecycle hooks                                                       #
-    # ------------------------------------------------------------------ #
-
-    def emit_hook(self, hook_name: str, **kwargs) -> Optional[dict]:
-        """Emit a lifecycle hook to all loaded extension instances.
-
-        Args:
-            hook_name: Name of the hook method (e.g. "on_before_route")
-            **kwargs: Arguments to pass to the hook
-
-        Returns:
-            The last non-None result from any extension, or None.
-        """
-        result = None
-        for ext_id, instance in self._extension_instances.items():
-            method = getattr(instance, hook_name, None)
-            if method and callable(method):
-                try:
-                    hook_result = method(**kwargs)
-                    if hook_result is not None:
-                        result = hook_result
-                except Exception as e:
-                    print(f"⚠️ [EXT MANAGER] Hook {hook_name} error in {ext_id}: {e}")
-        return result
-
-    def unload_all(self) -> None:
-        """Unload all extensions (call on_unload hooks)."""
-        for ext_id, instance in self._extension_instances.items():
-            try:
-                instance.on_unload()
-            except Exception as e:
-                print(f"⚠️ [EXT MANAGER] Unload error in {ext_id}: {e}")
-        self._extension_instances.clear()
-
-    # ------------------------------------------------------------------ #
-    # Graph Building                                                        #
-    # ------------------------------------------------------------------ #
-
-    def build_graph(self):
-        """Build and compile a LangGraph StateGraph from all loaded extensions.
-
-        Returns:
-            Compiled LangGraph application ready for .invoke() or .stream().
-        """
-        from src.agent_graph import build_dynamic_graph
-        return build_dynamic_graph(self)
+    # ------------------------------------------------------------------ loading
+    def reset(self) -> None:
+        self._manifests: dict[str, ExtensionManifest] = {}
+        self._nodes: dict[str, NodeSpec] = {}
+        self._tools: dict[str, ToolSpec] = {}
+        self._hooks: dict[str, BaseExtension] = {}
+        self.errors: list[str] = []
+        self.warnings: list[str] = []
+        self._loaded = False
 
     def is_loaded(self) -> bool:
-        """Check if extensions have been discovered and loaded."""
         return self._loaded
 
-    def reset(self) -> None:
-        """Reset the manager (used in testing)."""
-        self._manifests.clear()
-        self._node_functions.clear()
-        self._tool_definitions.clear()
-        self._extension_instances.clear()
-        self._node_labels.clear()
-        self._node_descriptions.clear()
-        self._node_edges.clear()
-        self._loaded = False
-        route_registry.clear()
-        prompt_registry.clear()
+    def discover_and_load(self) -> None:
+        if self._loaded:
+            return
+        self._register_core_prompts()
+        candidates = []
+        for directory in (self.dirs if self.dirs is not None else default_dirs()):
+            if not directory.is_dir():
+                self.warnings.append(f"extensions folder not found: {directory}")
+                continue
+            for ext_dir in sorted(p for p in directory.iterdir() if (p / MANIFEST).is_file()):
+                manifest = self._read_manifest(ext_dir)
+                if manifest is not None and manifest.enabled:
+                    candidates.append(manifest)
+                elif manifest is not None:
+                    print(f"   ⏸️  [{manifest.id}] disabled — skipping")
+        staged = [s for s in (self._stage(m) for m in candidates) if s is not None]
+        for item in self._check_links(staged):
+            self._commit(*item)
+        self._loaded = True
+        for problem in self.errors:
+            print(f"   ❌ [EXT MANAGER] {problem}")
+        print(f"✅ [EXT MANAGER] Loaded {len(self._manifests)} extension(s): {', '.join(self._manifests)}")
+
+    def _register_core_prompts(self) -> None:
+        for path in sorted(CORE_PROMPTS.glob("*.txt")):
+            prompt_registry.register(path.stem, path.read_text(encoding="utf-8"), source="core")
+
+    def _read_manifest(self, ext_dir: Path) -> Optional[ExtensionManifest]:
+        try:
+            data = json.loads((ext_dir / MANIFEST).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            self.errors.append(f"{ext_dir.name}: cannot read {MANIFEST}: {exc}")
+            return None
+        problems = validate_manifest(data)
+        if problems:
+            self.errors.append(f"{ext_dir.name}: invalid manifest — " + "; ".join(problems[:5]))
+            return None
+        if "routes" in data:
+            self.warnings.append(f"{data['id']}: 'routes' is ignored (the router follows the plan)")
+        return ExtensionManifest(id=data["id"], name=data["name"], version=data.get("version", "0.0.0"),
+                                 description=data.get("description", ""), author=data.get("author", ""),
+                                 license=data.get("license", ""), enabled=data.get("enabled", True),
+                                 directory=str(ext_dir.resolve()), raw=data)
+
+    def _import(self, ext_dir: Path, entry_point: str, ext_id: str) -> Any:
+        module_name, attr = entry_point.split(":", 1)
+        path = ext_dir / f"{module_name}.py"
+        if not path.is_file():
+            raise ExtensionError(f"{entry_point}: {path.name} not found")
+        if str(ext_dir) not in sys.path:
+            sys.path.insert(0, str(ext_dir))  # lets the extension import its own helper modules
+        qualified = f"hapilot_ext_{ext_id}_{module_name}"
+        module = sys.modules.get(qualified)
+        if module is None:
+            spec = importlib.util.spec_from_file_location(qualified, path)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[qualified] = module
+            try:
+                spec.loader.exec_module(module)
+            except Exception as exc:
+                sys.modules.pop(qualified, None)
+                raise ExtensionError(f"{entry_point}: import failed: {type(exc).__name__}: {exc}") from exc
+        if not hasattr(module, attr):
+            raise ExtensionError(f"{entry_point}: {module_name}.py has no {attr!r}")
+        return getattr(module, attr)
+
+    def _stage(self, m: ExtensionManifest):
+        """Import everything an extension needs; nothing is registered yet."""
+        ext_dir = Path(m.directory)
+        try:
+            if m.id in self._manifests:
+                raise ExtensionError("an extension with this id is already loaded")
+            nodes = []
+            for n in m.raw.get("nodes", []):
+                func = self._import(ext_dir, n["entry_point"], m.id)
+                if not callable(func):
+                    raise ExtensionError(f"{n['entry_point']} is not callable")
+                nodes.append(NodeSpec(name=n["name"], extension_id=m.id, func=func, label=n.get("label", ""),
+                                      description=n.get("description", ""), then=n.get("then"),
+                                      after=n.get("after", {"policy": "plan"})))
+            node_names = {n.name for n in nodes}
+            tools = []
+            for t in m.raw.get("tools", []):
+                target = t.get("node") or (nodes[0].name if nodes else None)
+                if target is None or target not in node_names:
+                    raise ExtensionError(f"tool {t['name']!r} needs a node of this extension (got {target!r})")
+                tools.append(ToolSpec(name=t["name"], node=target, extension_id=m.id, description=t["description"],
+                                      when_to_use=t.get("when_to_use", ""), when_not_to_use=t.get("when_not_to_use", ""),
+                                      example=t.get("example", ""), aliases=list(t.get("aliases", []))))
+            prompts = {}
+            for role, source in m.raw.get("prompts", {}).items():
+                if source.endswith(".txt"):
+                    path = ext_dir / source
+                    if not path.is_file():
+                        raise ExtensionError(f"prompt file {source} not found")
+                    prompts[role] = path.read_text(encoding="utf-8")
+                else:
+                    prompts[role] = source
+            hooks = None
+            if m.raw.get("hooks"):
+                cls = self._import(ext_dir, m.raw["hooks"], m.id)
+                if not (isinstance(cls, type) and issubclass(cls, BaseExtension)):
+                    raise ExtensionError(f"hooks {m.raw['hooks']} must be a subclass of BaseExtension")
+                hooks = cls(m.id, dict(m.raw.get("config", {})))
+            return m, nodes, tools, prompts, hooks
+        except ExtensionError as exc:
+            self.errors.append(f"{m.id}: {exc}")
+            return None
+
+    def _check_links(self, staged: list) -> list:
+        """Drop extensions whose node/tool names collide or whose edges point at missing nodes."""
+        ok, nodes, tools = [], {"task_planner", "router", "hitl_confirm"}, {t.name for t in CORE_TOOLS}
+        for item in staged:
+            m, ext_nodes, ext_tools = item[0], item[1], item[2]
+            clash = [n.name for n in ext_nodes if n.name in nodes] + [t.name for t in ext_tools if t.name in tools]
+            if clash:
+                self.errors.append(f"{m.id}: names already used by another extension or the core: {', '.join(clash)}")
+                continue
+            nodes.update(n.name for n in ext_nodes)
+            tools.update(t.name for t in ext_tools)
+            ok.append(item)
+        result = []
+        for item in ok:
+            m, ext_nodes = item[0], item[1]
+            missing = [x for n in ext_nodes for x in (n.then, n.after.get("retry_to")) if x and x not in nodes]
+            if missing:
+                self.errors.append(f"{m.id}: edges point at unknown nodes: {', '.join(missing)}")
+                continue
+            result.append(item)
+        return result
+
+    def _commit(self, m, nodes, tools, prompts, hooks) -> None:
+        self._manifests[m.id] = m
+        for n in nodes:
+            self._nodes[n.name] = n
+        for t in tools:
+            self._tools[t.name] = t
+        for role, text in prompts.items():
+            prompt_registry.register(role, text, source=m.id)
+        if hooks is not None:
+            hooks.on_load()
+            self._hooks[m.id] = hooks
+            atexit.register(hooks.on_unload)
+        print(f"   📦 [{m.id}] v{m.version}: nodes {', '.join(n.name for n in nodes) or '—'}; "
+              f"tools {', '.join(t.name for t in tools) or '—'}")
+
+    # ------------------------------------------------------------------ queries
+    def get_all_manifests(self) -> list[ExtensionManifest]:
+        return list(self._manifests.values())
+
+    def get_node_specs(self) -> dict[str, NodeSpec]:
+        return dict(self._nodes)
+
+    def get_all_node_functions(self) -> dict[str, Callable]:
+        return {name: spec.func for name, spec in self._nodes.items()}
+
+    def get_tools(self) -> list[ToolSpec]:
+        """Planner catalog: extension tools (in load order) followed by core tools."""
+        return list(self._tools.values()) + CORE_TOOLS
+
+    def get_planner_tool_names(self) -> list[str]:
+        return [t.name for t in self.get_tools()]
+
+    def tool_node_map(self) -> dict[str, str]:
+        """Tool name (and alias) → node. Real tool names win over aliases; the first alias wins."""
+        mapping = {t.name: t.node for t in self.get_tools()}
+        for t in self.get_tools():
+            for alias in t.aliases:
+                mapping.setdefault(alias, t.node)
+        return mapping
+
+    def get_node_labels(self) -> dict[str, str]:
+        return {n: s.label for n, s in self._nodes.items() if s.label}
+
+    def get_node_descriptions(self) -> dict[str, str]:
+        return {n: s.description for n, s in self._nodes.items() if s.description}
+
+    def get_config(self, ext_id: str) -> dict:
+        """The ``config`` object of a loaded extension's manifest (empty if none)."""
+        m = self._manifests.get(ext_id)
+        return dict(m.raw.get("config", {})) if m else {}
+
+    # ------------------------------------------------------------------ hooks
+    def before_route(self, state: dict) -> Optional[dict]:
+        """Ask hooks before routing; the last non-empty answer wins (it may set ``next_step``)."""
+        result = None
+        for ext_id, hooks in self._hooks.items():
+            try:
+                answer = hooks.on_before_route(state)
+                if answer:
+                    result = answer
+            except Exception as exc:
+                print(f"⚠️ [EXT MANAGER] on_before_route of {ext_id} failed: {exc}")
+        return result
+
+    def after_node(self, node_name: str, state: dict, output: dict) -> dict:
+        """Let hooks observe or replace a node's output."""
+        for ext_id, hooks in self._hooks.items():
+            try:
+                changed = hooks.on_after_node(node_name, state, output)
+                if changed is not None:
+                    output = changed
+            except Exception as exc:
+                print(f"⚠️ [EXT MANAGER] on_after_node of {ext_id} failed: {exc}")
+        return output
+
+    def unload_all(self) -> None:
+        for hooks in self._hooks.values():
+            try:
+                hooks.on_unload()
+            except Exception:
+                pass
+        self._hooks.clear()
 
 
-# Module-level singleton
+# The default manager (extensions/ + HAPILOT_EXTENSIONS_DIRS) and the one the running graph was built with
 extension_manager = ExtensionManager()
+_active: ExtensionManager = extension_manager
+
+
+def set_active(manager: ExtensionManager) -> None:
+    global _active
+    _active = manager
+
+
+def get_active() -> ExtensionManager:
+    return _active
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    """Validate and list extensions: ``python -m src.core.extension_manager [DIR ...]``."""
+    args = sys.argv[1:] if argv is None else argv
+    manager = ExtensionManager([Path(a) for a in args] if args else None)
+    manager.discover_and_load()
+    for t in manager.get_tools():
+        print(f"tool {t.name:16s} → node {t.node:20s} ({t.extension_id})")
+    for w in manager.warnings:
+        print(f"warning: {w}")
+    for e in manager.errors:
+        print(f"ERROR: {e}")
+    return 1 if manager.errors else 0
+
+
+if __name__ == "__main__":
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    raise SystemExit(main())

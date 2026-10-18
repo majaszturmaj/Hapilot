@@ -1,43 +1,31 @@
 {
+  "manifest_version": 1,
   "id": "document_modifier",
   "name": "Document Modifier",
-  "version": "1.0.0",
-  "description": "Update, correct, or change an existing document",
+  "version": "1.1.0",
+  "description": "Changes to a document generated earlier in the same chat",
   "author": "Hapilot Team",
   "license": "MIT",
-
-  "routes": [
-    {
-      "id": "E",
-      "name": "modify_document",
-      "description": "MODYFIKACJA DOKUMENTU (Zmień datę, popraw adres, zaktualizuj tekst w istniejącym dokumencie)",
-      "keywords_hint": ["zmień", "popraw", "zaktualizuj", "zmodyfikuj", "edytuj"],
-      "router_example": "\"Zmień datę na 7 marca\" -> E"
-    }
-  ],
-
+  "enabled": true,
   "nodes": [
     {
       "name": "modify_document",
       "entry_point": "nodes:run_modify_document",
       "label": "📝 Modyfikacja dokumentu",
-      "description": "Modyfikacja istniejącego dokumentu LaTeX i rekompilacja do PDF"
+      "description": "Zmiana dokumentu i ponowne wygenerowanie PDF",
+      "after": {
+        "policy": "on_success"
+      }
     }
   ],
-
   "tools": [
     {
       "name": "modify_document",
-      "planner_description": "Modify an existing LaTeX document and recompile to PDF",
-      "planner_when_to_use": "Updating, correcting, or changing an EXISTING (recently generated) document",
-      "planner_when_not_to_use": ""
-    },
-    {
-      "name": "read_previous_output",
-      "planner_description": "Read a previously generated file from the sandbox",
-      "planner_when_to_use": "When needing to reference a previously generated document"
+      "description": "Zmiana dokumentu wygenerowanego wcześniej w tej rozmowie (data, adres, treść) i nowy PDF",
+      "when_to_use": "Użytkownik prosi o poprawkę dokumentu, który Hapilot już wygenerował w tej rozmowie",
+      "when_not_to_use": "Nowy dokument (użyj template_pdf); przeredagowanie tekstu z czatu (użyj llm_synthesis)",
+      "example": "„Zmień datę w tym piśmie na 7 marca 2026” → modify_document"
     }
   ],
-
   "prompts": {}
 }

@@ -1,40 +1,27 @@
 {
+  "manifest_version": 1,
   "id": "rag_knowledge",
   "name": "Knowledge Base / RAG",
-  "version": "1.0.0",
-  "description": "Company procedures, regulations — answers from ChromaDB vector database",
+  "version": "1.1.0",
+  "description": "Answers from company documents (hybrid search in the local knowledge base)",
   "author": "Hapilot Team",
   "license": "MIT",
-  "routes": [
-    {
-      "id": "B",
-      "name": "knowledge",
-      "description": "WIEDZA I NARZĘDZIA (Procedury firmy, RAG search, sprawdzanie wiedzy, pytania o informacje)",
-      "keywords_hint": [
-        "procedura",
-        "regulamin",
-        "zasady",
-        "jak",
-        "co robić",
-        "kalendarz"
-      ],
-      "router_example": "\"Co mam robić w razie pożaru?\" -> B"
-    }
-  ],
+  "enabled": true,
   "nodes": [
     {
       "name": "knowledge",
       "entry_point": "nodes:run_knowledge",
       "label": "🧠 Baza wiedzy (RAG)",
-      "description": "Przeszukiwanie dokumentów firmowych za pomocą RAG"
+      "description": "Przeszukiwanie dokumentów firmowych"
     }
   ],
   "tools": [
     {
       "name": "rag_search",
-      "planner_description": "Search company documentation (RAG)",
-      "planner_when_to_use": "Looking for procedures, regulations, facts from company documents. Mandatory first step when query relates to institutional rules/docs.",
-      "planner_when_not_to_use": ""
+      "description": "Wyszukiwanie w dokumentach firmy (regulaminy, procedury, umowy, cenniki, korespondencja, arkusze) i odpowiedź ze źródłami",
+      "when_to_use": "Pytania o fakty z dokumentów firmy — zawsze przed odpowiedzią lub dokumentem, który ma się na nich opierać",
+      "when_not_to_use": "Powitania, kontynuacja rozmowy, przeredagowanie poprzedniej odpowiedzi; brak wyników nie blokuje dalszych kroków",
+      "example": "„Ile dni wcześniej składa się wniosek urlopowy?” → rag_search"
     }
   ],
   "prompts": {

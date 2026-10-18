@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased (stage 3: extension SDK)
+
+Behaviour change after `eval-v1`: the planner prompt is now built from the extension manifests (same tools,
+reworded descriptions). Evaluation runs record the commit, so results of `eval-v1` and later builds stay apart.
+
+- Manifest version 1 (`hapilot_extension.json`, schema `docs/schemas/extension.schema.json`): nodes with
+  their edges (`then`, or `after.policy` `plan` / `on_success` / `retry`), planner tools with Polish
+  descriptions (`when_to_use`, `when_not_to_use`, `example`) and aliases, prompts, hooks, config. All
+  built-in extensions migrated.
+- The planner's tool catalog, the router's tool → node map and the graph's edges come from the loaded
+  manifests; the hard-coded tool descriptions, edges and the unused route registry were removed. The planner
+  system prompt moved to `src/core/prompts/task_planner.txt`.
+- Loading checks: schema, imports, prompt files, duplicate node/tool names, edges to unknown nodes; a
+  failing extension is skipped with a reason. `python -m src.core.extension_manager [DIR ...]` lists tools
+  and errors.
+- Extensions outside the repository: `HAPILOT_EXTENSIONS_DIRS`.
+- Hooks (`BaseExtension`): `on_before_route` can redirect a step, `on_after_node` can observe or replace a
+  node's output; both now run.
+- Example extension `examples/extensions/vat_calculator` (deterministic VAT node, hooks, config) and a
+  rewritten `docs/extension_development.md`.
+
 ## eval-v1 — 2026-10-18 (stage 2: evaluation readiness)
 
 Frozen evaluation interface (docs/EVALUATION_INTERFACE.md). Behaviour changes after this tag go to later tags.

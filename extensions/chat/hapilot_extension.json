@@ -1,21 +1,12 @@
 {
+  "manifest_version": 1,
   "id": "chat",
   "name": "Chat / Conversation",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "General conversation and casual interaction",
   "author": "Hapilot Team",
   "license": "MIT",
-
-  "routes": [
-    {
-      "id": "C",
-      "name": "chat",
-      "description": "CZAT (Rozmowa ogólna, powitania, zwykłe pytania)",
-      "keywords_hint": ["cześć", "hej", "jak się masz", "dzięki", "hello"],
-      "router_example": "\"Cześć, jak się masz?\" -> C"
-    }
-  ],
-
+  "enabled": true,
   "nodes": [
     {
       "name": "chat",
@@ -24,15 +15,15 @@
       "description": "Generowanie odpowiedzi konwersacyjnej"
     }
   ],
-
   "tools": [
     {
       "name": "chat",
-      "planner_description": "Casual conversation with user",
-      "planner_when_to_use": "Simple greetings, casual questions, confirmations, rejections"
+      "description": "Zwykła rozmowa z użytkownikiem",
+      "when_to_use": "Powitania, luźna rozmowa, podziękowania, zgoda lub odmowa, pytania o samego asystenta",
+      "when_not_to_use": "Pytania o procedury, umowy, cenniki lub inne fakty z dokumentów firmy (użyj rag_search)",
+      "example": "„Jak tam dzień minął?” → chat"
     }
   ],
-
   "prompts": {
     "chat": "prompts/chat.txt"
   }

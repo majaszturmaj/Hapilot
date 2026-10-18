@@ -1,40 +1,35 @@
 {
+  "manifest_version": 1,
   "id": "document_generator",
   "name": "PDF Document Generator",
-  "version": "1.0.0",
-  "description": "Generate PDF documents from LaTeX templates (letters, reports, protocols)",
+  "version": "1.1.0",
+  "description": "Letters, reports and meeting minutes as PDF from LaTeX templates",
   "author": "Hapilot Team",
   "license": "MIT",
-
-  "routes": [
-    {
-      "id": "A",
-      "name": "document_generator",
-      "description": "GENEROWANIE DOKUMENTU PDF (Generowanie PDF, raporty, podania, listy, protokoły, dokumenty formalne)",
-      "keywords_hint": ["PDF", "raport", "podanie", "list", "protokół", "dokument", "pismo", "wniosek"],
-      "router_example": "\"Napisz podanie o urlop\" -> A",
-      "priority": 1
-    }
-  ],
-
+  "enabled": true,
   "nodes": [
     {
       "name": "document_generator",
       "entry_point": "nodes:run_document_generator",
       "label": "📄 Generator dokumentów PDF",
-      "description": "Wybór szablonu LaTeX i generowanie dokumentu PDF"
+      "description": "Wybór szablonu LaTeX i generowanie dokumentu PDF",
+      "after": {
+        "policy": "on_success"
+      }
     }
   ],
-
   "tools": [
     {
       "name": "template_pdf",
-      "planner_description": "Generate a new PDF from a LaTeX template. System automatically asks user for parameter confirmation (HITL).",
-      "planner_when_to_use": "Creating NEW formal documents (letters, reports, protocols, applications). Always use for new document creation.",
-      "planner_when_not_to_use": "Never use for editing existing documents. Never use coder/latex as alternative."
+      "description": "Nowy dokument PDF z szablonu (list/podanie/wniosek, raport, protokół); parametry dokumentu użytkownik może sprawdzić przed wygenerowaniem",
+      "when_to_use": "Użytkownik prosi o NOWY dokument jako PDF (pismo, podanie, wniosek, raport, protokół)",
+      "when_not_to_use": "Zmiana dokumentu już wygenerowanego (użyj modify_document); odpowiedź na pytanie bez prośby o dokument; prośba „bez PDF” lub „tylko tekst”",
+      "example": "„Napisz podanie o urlop” → template_pdf",
+      "aliases": [
+        "latex"
+      ]
     }
   ],
-
   "prompts": {
     "template_filler": "prompts/template_filler.txt"
   }

@@ -1,0 +1,22 @@
+{
+  "manifest_version": 1,
+  "id": "vat_calculator",
+  "name": "VAT calculator (example extension)",
+  "version": "1.0.0",
+  "description": "Example extension: computes Polish VAT without a language model, shows nodes, tools, hooks and config.",
+  "author": "Hapilot Team",
+  "license": "MIT",
+  "enabled": true,
+  "nodes": [
+    {"name": "vat", "entry_point": "nodes:run_vat", "label": "🧮 Kalkulator VAT", "description": "Przeliczenie netto, VAT i brutto"}
+  ],
+  "tools": [
+    {"name": "vat",
+     "description": "Przeliczenie kwoty netto na brutto (albo brutto na netto) z podatkiem VAT, bez modelu językowego",
+     "when_to_use": "Użytkownik podaje kwotę i chce znać VAT, kwotę brutto albo netto",
+     "when_not_to_use": "Obliczenia inne niż VAT (użyj python)",
+     "example": "„Ile to brutto: 1000 zł netto?” → vat"}
+  ],
+  "hooks": "hooks:VatHooks",
+  "config": {"default_rate": 23}
+}

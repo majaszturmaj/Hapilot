@@ -15,14 +15,20 @@ __start__ → task_planner ─┬─(HITL request / halt)───────�
 ```
 
 - **task_planner** ([src/agent_graph.py](../src/agent_graph.py)) asks the `task_planner` role for a JSON
-  plan (`task_name`, `complexity`, `steps[{id, action, tool, input}]`). Only tools of enabled extensions
-  are offered ([`available_planner_tools`](../src/agent_tools.py)). Deterministic guards then apply:
+  plan (`task_name`, `complexity`, `steps[{id, action, tool, input}]`). The system prompt is
+  [src/core/prompts/task_planner.txt](../src/core/prompts/task_planner.txt); the list of tools with their
+  descriptions (`KIEDY` / `KIEDY NIE` / `PRZYKŁAD`) is built from the manifests of the loaded extensions
+  ([`planner_catalog`](../src/agent_tools.py)), so a disabled extension's tools are never offered.
+  Deterministic guards then apply (each only when its tool is loaded):
   - an edit request (`zmień`, `popraw`, …, matched on word boundaries) becomes a single
     `modify_document` step — only if a document was generated earlier in the session;
   - `template_pdf` steps are removed unless the user asked for a document (`pdf`, `podanie`, `raport`,
     `protokół`, …) and did not say otherwise (`nie rób PDF`, `bez PDF`, `tylko tekst`);
   - under the `ask` approval policy, plans longer than two steps wait for the user's approval.
-- **router** maps the current step's tool to a node without calling a model; no plan → `chat`.
+- **router** maps the current step's tool (or one of its aliases) to the node that provides it, without
+  calling a model; unknown tool or no plan → `chat`. Extension hooks (`on_before_route`) may redirect.
+- The edges after each node come from its manifest (`then`, or `after.policy`: `plan`, `on_success`,
+  `retry`), see [extension_development.md](extension_development.md#edges).
 - After a node finishes its step it calls `_advance_plan_step`; the edge sends the run to the next
   step's node or ends it.
 - **Resuming after the user answers** (plan approval, confirmation, document form, e-mail draft): the
@@ -45,6 +51,14 @@ Per-run values (session id, model profile, approval policy, "today") are not in 
 in LangGraph's run config (`configurable`), see [src/run_context.py](../src/run_context.py).
 
 ## Nodes (extensions)
+
+Extensions are folders with a manifest `hapilot_extension.json` (version 1, schema
+[docs/schemas/extension.schema.json](schemas/extension.schema.json)), loaded by
+[src/core/extension_manager.py](../src/core/extension_manager.py) from `extensions/` and the folders in
+`HAPILOT_EXTENSIONS_DIRS`. Manifests are validated, entry points imported and names and edges checked
+before anything is registered; an extension that fails is skipped with a reason
+(`python -m src.core.extension_manager` lists tools, warnings and errors). How to write one:
+[extension_development.md](extension_development.md). The built-in extensions:
 
 | Node | Extension | What it does |
 |---|---|---|
