@@ -105,6 +105,9 @@ def test_vat_inverse_and_rate():
     spec.loader.exec_module(mod)
     assert "netto: 1 000,00 zł" in mod.calculate("Ile wynosi netto z brutto 1230 zł?")
     assert "VAT: 80,00 zł" in mod.calculate("1000 zł, stawka 8%")
+    # found on the GPU host: the label next to the amount decides the direction
+    assert "netto: 1 500,00 zł" in mod.calculate("Faktura opiewa na 1845 zł brutto (VAT 23%). Ile wynosi kwota netto?")
+    assert "brutto: 3 013,50 zł" in mod.calculate("Ile to brutto: 2450 zł netto przy stawce VAT 23%?")
 
 
 def test_before_route_hook_can_redirect(tmp_path, llm, restore_active):
