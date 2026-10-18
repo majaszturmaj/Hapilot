@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.agent_graph import is_modification_request, wants_document
+from src.agent_graph import explicitly_wants_document, is_modification_request, wants_document
 
 
 @pytest.mark.parametrize("text,has_doc,expected", [
@@ -34,3 +34,19 @@ def test_is_modification_request(text, has_doc, expected):
 ])
 def test_wants_document(text, expected):
     assert wants_document(text) is expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Przygotuj pismo w PDF do firmy Serwis-Wymyślony Sp. z o.o.", True),
+    ("Przygotuj podanie o urlop wypoczynkowy od 3 do 7 listopada 2026.", True),
+    ("Co robić w razie awarii serwera? Przygotuj o tym raport PDF.", True),
+    ("Wygeneruj PDF z protokołem spotkania", True),
+    ("Napisz mi wniosek o zwrot kosztów", True),
+    ("Ile dni przed urlopem trzeba złożyć wniosek?", False),       # a question that mentions a document
+    ("Co jest w raporcie kwartalnym?", False),
+    ("Streść załączony PDF", False),                               # reading a PDF, not creating one
+    ("Napisz e-mail do zespołu o przeglądzie serwerów", False),
+    ("Przygotuj raport, ale bez PDF, tylko tekst", False),
+])
+def test_explicitly_wants_document(text, expected):
+    assert explicitly_wants_document(text) is expected

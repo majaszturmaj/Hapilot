@@ -101,6 +101,15 @@ def test_unrequested_pdf_step_is_removed(graph, invoke, llm):
     assert not any(r == "template_filler" for r, _ in llm.calls)
 
 
+def test_missing_pdf_step_is_added_for_an_explicit_request(graph, invoke, llm, docker):
+    llm.on("task_planner", plan(("llm_synthesis", "Treść", "Treść pisma")))
+    llm.on("writer", "Treść pisma")
+    llm.on("template_filler", LETTER)
+    state = invoke(graph, "Przygotuj pismo w PDF do działu kadr z prośbą o urlop", "s-add-pdf", approval_policy="auto")
+    assert "Wygenerowano plik: letter_" in last_text(state)
+    assert [s["tool"] for s in state["task_plan"]["steps"]] == ["llm_synthesis", "template_pdf"]
+
+
 def test_style_request_without_document_is_not_forced_to_modify(graph, invoke, llm):
     llm.on("task_planner", plan(("llm_synthesis", "Uprość", "Napisz to prościej")))
     llm.on("writer", "Prostsza wersja")

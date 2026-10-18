@@ -24,6 +24,8 @@ __start__ → task_planner ─┬─(HITL request / halt)───────�
     `modify_document` step — only if a document was generated earlier in the session;
   - `template_pdf` steps are removed unless the user asked for a document (`pdf`, `podanie`, `raport`,
     `protokół`, …) and did not say otherwise (`nie rób PDF`, `bez PDF`, `tylko tekst`);
+  - an explicit request to create a document (a creation verb with a document noun or with "PDF", e.g.
+    `przygotuj pismo w PDF`) gets a `template_pdf` step at the end if the plan has none;
   - under the `ask` approval policy, plans longer than two steps wait for the user's approval.
 - **router** maps the current step's tool (or one of its aliases) to the node that provides it, without
   calling a model; unknown tool or no plan → `chat`. Extension hooks (`on_before_route`) may redirect.

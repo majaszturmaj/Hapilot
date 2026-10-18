@@ -20,6 +20,9 @@ reworded descriptions). Evaluation runs record the commit, so results of `eval-v
   node's output; both now run.
 - Example extension `examples/extensions/vat_calculator` (deterministic VAT node, hooks, config) and a
   rewritten `docs/extension_development.md`.
+- Planner prompt rewritten around the catalog (one step per part of the request, the last step delivers
+  it; steps do not pre-decide values or formulas that come from the documents). New guard: an explicit
+  request to create a document gets a `template_pdf` step when the planner left it out (seen with Bielik).
 
 ## eval-v1 — 2026-10-18 (stage 2: evaluation readiness)
 

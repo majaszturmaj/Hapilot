@@ -110,6 +110,11 @@ _DOC_REQUEST = re.compile(
     r"\b(pdf|wygeneruj|wydrukuj|podanie|wniosek|protok[oó][lł]|raport|pismo\s+formalne|list\s+formalny|"
     r"(?:przygotuj|stw[oó]rz|napisz|utw[oó]rz|sporz[aą]d[zź])\s+(?:mi\s+)?(?:dokument|raport|podanie|protok[oó][lł]|pismo|wniosek))\b",
     re.IGNORECASE)
+# Stricter: an explicit request to create a document (a creation verb with a document noun, or with "PDF").
+_DOC_EXPLICIT = re.compile(
+    r"\b(?:przygotuj|stw[oó]rz|napisz|utw[oó]rz|sporz[aą]d[zź]|wygeneruj|zr[oó]b)(?:\s+mi)?\s+"
+    r"(?:(?:dokument|raport|podanie|protok[oó][lł]|pismo|wniosek)\b|[^.?!\n]{0,60}?\bpdf\b)",
+    re.IGNORECASE)
 _DOC_NEGATION = re.compile(
     r"\b(?:nie|bez)\b[^.!?\n]{0,40}?\b(?:pdf\w*|dokument\w*|plik\w*|drukuj\w*)\b|\btylko\s+(?:tekst|w\s+czacie)\b|"
     r"\bw\s+oknie\s+czatu\b", re.IGNORECASE)
@@ -129,6 +134,13 @@ def wants_document(text: str) -> bool:
     if not text or _DOC_NEGATION.search(text):
         return False
     return bool(_DOC_REQUEST.search(text))
+
+
+def explicitly_wants_document(text: str) -> bool:
+    """The user explicitly asks to create a document (stricter than ``wants_document``; used to add a PDF step)."""
+    if not text or _DOC_NEGATION.search(text):
+        return False
+    return bool(_DOC_EXPLICIT.search(text))
 
 
 def _infer_template_hint(text: str) -> Optional[str]:
@@ -201,6 +213,14 @@ def task_planner_node(state: AgentState):
             steps = kept
             if not steps:
                 steps = [{"id": 1, "action": "Odpowiedz na wiadomość", "tool": "llm_synthesis", "input": last_user_msg}]
+    # Guard 3: an explicit request for a new document gets a document step if the plan has none.
+    elif "template_pdf" in tool_names and explicitly_wants_document(last_user_msg):
+        tool_map = _build_dynamic_tool_map()
+        if not any(tool_map.get(s.get("tool", "")) in (tool_map["template_pdf"], "modify_document") for s in steps):
+            print("📄 [PLANNER GUARD] Użytkownik prosi o dokument — dodano krok template_pdf")
+            steps = steps + [{"id": len(steps) + 1, "action": "Przygotuj dokument PDF, o który prosi użytkownik",
+                              "tool": "template_pdf", "input": last_user_msg}]
+            guards.append("added_template_pdf")
     task_plan["steps"] = steps
     task_plan["complexity"] = complexity if len(steps) > 1 else "low"
     is_complex = task_plan["complexity"] in ("medium", "high")
