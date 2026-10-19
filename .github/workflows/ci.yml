@@ -1,5 +1,6 @@
 # Unit tests and lint on every push and pull request. No model, no GPU, no network access
 # from the tests themselves (the egress guard in tests/conftest.py blocks it).
+# The integration suite with real models runs on the GPU host instead (scripts/integration.py, docs/testing.md).
 name: ci
 
 on:
@@ -9,10 +10,16 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.12"]
     steps:
@@ -23,5 +30,13 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-test.txt
       - run: pip install -r requirements-test.txt
-      - run: ruff check src extensions examples tests scripts tools
-      - run: pytest -q
+      - name: Lint
+        run: ruff check src extensions examples tests scripts tools
+      - name: Unit tests (coverage gate in pyproject.toml)
+        run: |
+          coverage run -m pytest -q
+          coverage report
+      - name: Extension manifests load
+        run: |
+          python -m src.core.extension_manager
+          python -m src.core.extension_manager examples/extensions

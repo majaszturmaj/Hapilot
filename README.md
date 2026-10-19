@@ -165,8 +165,10 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-test.txt
 .venv/bin/ruff check src extensions examples tests scripts tools
 ```
 
-Smoke scenarios with real models (GPU host): `.venv/bin/python scripts/hapilotctl.py smoke --profile best-local`
-([tests/scenarios/smoke.yaml](tests/scenarios/smoke.yaml)).
+GitHub Actions runs the unit tests (with a coverage gate) and lint only. With real models, on the GPU host:
+`.venv/bin/python scripts/hapilotctl.py integration` runs the smoke scenarios, a planner check and the
+development tasks for every profile and writes a report; `smoke --profile best-local` runs the smoke
+scenarios alone. Details: [docs/testing.md](docs/testing.md).
 
 Extensions: see [docs/extension_development.md](docs/extension_development.md). Architecture details:
 [docs/architecture.md](docs/architecture.md). Optional MCP servers exposing the knowledge base, templates
