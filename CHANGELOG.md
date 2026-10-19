@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (stage 5: showcase)
+## v0.3.0 — 2026-10-19 (stage 5: showcase)
 
 Behaviour changes after v0.2.0 (the benchmark stays on `eval-v1`).
 
