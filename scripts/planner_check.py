@@ -3,7 +3,8 @@
 
     .venv/bin/python scripts/planner_check.py --model-url http://127.0.0.1:8611/v1 [--profile P] [--repeat N] [--report FILE]
 
-Runs only the planner node (with its guards), not the tools. Approval policy ``auto``. With --repeat N
+Runs only the planner node (with its guards), not the tools. Scenarios with ``attachments`` get the
+attachment listing the UI adds to a message (the files themselves are not needed). Approval policy ``auto``. With --repeat N
 each scenario is planned N times; it passes only if every run passes. Exit code 0 only if all passed.
 """
 
@@ -88,11 +89,13 @@ def plan_once(sc: dict, profile: str, session: str, trace_dir: Optional[Path] = 
 
     from src import run_context, tracing
     from src.agent_graph import task_planner_node
+    from src.attachments import LISTING_PREFIX
 
     messages = []
     if sc.get("has_document"):
         messages += [HumanMessage(content=PRIOR_DOCUMENT[0]), AIMessage(content=PRIOR_DOCUMENT[1])]
-    messages.append(HumanMessage(content=sc["prompt"]))
+    block = f"\n{LISTING_PREFIX}{', '.join(sc['attachments'])}" if sc.get("attachments") else ""
+    messages.append(HumanMessage(content=sc["prompt"] + block))
     state = {"messages": messages, "last_generated_file": "podanie_urlop_20261019_120000.tex" if sc.get("has_document") else "",
              "hitl_response": None}
     with tempfile.TemporaryDirectory() as tmp:

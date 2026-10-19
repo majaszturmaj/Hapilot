@@ -190,3 +190,30 @@ def test_markdown_report_lists_results_and_failures():
     assert "| reference | dev | 1/3 | D03 | D07 | yes | 0 | 12.5 |" in text
     assert "**Result: FAILED**" in text and "reference / dev / D07: no .pdf file created" in text
     assert "reference / dev: D05" in text  # a known failure passed: the baseline can be tightened
+
+
+def test_smoke_file_checks(tmp_path):
+    from docx import Document
+
+    doc = Document()
+    doc.add_paragraph("Termin płatności: 30 dni. Wykonawca.")
+    doc.save(tmp_path / "umowa_zmieniony.docx")
+    answer = "WYNIK:\nSUKCES! Wygenerowano plik: umowa_zmieniony.docx (100 bajtów)"
+    ok = {"file": ".docx", "file_contains": ["30 dni"], "file_not_contains": ["Wykonwaca"]}
+    assert smoke.check(answer, ok, tmp_path) == []
+    assert smoke.check(answer, {"file": ".docx", "file_contains": ["14 dni"], "file_not_contains": ["Wykonawca"]},
+                       tmp_path) == ["umowa_zmieniony.docx lacks '14 dni'", "umowa_zmieniony.docx still has 'Wykonawca'"]
+    assert smoke.check(answer, {"file": ".txt"}, tmp_path) == ["no .txt file generated"]
+
+
+def test_smoke_scenario_attachments_exist():
+    scenarios = yaml.safe_load((ROOT / "tests" / "scenarios" / "smoke.yaml").read_text(encoding="utf-8"))["scenarios"]
+    attached = [a for sc in scenarios for a in sc.get("attachments", [])]
+    assert attached and all((ROOT / a).is_file() for a in attached)
+
+
+def test_planner_scenario_with_attachments_lists_them(llm):
+    llm.on("task_planner", plan("file_summary"))
+    tools, _ = planner_check.plan_once({"id": "f", "prompt": "Streść to.", "attachments": ["raport.pdf"]}, "best-local", "pc-3")
+    assert tools == ["file_summary"]
+    assert "Załączone pliki (dostępne też w katalogu roboczym dla kodu Python): raport.pdf" in llm.prompts_for("task_planner")[0]

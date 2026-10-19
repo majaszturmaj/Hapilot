@@ -1,0 +1,64 @@
+{
+  "manifest_version": 1,
+  "id": "file_tools",
+  "name": "Uploaded files",
+  "version": "1.0.0",
+  "description": "Summarise or edit files the user attached, or add them to the company knowledge base",
+  "author": "Hapilot Team",
+  "license": "MIT",
+  "enabled": true,
+  "nodes": [
+    {
+      "name": "summarize_file",
+      "entry_point": "nodes:run_summarize_file",
+      "label": "📑 Streszczenie pliku",
+      "description": "Czytam cały załączony plik i przygotowuję streszczenie"
+    },
+    {
+      "name": "edit_file",
+      "entry_point": "nodes:run_edit_file",
+      "label": "🖊️ Edycja pliku",
+      "description": "Wprowadzam zmiany w załączonym pliku i zapisuję nową wersję"
+    },
+    {
+      "name": "add_to_knowledge",
+      "entry_point": "nodes:run_add_to_knowledge",
+      "label": "📚 Dodanie do bazy wiedzy",
+      "description": "Dodaję załączony plik do dokumentów firmy"
+    }
+  ],
+  "tools": [
+    {
+      "name": "file_summary",
+      "node": "summarize_file",
+      "description": "Streszczenie całego załączonego pliku (także długiego) albo jego najważniejsze punkty",
+      "when_to_use": "Użytkownik załączył plik i prosi o streszczenie, podsumowanie, najważniejsze informacje lub omówienie tego pliku",
+      "when_not_to_use": "Pytania o dokumenty firmy bez załącznika (rag_search); obliczenia na danych z arkusza (python)",
+      "example": "„Streść załączony raport w pięciu punktach” → file_summary"
+    },
+    {
+      "name": "file_edit",
+      "node": "edit_file",
+      "description": "Zmiana treści załączonego pliku (.docx, .txt, .md; z .pdf lub .eml powstaje .docx) i zapisanie nowej wersji do pobrania",
+      "when_to_use": "Użytkownik załączył plik i prosi o poprawienie, skrócenie, przeredagowanie, uzupełnienie lub zmianę fragmentu tego pliku",
+      "when_not_to_use": "Zmiana pisma PDF wygenerowanego wcześniej w tej rozmowie (modify_document); nowy dokument od zera (template_pdf)",
+      "example": "„Popraw literówki w załączonej umowie i zmień termin płatności na 30 dni” → file_edit"
+    },
+    {
+      "name": "file_to_knowledge",
+      "node": "add_to_knowledge",
+      "description": "Dodanie załączonego pliku do bazy wiedzy firmy na stałe (po potwierdzeniu użytkownika)",
+      "when_to_use": "Użytkownik prosi o dodanie, zapisanie lub zaindeksowanie załączonego pliku w bazie wiedzy lub dokumentach firmy",
+      "when_not_to_use": "Samo pytanie o treść pliku (file_summary) — plik jest wtedy dostępny tylko w tej rozmowie",
+      "example": "„Dodaj ten regulamin parkingu do bazy wiedzy” → file_to_knowledge"
+    }
+  ],
+  "prompts": {
+    "file_assistant": "prompts/file_assistant.txt"
+  },
+  "config": {
+    "single_pass_chars": 12000,
+    "part_chars": 8000,
+    "max_parts": 30
+  }
+}

@@ -37,3 +37,27 @@ scenarios:
     session: s6
     prompt: "Zmień w tym podaniu daty urlopu na 10–14 listopada 2026."
     checks: {pdf: true}
+
+  # Uploaded files (examples/demo_company/uploads). The run uses a temporary knowledge base.
+  - id: file_summary
+    session: s7
+    prompt: "Streść załączony raport kwartalny w kilku punktach. Podaj przychody i zysk operacyjny."
+    attachments: [examples/demo_company/uploads/raport_kwartalny_q3_2026.pdf]
+    checks: {regex: ["4[  ]?860[  ]?000|4,86 mln", "1[  ]?135[  ]?000|1,135 mln|1,14 mln"], min_chars: 200}
+
+  - id: file_edit
+    session: s8
+    prompt: "Popraw literówki w załączonym projekcie umowy i zmień termin płatności z 14 na 30 dni."
+    attachments: [examples/demo_company/uploads/projekt_umowy_sprzatanie.docx]
+    checks: {file: ".docx", file_contains: ["30 dni", "Wykonawc"], file_not_contains: ["Wykonwac", "ktróre"]}
+
+  - id: file_to_knowledge
+    session: s9
+    prompt: "Dodaj ten regulamin parkingu do bazy wiedzy firmy."
+    attachments: [examples/demo_company/uploads/regulamin_parkingu.txt]
+    checks: {contains: ["Dodano do bazy wiedzy", "dodane/regulamin_parkingu.txt"]}
+
+  - id: rag_added_document
+    session: s10
+    prompt: "W której strefie parkingu firmowego parkują goście i ile jest tam miejsc?"
+    checks: {regex: ["(?i)stref\\w* B", "\\b6\\b"]}

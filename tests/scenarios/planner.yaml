@@ -8,6 +8,7 @@
 #   forbid:      none of these tools may appear
 #   order:       [a, b] — the first `a` step comes before the first `b` step (both must appear)
 #   has_document: true — a document was generated earlier in the session
+#   attachments: [names] — the message lists these attached files (as the UI adds them; no file is read)
 # Checks test the choice of tools, not the wording of the steps.
 scenarios:
   - id: greeting
@@ -111,4 +112,36 @@ scenarios:
     prompt: "Ile dni urlopu wypoczynkowego przysługuje pracownikowi według regulaminu?"
     has_document: true
     require: [rag_search]
+    forbid: [modify_document, template_pdf]
+
+  # Uploaded files
+  - id: file_summarize_report
+    prompt: "Streść załączony raport w pięciu punktach."
+    attachments: [raport_kwartalny_q3_2026.pdf]
+    require: [file_summary]
+    forbid: [template_pdf, python, file_edit]
+
+  - id: file_edit_contract
+    prompt: "Popraw literówki w załączonym projekcie umowy i zmień termin płatności na 30 dni."
+    attachments: [projekt_umowy_sprzatanie.docx]
+    require: [file_edit]
+    forbid: [template_pdf, modify_document, rag_search]
+
+  - id: file_to_knowledge_policy
+    prompt: "Dodaj ten regulamin parkingu do bazy wiedzy."
+    attachments: [regulamin_parkingu.txt]
+    require: [file_to_knowledge]
+    forbid: [template_pdf, file_edit]
+
+  - id: file_compute_sheet
+    prompt: "Policz łączny koszt delegacji z załączonego arkusza."
+    attachments: [rozliczenie_delegacji.xlsx]
+    require: [python]
+    forbid: [template_pdf, file_edit, file_to_knowledge]
+
+  - id: file_edit_after_document
+    prompt: "Popraw w tym piśmie błędy językowe."
+    has_document: true
+    attachments: [pismo_do_klienta.docx]
+    require: [file_edit]
     forbid: [modify_document, template_pdf]

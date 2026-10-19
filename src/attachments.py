@@ -20,6 +20,8 @@ from src import run_context, tracing
 from src.extractors import ExtractionError, as_text, extract
 
 INLINE_LIMIT = 20_000
+LISTING_PREFIX = "Załączone pliki (dostępne też w katalogu roboczym dla kodu Python): "
+_LISTING = re.compile(re.escape(LISTING_PREFIX) + r"(.+)")
 
 
 @dataclass
@@ -72,7 +74,7 @@ def prepare(paths: list[Path], *, index_path: Path, inline_limit: int = INLINE_L
 
     listing = ", ".join(result.names)
     total = sum(len(t) for _n, t in texts)
-    lines = ["", f"Załączone pliki (dostępne też w katalogu roboczym dla kodu Python): {listing}"]
+    lines = ["", f"{LISTING_PREFIX}{listing}"]
     unreadable = [f["name"] for f in result.files if f["error"]]
     if unreadable:
         lines.append(f"Nie udało się odczytać tekstu z: {', '.join(unreadable)}")
@@ -114,3 +116,29 @@ def _index(texts: list[tuple[str, str]], index_path: Path, collection: str) -> N
     for i in range(0, len(docs), 64):
         batch = docs[i:i + 64]
         store.add_documents(batch, ids=[d.metadata["chunk_id"] for d in batch])
+
+
+# --------------------------------------------------------------------------- attachments named in the conversation
+
+def names_in(text: str) -> list[str]:
+    """Attachment names listed in one user message (the block added by ``prepare``)."""
+    match = _LISTING.search(text or "")
+    return [n.strip() for n in match.group(1).split(",") if n.strip()] if match else []
+
+
+def session_attachments(messages: list) -> tuple[list[str], list[str]]:
+    """(attachments of the latest message that had any, all attachments of the conversation, oldest first)."""
+    groups = [names_in(getattr(m, "content", "")) for m in messages if getattr(m, "type", "") == "human"]
+    groups = [g for g in groups if g]
+    everything: list[str] = []
+    for group in groups:
+        everything += [n for n in group if n not in everything]
+    return (groups[-1] if groups else []), everything
+
+
+def pick(request: str, messages: list) -> list[str]:
+    """The attachments a request is about: those it names, else the latest message's, else none."""
+    latest, everything = session_attachments(messages)
+    lower = (request or "").lower()
+    named = [n for n in everything if n.lower() in lower or (len(Path(n).stem) > 3 and Path(n).stem.lower() in lower)]
+    return named or latest

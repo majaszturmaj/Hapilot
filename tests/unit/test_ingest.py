@@ -107,9 +107,40 @@ def test_changed_corpus_is_reindexed(tmp_path, fake_chroma):
 
 
 def test_cli_uses_settings_and_offline_mode(monkeypatch, tmp_path):
+    from src.config import get_settings
+
     calls = {}
-    monkeypatch.setattr(ingest_data, "ingest", lambda docs, collection, force=False: calls.update(docs=docs, collection=collection,
-                                                                                                    force=force))
+    monkeypatch.setattr(ingest_data, "ingest", lambda docs, collection, force=False, added_dir=None: calls.update(
+        docs=docs, collection=collection, force=force, added_dir=added_dir))
     monkeypatch.setattr(ingest_data, "apply_offline_env", lambda: calls.setdefault("offline", True))
     assert ingest_data.main(["--docs", str(tmp_path), "--collection", "x", "--force"]) == 0
-    assert calls == {"offline": True, "docs": Path(tmp_path).resolve(), "collection": "x", "force": True}
+    assert calls == {"offline": True, "docs": Path(tmp_path).resolve(), "collection": "x", "force": True,
+                     "added_dir": get_settings().added_docs_dir}
+
+
+def test_added_documents_are_indexed_at_once_and_kept_by_the_next_ingest(tmp_path, fake_chroma):
+    store, client = fake_chroma
+    docs, added, db = tmp_path / "docs", tmp_path / "added", tmp_path / "db"
+    docs.mkdir()
+    (docs / "regulamin.txt").write_text("Urlop wypoczynkowy zgłaszamy 14 dni wcześniej.", encoding="utf-8")
+    first = ingest_data.ingest(docs, "kb", path=db, added_dir=added)
+    assert first["files"] == 1
+
+    upload = tmp_path / "upload"
+    upload.mkdir()
+    (upload / "regulamin.txt").write_text("Nowa zasada: parking dla gości w strefie B.", encoding="utf-8")
+    (upload / "skan.pdf").write_bytes(b"not a pdf")
+    result = ingest_data.add_documents([upload / "regulamin.txt", upload / "skan.pdf"], docs_dir=docs, added_dir=added,
+                                       collection="kb", path=db)
+    assert result["added"] == ["dodane/regulamin.txt"] and result["chunks"] == 1
+    assert [s["file"] for s in result["skipped"]] == ["dodane/skan.pdf"]
+    assert sorted(p.name for p in added.iterdir()) == ["regulamin.txt"]  # the unreadable file is not kept
+    assert store.added[-1][1].metadata["source"] == "dodane/regulamin.txt"
+    assert client.deleted == ["kb"]  # the collection was not rebuilt
+
+    added_count = len(store.added)
+    again = ingest_data.ingest(docs, "kb", path=db, added_dir=added)
+    assert again["files"] == 2 and len(store.added) == added_count  # the fingerprint already covers the added file
+
+    second = ingest_data.add_documents([upload / "regulamin.txt"], docs_dir=docs, added_dir=added, collection="kb", path=db)
+    assert second["added"] == ["dodane/regulamin_1.txt"]  # same name → numbered, nothing overwritten

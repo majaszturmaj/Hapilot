@@ -3,8 +3,8 @@
 
     .venv/bin/python scripts/hapilotctl.py integration [--profile P ...] [--out DIR] [--skip SUITE ...]
 
-For each profile (default: every profile in config/profiles.yaml) the model proxy is started, the demo
-corpus indexed, and three suites run with the real models:
+For each profile (default: every profile in config/profiles.yaml) the model proxy is started and three
+suites run with the real models (each indexes what it needs into its own temporary or run-specific index):
 
 - smoke    tests/scenarios/smoke.yaml through the whole graph (scripts/smoke.py, egress guard on)
 - planner  tests/scenarios/planner.yaml, planner node only (scripts/planner_check.py)
@@ -188,7 +188,6 @@ def main(argv: list[str] | None = None) -> int:
         results: dict = {"models": sorted({m.model for m in settings.profile(profile).models.values()})}
         hapilotctl.models_up(profile)
         try:
-            hapilotctl.cmd_ingest(argparse.Namespace(docs=None, force=False))
             if "smoke" not in args.skip:
                 results["smoke"] = run_smoke(profile, pout, py, proxy, known.get("smoke", set()))
             if "planner" not in args.skip:

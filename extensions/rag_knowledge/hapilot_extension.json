@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "rag_knowledge",
   "name": "Knowledge Base / RAG",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Answers from company documents (hybrid search in the local knowledge base)",
   "author": "Hapilot Team",
   "license": "MIT",
@@ -20,7 +20,7 @@
       "name": "rag_search",
       "description": "Wyszukiwanie w dokumentach firmy (regulaminy, procedury, umowy, cenniki, korespondencja, arkusze) i odpowiedź ze źródłami",
       "when_to_use": "Pytania o fakty z dokumentów firmy — zawsze przed odpowiedzią lub dokumentem, który ma się na nich opierać",
-      "when_not_to_use": "Powitania, kontynuacja rozmowy, przeredagowanie poprzedniej odpowiedzi; brak wyników nie blokuje dalszych kroków",
+      "when_not_to_use": "Powitania, kontynuacja rozmowy, przeredagowanie poprzedniej odpowiedzi; streszczenie lub zmiana załączonego pliku (file_summary, file_edit); brak wyników nie blokuje dalszych kroków",
       "example": "„Ile dni wcześniej składa się wniosek urlopowy?” → rag_search"
     }
   ],

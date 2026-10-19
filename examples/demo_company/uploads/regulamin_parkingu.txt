@@ -1,0 +1,25 @@
+PRZYKŁADOWA SP. Z O.O.
+ul. Zmyślona 7, 50-001 Wrocław
+
+REGULAMIN KORZYSTANIA Z PARKINGU FIRMOWEGO
+Dokument wewnętrzny nr ADM/2026/11, obowiązuje od 1 listopada 2026 r.
+
+§ 1. Miejsca parkingowe
+1. Parking firmowy ma 24 miejsca: strefa A (18 miejsc) dla pracowników i strefa B (6 miejsc) dla gości.
+2. Dwa miejsca w strefie A, najbliżej wejścia, są przeznaczone dla osób z niepełnosprawnościami.
+
+§ 2. Pracownicy
+1. Pracownik parkuje w strefie A po zarejestrowaniu numeru rejestracyjnego w recepcji.
+2. Miejsca nie są przypisane do osób; obowiązuje kolejność przyjazdu.
+3. Samochody pozostawione na noc zgłasza się w recepcji do godziny 16:00.
+
+§ 3. Goście
+1. Gość parkuje w strefie B po otrzymaniu karty parkingowej w recepcji.
+2. Pracownik zapraszający gościa rezerwuje miejsce w strefie B co najmniej 1 dzień roboczy wcześniej, e-mailem na adres recepcja@example.com.
+
+§ 4. Ładowanie samochodów elektrycznych
+1. Dwie ładowarki znajdują się w strefie A (miejsca 17 i 18).
+2. Czas ładowania jest ograniczony do 3 godzin dziennie na jeden samochód.
+
+§ 5. Odpowiedzialność
+Za porządek na parkingu odpowiada Dział Administracji. Uwagi i zgłoszenia przyjmuje recepcja.

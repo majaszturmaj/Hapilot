@@ -19,7 +19,7 @@ from typing import Annotated, List, Optional, TypedDict
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 
-from src import run_context, tracing
+from src import attachments, run_context, tracing
 from src.agent_tools import TaskState, create_hitl_confirm_request, tool_plan_task
 from src.config import get_settings
 from src.llm_config import get_llm
@@ -193,11 +193,14 @@ def task_planner_node(state: AgentState):
     steps = [s for s in task_plan.get("steps", []) if isinstance(s, dict)]
     complexity = task_plan.get("complexity", "low")
     has_document = bool(state.get("last_generated_file"))
+    # a file attached to this very message is what an edit request refers to, not the earlier generated PDF
+    has_new_attachment = bool(attachments.names_in(last_user_msg))
+    own_words = last_user_msg.split(attachments.LISTING_PREFIX, 1)[0]  # guards read the user's words, not attached text
     guards: list[str] = []
     tool_names = set(_build_dynamic_tool_map())  # guards for the built-in document tools apply only if they are loaded
 
     # Guard 1: an edit of an existing document is a single modify_document step.
-    if ("modify_document" in tool_names and is_modification_request(last_user_msg, has_document)
+    if ("modify_document" in tool_names and not has_new_attachment and is_modification_request(own_words, has_document)
             and not any(s.get("tool") == "modify_document" for s in steps)):
         print("📝 [PLANNER] Wykryto zapytanie o modyfikację dokumentu → modify_document")
         steps = [{"id": 1, "action": "Zmodyfikuj istniejący dokument zgodnie z instrukcjami użytkownika",
@@ -205,7 +208,7 @@ def task_planner_node(state: AgentState):
         complexity = "low"
         guards.append("forced_modify_document")
     # Guard 2: no new document unless the user asked for one (and did not say "no PDF").
-    elif "template_pdf" in tool_names and not wants_document(last_user_msg):
+    elif "template_pdf" in tool_names and not wants_document(own_words):
         kept = [s for s in steps if s.get("tool") != "template_pdf"]
         if len(kept) < len(steps):
             print(f"🔒 [PLANNER GUARD] Usunięto {len(steps) - len(kept)} krok(i) template_pdf — użytkownik nie prosił o dokument")
@@ -214,7 +217,7 @@ def task_planner_node(state: AgentState):
             if not steps:
                 steps = [{"id": 1, "action": "Odpowiedz na wiadomość", "tool": "llm_synthesis", "input": last_user_msg}]
     # Guard 3: an explicit request for a new document gets a document step if the plan has none.
-    elif "template_pdf" in tool_names and explicitly_wants_document(last_user_msg):
+    elif "template_pdf" in tool_names and explicitly_wants_document(own_words):
         tool_map = _build_dynamic_tool_map()
         if not any(tool_map.get(s.get("tool", "")) in (tool_map["template_pdf"], "modify_document") for s in steps):
             print("📄 [PLANNER GUARD] Użytkownik prosi o dokument — dodano krok template_pdf")
