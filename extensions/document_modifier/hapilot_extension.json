@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "document_modifier",
   "name": "Document Modifier",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Changes to a document generated earlier in the same chat",
   "author": "Hapilot Team",
   "license": "MIT",
@@ -23,7 +23,7 @@
       "name": "modify_document",
       "description": "Zmiana dokumentu wygenerowanego wcześniej w tej rozmowie (data, adres, treść) i nowy PDF",
       "when_to_use": "Użytkownik prosi o poprawkę dokumentu, który Hapilot już wygenerował w tej rozmowie",
-      "when_not_to_use": "Nowy dokument (użyj template_pdf); przeredagowanie tekstu z czatu (użyj llm_synthesis)",
+      "when_not_to_use": "Nowy dokument (użyj template_pdf); przeredagowanie tekstu z czatu (użyj llm_synthesis); plik załączony przez użytkownika (użyj file_edit)",
       "example": "„Zmień datę w tym piśmie na 7 marca 2026” → modify_document"
     }
   ],

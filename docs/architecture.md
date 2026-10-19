@@ -29,6 +29,8 @@ __start__ → task_planner ─┬─(HITL request / halt)───────�
     `protokół`, …) and did not say otherwise (`nie rób PDF`, `bez PDF`, `tylko tekst`);
   - an explicit request to create a document (a creation verb with a document noun or with "PDF", e.g.
     `przygotuj pismo w PDF`) gets a `template_pdf` step at the end if the plan has none;
+  - a `modify_document` step next to other steps is dropped when no document was generated in the session
+    or the message brings a new attachment (it could only fail);
   - a `hitl_confirm` step at the end of a plan is dropped (nothing follows it to confirm, and its message
     would replace the last real result);
   - under the `ask` approval policy, plans longer than two steps wait for the user's approval.

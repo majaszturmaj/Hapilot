@@ -224,7 +224,14 @@ def task_planner_node(state: AgentState):
             steps = steps + [{"id": len(steps) + 1, "action": "Przygotuj dokument PDF, o który prosi użytkownik",
                               "tool": "template_pdf", "input": last_user_msg}]
             guards.append("added_template_pdf")
-    # Guard 4: a confirmation with nothing after it asks about nothing — and its message would replace the
+    # Guard 4: with no generated document, or with a new attachment (the edit is about that file), a
+    # modify_document step next to other steps can only fail (seen with Bielik: file_edit, modify_document).
+    if (not has_document or has_new_attachment) and len(steps) > 1 and any(s.get("tool") == "modify_document" for s in steps):
+        kept = [s for s in steps if s.get("tool") != "modify_document"]
+        guards.append(f"removed_modify_document:{len(steps) - len(kept)}")
+        print("🔒 [PLANNER GUARD] Usunięto krok modify_document — w tej rozmowie nie ma dokumentu do zmiany")
+        steps = kept
+    # Guard 5: a confirmation with nothing after it asks about nothing — and its message would replace the
     # last real result (seen with Bielik: rag_search, template_pdf, hitl_confirm → the PDF link was lost).
     while len(steps) > 1 and steps[-1].get("tool") == "hitl_confirm":
         steps = steps[:-1]

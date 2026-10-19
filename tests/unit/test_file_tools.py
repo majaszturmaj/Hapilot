@@ -258,3 +258,14 @@ def test_guards_read_the_users_words_not_the_attached_text(graph, invoke, llm, t
     llm.on("file_assistant", "Jedno zadanie: raport PDF dla zarządu.")
     state = invoke(graph, [attach(tmp_path, "guard-words", "Streść ten plik", f)], "guard-words")
     assert [s["tool"] for s in state["task_plan"]["steps"]] == ["file_summary"]  # no template_pdf step added
+
+
+def test_modify_document_next_to_file_edit_is_dropped(graph, invoke, llm, tmp_path):
+    # Bielik planned file_edit + modify_document for an attached contract (integration run 2026-10-19)
+    f = tmp_path / "umowa.txt"
+    f.write_text("Termin płatności 14 dni.", encoding="utf-8")
+    llm.on("task_planner", plan(("file_edit", "Popraw umowę"), ("modify_document", "Zmień termin")))
+    llm.on("file_assistant", "Termin płatności 30 dni.")
+    state = invoke(graph, [attach(tmp_path, "guard-mod", "Zmień termin płatności na 30 dni", f)], "guard-mod")
+    assert [s["tool"] for s in state["task_plan"]["steps"]] == ["file_edit"]
+    assert "Wygenerowano plik: umowa_zmieniony.txt" in last_text(state)
