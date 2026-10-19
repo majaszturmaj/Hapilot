@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (stage 6: deployment and timing; fonts)
+## v0.3.1 — 2026-10-19 (stage 6: deployment and timing; fonts)
 
 The agent's behaviour is unchanged; generated PDFs look different (fonts).
 
