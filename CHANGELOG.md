@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 — 2026-10-19 (stages 3–4: extension SDK, tests and CI)
 
 ### Stage 4: tests and CI
 
