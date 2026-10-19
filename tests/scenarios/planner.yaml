@@ -1,0 +1,114 @@
+# Planner scenarios: which tools the task planner chooses for a request (planner node only, guards included).
+# Run with real models on the GPU host:
+#   .venv/bin/python scripts/hapilotctl.py integration [--profile P]     (part of the integration suite)
+#   .venv/bin/python scripts/planner_check.py --profile P                (planner only; model proxy must be up)
+# Requests are about the demo company (examples/demo_company/docs). Checks per scenario:
+#   require:     every tool listed must appear in the plan
+#   require_any: for each group, at least one of its tools must appear
+#   forbid:      none of these tools may appear
+#   order:       [a, b] — the first `a` step comes before the first `b` step (both must appear)
+#   has_document: true — a document was generated earlier in the session
+# Checks test the choice of tools, not the wording of the steps.
+scenarios:
+  - id: greeting
+    prompt: "Dzień dobry! Co potrafisz?"
+    require_any: [[chat, llm_synthesis]]
+    forbid: [rag_search, python, template_pdf, modify_document]
+
+  - id: rag_leave_deadline
+    prompt: "Ile dni przed urlopem wypoczynkowym trzeba złożyć wniosek?"
+    require: [rag_search]
+    forbid: [template_pdf, python]
+
+  - id: rag_passwords
+    prompt: "Jakie wymagania musi spełniać hasło do służbowego konta?"
+    require: [rag_search]
+    forbid: [template_pdf, python]
+
+  - id: rag_complaints_owner
+    prompt: "Kto u nas odpowiada za reklamacje i ile mamy czasu na odpowiedź klientowi?"
+    require: [rag_search]
+    forbid: [template_pdf]
+
+  - id: rag_missing_topic
+    prompt: "Jaki jest limit kosztów noclegu w delegacji zagranicznej według naszych dokumentów?"
+    require: [rag_search]
+    forbid: [template_pdf]
+
+  - id: rag_incident_summary
+    prompt: "Streść zgłoszenie awarii drukarki z 12 października."
+    require: [rag_search]
+    forbid: [template_pdf, python]
+
+  - id: python_squares
+    prompt: "Oblicz w Pythonie sumę kwadratów liczb od 1 do 100."
+    require: [python]
+    forbid: [rag_search, template_pdf]
+
+  - id: python_from_register
+    prompt: "Policz, ile reklamacji uznano w marcu 2026 według rejestru reklamacji, i podaj łączną kwotę."
+    require_any: [[python, rag_search]]
+    forbid: [template_pdf]
+
+  - id: price_then_compute
+    prompt: "Sprawdź w cenniku cenę składu raportu do 20 stron i policz koszt brutto trzech takich raportów."
+    require: [rag_search]
+    forbid: [template_pdf]
+
+  - id: email_no_pdf
+    prompt: "Napisz krótkiego maila do zespołu, że w piątek o 15:00 jest przegląd serwerów. Bez PDF, sam tekst."
+    require_any: [[llm_synthesis, chat]]
+    forbid: [template_pdf, python]
+
+  - id: email_to_service
+    prompt: "Napisz e-mail do serwisu z prośbą o pilną naprawę drukarki w biurze."
+    require_any: [[llm_synthesis, chat]]
+    forbid: [template_pdf, python]
+
+  - id: note_no_pdf
+    prompt: "Przygotuj krótką notatkę dla pracowników o zmianie godzin pracy biura w grudniu. Nie rób PDF."
+    forbid: [template_pdf, python]
+
+  - id: translate
+    prompt: "Przetłumacz na angielski: Dziękujemy za zgłoszenie, odpowiemy w ciągu 14 dni."
+    require_any: [[llm_synthesis, chat]]
+    forbid: [rag_search, python, template_pdf]
+
+  - id: pdf_leave_request
+    prompt: "Przygotuj podanie o urlop wypoczynkowy od 3 do 7 listopada 2026. Jestem Jan Kowalski z Działu Sprzedaży."
+    require: [template_pdf]
+    forbid: [python]
+
+  - id: pdf_letter_explicit
+    prompt: "Przygotuj pismo w PDF do firmy Serwis-Wymyślony Sp. z o.o. z prośbą o przegląd drukarek w listopadzie."
+    require: [template_pdf]
+
+  - id: find_then_pdf_report
+    prompt: "Znajdź w umowie serwisowej wysokość kary za opóźnienie interwencji i przygotuj z tego krótki raport w PDF."
+    require: [rag_search, template_pdf]
+    order: [rag_search, template_pdf]
+
+  - id: find_then_email
+    prompt: "Sprawdź w polityce bezpieczeństwa, w jakim czasie zgłaszamy incydenty, i napisz maila z przypomnieniem do zespołu."
+    require: [rag_search]
+    require_any: [[llm_synthesis, chat]]
+    forbid: [template_pdf]
+    order: [rag_search, llm_synthesis]
+
+  - id: modify_dates
+    prompt: "Zmień w tym podaniu daty urlopu na 10–14 listopada 2026."
+    has_document: true
+    require: [modify_document]
+    forbid: [template_pdf]
+
+  - id: modify_shorter
+    prompt: "Zrób to pismo krótsze i bardziej formalne."
+    has_document: true
+    require: [modify_document]
+    forbid: [template_pdf]
+
+  - id: question_after_document
+    prompt: "Ile dni urlopu wypoczynkowego przysługuje pracownikowi według regulaminu?"
+    has_document: true
+    require: [rag_search]
+    forbid: [modify_document, template_pdf]

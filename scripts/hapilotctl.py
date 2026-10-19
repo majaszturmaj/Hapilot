@@ -6,6 +6,7 @@
     .venv/bin/python scripts/hapilotctl.py status | down
     .venv/bin/python scripts/hapilotctl.py smoke [--profile P]
     .venv/bin/python scripts/hapilotctl.py egress-test [--profile P]
+    .venv/bin/python scripts/hapilotctl.py integration [--profile P ...]   # smoke + planner + dev tasks, report
     .venv/bin/python scripts/hapilotctl.py add-user NAME | tunnel
 
 Safety rules built in:
@@ -366,6 +367,11 @@ def cmd_smoke(args) -> None:
     raise SystemExit(code)
 
 
+def cmd_integration(args) -> None:
+    """Integration suite (scripts/integration.py); extra arguments are passed through."""
+    raise SystemExit(subprocess.run([str(PY), str(ROOT / "scripts" / "integration.py"), *args.rest], cwd=ROOT).returncode)
+
+
 # --------------------------------------------------------------------------- egress test
 
 _CONNECT = re.compile(r"connect\(\d+, \{sa_family=(AF_INET6?),.*?(?:htons\((\d+)\)).*?"
@@ -475,10 +481,16 @@ def main() -> None:
     p.add_argument("--only")
     p.add_argument("--retry-failed", action="store_true")
     p.set_defaults(func=cmd_eval)
+    p = sub.add_parser("integration", add_help=False, help="integration suite on the GPU host (options: integration --help)")
+    p.set_defaults(func=cmd_integration)
     p = sub.add_parser("add-user")
     p.add_argument("name")
     p.set_defaults(func=cmd_add_user)
-    args = parser.parse_args()
+    args, rest = parser.parse_known_args()
+    if args.command == "integration":
+        args.rest = rest  # options belong to scripts/integration.py
+    elif rest:
+        parser.error(f"unrecognized arguments: {' '.join(rest)}")
     args.func(args)
 
 

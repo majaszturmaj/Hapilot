@@ -1,0 +1,9 @@
+# Known failures of the integration suite (scripts/integration.py), per profile and suite.
+# A failure listed here is reported but does not fail the suite; any other failure does.
+# Add an entry only with the run that found it; remove it when the item passes reliably.
+known_failures:
+  best-local: {}
+  reference:
+    # Bielik-11B v3: arithmetic and date reasoning on development tasks. eval-v1 (effca08) failed D03, D09;
+    # stage 3 (7776f97) failed D03, D05. Same model, sampling at temperature 0.3.
+    dev: [D03, D05, D09]
