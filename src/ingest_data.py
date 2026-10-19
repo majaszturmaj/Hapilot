@@ -153,8 +153,9 @@ def add_documents(files: list[Path], *, docs_dir: Path, added_dir: Path, collect
     """Copy files into ``added_dir`` and index only them into an existing ``collection``.
 
     The corpus fingerprint is updated, so the next ``ingest`` of the same folders does not rebuild the index.
-    A file with the same name as an earlier added one gets a numbered name. Returns
-    {"added": [source paths], "chunks": n, "skipped": [...]}.
+    A file whose content was added before is not added again; a different file with the same name as an
+    earlier one gets a numbered name. Returns
+    {"added": [source paths], "chunks": n, "skipped": [...], "already": [source paths of identical files added before]}.
     """
     import shutil
 
@@ -163,8 +164,14 @@ def add_documents(files: list[Path], *, docs_dir: Path, added_dir: Path, collect
 
     path = Path(path or get_settings().chroma_path)
     added_dir.mkdir(parents=True, exist_ok=True)
-    entries = []
+    present = {hashlib.sha256(p.read_bytes()).hexdigest(): f"{ADDED_PREFIX}/{p.relative_to(added_dir).as_posix()}"
+               for p in corpus_files(added_dir)}
+    entries, already = [], []
     for src in files:
+        digest = hashlib.sha256(src.read_bytes()).hexdigest()
+        if digest in present:  # the same content was added before (e.g. a confirmation clicked twice)
+            already.append(present[digest])
+            continue
         target = added_dir / src.name
         n = 1
         while target.exists():
@@ -172,6 +179,7 @@ def add_documents(files: list[Path], *, docs_dir: Path, added_dir: Path, collect
             n += 1
         shutil.copyfile(src, target)
         entries.append((target, f"{ADDED_PREFIX}/{target.name}"))
+        present[digest] = entries[-1][1]
     chunks, skipped = split_entries(entries)
     for item in skipped:  # an unreadable file is not kept
         (added_dir / Path(item["file"]).name).unlink(missing_ok=True)
@@ -185,7 +193,8 @@ def add_documents(files: list[Path], *, docs_dir: Path, added_dir: Path, collect
     path.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps(stats, indent=2, ensure_ascii=False))
     skipped_names = {Path(i["file"]).name for i in skipped}
-    return {"added": [rel for p, rel in entries if p.name not in skipped_names], "chunks": len(chunks), "skipped": skipped}
+    return {"added": [rel for p, rel in entries if p.name not in skipped_names], "chunks": len(chunks), "skipped": skipped,
+            "already": already}
 
 
 def main(argv: list[str] | None = None) -> int:

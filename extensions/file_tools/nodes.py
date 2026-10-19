@@ -340,10 +340,12 @@ def _add(state, names: list[str]) -> dict:
     if result["added"]:
         lines.append(f"📚 Dodano do bazy wiedzy: {', '.join(result['added'])} ({result['chunks']} fragm.). "
                      "Od teraz odpowiadam także na podstawie tego dokumentu, we wszystkich rozmowach.")
+    if result.get("already"):
+        lines.append(f"📚 Ten plik jest już w bazie wiedzy: {', '.join(result['already'])} — nie dodaję go drugi raz.")
     if result["skipped"]:
         lines.append("Nie dodano (nie udało się odczytać tekstu): " + ", ".join(Path(s["file"]).name for s in result["skipped"]))
     return _done(state, AIMessage(content="\n".join(lines)), hitl_response=None,
-                 execution_status="success" if result["added"] else "error")
+                 execution_status="success" if result["added"] or result.get("already") else "error")
 
 
 def run_add_to_knowledge(state):

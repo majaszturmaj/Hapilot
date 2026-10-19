@@ -142,5 +142,10 @@ def test_added_documents_are_indexed_at_once_and_kept_by_the_next_ingest(tmp_pat
     again = ingest_data.ingest(docs, "kb", path=db, added_dir=added)
     assert again["files"] == 2 and len(store.added) == added_count  # the fingerprint already covers the added file
 
+    again = ingest_data.add_documents([upload / "regulamin.txt"], docs_dir=docs, added_dir=added, collection="kb", path=db)
+    assert again["added"] == [] and again["already"] == ["dodane/regulamin.txt"]  # same content: not added twice
+    assert len(store.added) == added_count
+
+    (upload / "regulamin.txt").write_text("Zmiana: parking dla gości w strefie C.", encoding="utf-8")
     second = ingest_data.add_documents([upload / "regulamin.txt"], docs_dir=docs, added_dir=added, collection="kb", path=db)
-    assert second["added"] == ["dodane/regulamin_1.txt"]  # same name → numbered, nothing overwritten
+    assert second["added"] == ["dodane/regulamin_1.txt"]  # same name, other content → numbered, nothing overwritten
