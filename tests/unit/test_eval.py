@@ -196,3 +196,39 @@ def test_files_read_by_code_count_as_sources(corpus, tmp_path, llm, docker):
     run_volumes = docker.runs[-1]["volumes"]
     assert {"bind": "/data", "mode": "ro"} in run_volumes.values()
     assert validate_run(tmp_path / "out") == []
+
+
+# --------------------------------------------------------------------------- command line (python -m src.eval)
+
+def test_cli_run_only_and_validate(corpus, tmp_path, llm, docker, capsys):
+    from src.eval.__main__ import main
+
+    tasks = tmp_path / "tasks.jsonl"
+    tasks.write_text("\n".join(json.dumps({"id": i, "instruction": "Ile dni wcześniej składa się wniosek urlopowy?"})
+                               for i in ("T1", "T2")) + "\n", encoding="utf-8")
+    run_yaml = tmp_path / "run.yaml"
+    run_yaml.write_text(f"corpus_dir: {corpus}\ntoday: '2026-01-01'\nseed: 7\n", encoding="utf-8")
+    llm.on("task_planner", plan(("chat", "odpowiedz")))
+    llm.on("chat", "14 dni")
+    out = tmp_path / "cli_out"
+    code = main(["run", "--tasks", str(tasks), "--config", str(run_yaml), "--today", "2026-10-14", "--out", str(out),
+                 "--only", "T2"])
+    assert code == 0
+    meta = json.loads((out / "run.json").read_text())
+    assert meta["tasks"]["total"] == 1 and meta["config"]["today"] == "2026-10-14" and meta["config"]["seed"] == 7  # flags win
+    assert [json.loads(line)["task_id"] for line in (out / "results.jsonl").read_text().splitlines()] == ["T2"]
+
+    assert main(["validate", str(out)]) == 0 and "VALID" in capsys.readouterr().out
+    (out / "results.jsonl").write_text('{"task_id": "T2"}\n')
+    assert main(["validate", str(out)]) == 1 and "INVALID" in capsys.readouterr().out
+
+
+def test_cli_reports_configuration_errors(tmp_path, capsys):
+    from src.eval.__main__ import main
+
+    tasks = tmp_path / "tasks.jsonl"
+    tasks.write_text('{"id": "T1", "instruction": "x"}\n', encoding="utf-8")
+    assert main(["run", "--tasks", str(tasks), "--out", str(tmp_path / "o")]) == 2
+    assert "missing settings: corpus_dir, today" in capsys.readouterr().err
+    assert main(["run", "--tasks", str(tmp_path / "none.jsonl"), "--corpus", str(tmp_path), "--out", str(tmp_path / "o"),
+                 "--today", "2026-10-14"]) == 2

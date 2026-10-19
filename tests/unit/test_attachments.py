@@ -43,3 +43,27 @@ def test_name_collisions_and_unsafe_names(tmp_path, session):
 def test_collection_names_are_chroma_compatible():
     name = attachments.collection_name("Jakaś sesja / 123")
     assert name.startswith("att_") and len(name) <= 63 and name.replace("_", "").isalnum()
+
+
+def test_long_attachment_is_chunked_into_its_own_collection(tmp_path, session, monkeypatch):
+    from src import knowledge_base
+
+    added, deleted = [], []
+
+    class Store:
+        def add_documents(self, docs, ids):
+            assert len(docs) == len(ids) <= 64
+            added.extend(docs)
+
+    class Client:
+        def delete_collection(self, name):
+            deleted.append(name)
+
+    monkeypatch.setattr(knowledge_base, "chroma_client", lambda path=None: Client())
+    monkeypatch.setattr(knowledge_base, "vector_store", lambda collection=None, path=None: Store())
+    f = tmp_path / "raport.txt"
+    f.write_text("\n\n".join(f"Akapit {i}: treść raportu kwartalnego." for i in range(2000)), encoding="utf-8")
+    prepared = attachments.prepare([f], index_path=tmp_path / "idx", inline_limit=1000)
+    assert deleted == [prepared.collection[1]]  # a re-upload replaces the session's attachment collection
+    assert len(added) > 64 and {d.metadata["source"] for d in added} == {"załącznik:raport.txt"}
+    assert len({d.metadata["chunk_id"] for d in added}) == len(added)

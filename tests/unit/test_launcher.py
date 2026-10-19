@@ -29,8 +29,10 @@ def test_strace_violations(tmp_path):
 
 def test_stale_or_reused_pid_record_is_ignored(tmp_path, monkeypatch):
     monkeypatch.setattr(hapilotctl, "run_dir", lambda: tmp_path)
-    # a record pointing at this test process, whose command line does not contain the marker
-    (tmp_path / "ui.json").write_text(json.dumps({"pid": __import__("os").getpid(), "pgid": 0, "marker": "src/app.py"}))
+    # a record pointing at this test process, whose command line does not contain the marker (a unique one: the
+    # test runner's own command line may name src/app.py, e.g. in a coverage --omit option)
+    marker = f"src/app-{__import__('uuid').uuid4().hex}.py"
+    (tmp_path / "ui.json").write_text(json.dumps({"pid": __import__("os").getpid(), "pgid": 0, "marker": marker}))
     assert hapilotctl.owned("ui") is None
     assert not (tmp_path / "ui.json").exists()
 

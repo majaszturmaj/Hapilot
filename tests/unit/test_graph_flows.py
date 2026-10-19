@@ -225,3 +225,44 @@ def test_extract_json_object_variants():
     assert extract_json_object('Oto plan:\n```json\n{"a": {"b": [1, 2]}}\n```') == {"a": {"b": [1, 2]}}
     assert extract_json_object('{zły} potem {"ok": true}') == {"ok": True}
     assert extract_json_object("brak") is None
+
+
+# --------------------------------------------------------------------------- editing a generated document through the graph
+
+def _generate_letter(graph, invoke, llm, sid):
+    llm.on("task_planner", plan(("template_pdf", "Podanie", "Podanie o urlop")))
+    llm.on("template_filler", LETTER)
+    state = invoke(graph, "Napisz podanie o urlop", sid, approval_policy="auto")
+    assert state["last_generated_file"].endswith(".tex")
+    return state
+
+
+def test_edit_of_generated_document_produces_a_new_pdf(graph, invoke, llm, docker):
+    from langchain_core.messages import HumanMessage as Human
+
+    first = _generate_letter(graph, invoke, llm, "s-edit")
+    llm.replies.clear()
+    llm.on("task_planner", plan(("chat", "Odpowiedz", "Zmień datę")))  # the guard turns this into modify_document
+    llm.on("template_filler", json.dumps({"CITY_DATE": "Wrocław, 1 czerwca 2026 r."}))
+    second = invoke(graph, first["messages"] + [Human(content="Zmień datę w tym podaniu na 1 czerwca 2026")], "s-edit",
+                    approval_policy="auto", last_file=first["last_generated_file"])
+    assert [s["tool"] for s in second["task_plan"]["steps"]] == ["modify_document"]
+    assert "Wygenerowano plik: letter_" in last_text(second)
+    assert second["last_generated_file"] != first["last_generated_file"]
+    with run_context.use_context(session_id="s-edit"):
+        assert "1 czerwca 2026" in run_context.workspace_file(second["last_generated_file"]).read_text(encoding="utf-8")
+
+
+def test_failed_edit_reports_the_error_and_keeps_the_document(graph, invoke, llm, docker):
+    from langchain_core.messages import HumanMessage as Human
+
+    first = _generate_letter(graph, invoke, llm, "s-edit-bad")
+    llm.replies.clear()
+    llm.on("task_planner", plan(("modify_document", "Zmień", "Zmień datę")))
+    llm.on("template_filler", "to nie jest JSON")
+    llm.on("chat", lambda msgs: "Nie udało się: " + msgs[-1].content[:80])
+    second = invoke(graph, first["messages"] + [Human(content="Zmień datę w tym podaniu na 1 czerwca 2026")], "s-edit-bad",
+                    approval_policy="auto", last_file=first["last_generated_file"])
+    assert "BŁĄD" in "\n".join(m.content for m in second["messages"][len(first["messages"]):])
+    assert second["last_generated_file"] == first["last_generated_file"]
+    assert len(docker.runs) == 1  # nothing recompiled
