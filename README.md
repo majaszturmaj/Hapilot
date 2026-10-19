@@ -81,6 +81,9 @@ Measured on an RTX 4090 (24 GB) on 2026-10-18 with llama.cpp, q8_0 KV cache: VRA
 the model file is in the page cache (first load from disk: 52 s for Bielik, 120 s for Qwen3-Coder). The seven smoke
 scenarios took 82.6 s in total with `best-local` and 138.3 s with `reference` (all passed).
 
+Time per path (chat, knowledge search, Python, documents, uploaded files) and per development task with both
+profiles, measured on 2026-10-19: [docs/timing.md](docs/timing.md).
+
 The default profile is `best-local` (set in `config/profiles.yaml`); users choose a profile per chat session in the
 ⚙️ panel. Adding a model is a configuration change (profiles + `config/models.local.yaml`), not a UI action.
 

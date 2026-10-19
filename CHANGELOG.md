@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (stage 6: deployment and timing)
+
+No behaviour change in the agent.
+
+- `scripts/timing.py`: time per path (smoke scenarios repeated), development tasks with model calls and tokens,
+  model loads and swaps from the proxy log; Markdown and JSON report.
+- `docs/timing.md`: measurements of 2026-10-19 on an RTX 4090 with both profiles, from a fresh installation of
+  `v0.3.0` in its own directory with its own ports; raw data in `docs/measurements/`.
+
 ## v0.3.0 — 2026-10-19 (stage 5: showcase)
 
 Behaviour changes after v0.2.0 (the benchmark stays on `eval-v1`).

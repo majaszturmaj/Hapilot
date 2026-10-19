@@ -1,0 +1,612 @@
+{
+  "date": "2026-10-19T16:56:34",
+  "git": {
+    "commit": "120bb4e0798c15d87bd8d5f93931dc0fe888ac48",
+    "describe": "v0.3.0-1-g120bb4e",
+    "dirty": false
+  },
+  "runs": 3,
+  "environment": {
+    "gpu": "NVIDIA GeForce RTX 4090, 24564 MiB, 580.173.02",
+    "cpu": "AMD Ryzen 9 7950X 16-Core Processor",
+    "ram_gb": 125,
+    "python": "3.12.3"
+  },
+  "profiles": {
+    "reference": {
+      "models": [
+        "bielik-11b-v3-q8",
+        "qwen3-coder-30b-a3b-q4km"
+      ],
+      "startup_s": 3.0,
+      "smoke": [
+        {
+          "id": "chat",
+          "path": "conversation, no tools",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 7.3,
+          "min_s": 7.3,
+          "max_s": 7.3,
+          "plans": [
+            [
+              "chat"
+            ]
+          ]
+        },
+        {
+          "id": "rag_leave",
+          "path": "knowledge search, short answer",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 9.2,
+          "min_s": 7.5,
+          "max_s": 9.2,
+          "plans": [
+            [
+              "rag_search"
+            ]
+          ]
+        },
+        {
+          "id": "rag_complaints",
+          "path": "knowledge search, two facts",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 8.3,
+          "min_s": 6.8,
+          "max_s": 8.4,
+          "plans": [
+            [
+              "rag_search"
+            ]
+          ]
+        },
+        {
+          "id": "python_sum",
+          "path": "Python in the sandbox",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 6.1,
+          "min_s": 5.9,
+          "max_s": 6.1,
+          "plans": [
+            [
+              "python"
+            ]
+          ]
+        },
+        {
+          "id": "email_no_pdf",
+          "path": "writer: e-mail text",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 6.7,
+          "min_s": 6.7,
+          "max_s": 6.7,
+          "plans": [
+            [
+              "llm_synthesis"
+            ]
+          ]
+        },
+        {
+          "id": "pdf_letter",
+          "path": "document: letter as PDF",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 18.4,
+          "min_s": 18.4,
+          "max_s": 18.4,
+          "plans": [
+            [
+              "rag_search",
+              "template_pdf"
+            ]
+          ]
+        },
+        {
+          "id": "pdf_modify",
+          "path": "edit the generated PDF",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 8.4,
+          "min_s": 7.9,
+          "max_s": 8.4,
+          "plans": [
+            [
+              "modify_document"
+            ]
+          ]
+        },
+        {
+          "id": "file_summary",
+          "path": "summary of an uploaded 10-page PDF",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 80.3,
+          "min_s": 80.3,
+          "max_s": 80.3,
+          "plans": [
+            [
+              "file_summary",
+              "rag_search",
+              "llm_synthesis"
+            ]
+          ]
+        },
+        {
+          "id": "file_edit",
+          "path": "edit an uploaded Word file",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 11.0,
+          "min_s": 11.0,
+          "max_s": 11.0,
+          "plans": [
+            [
+              "file_edit"
+            ]
+          ]
+        },
+        {
+          "id": "file_to_knowledge",
+          "path": "add an uploaded file to the knowledge base",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 2.9,
+          "min_s": 2.9,
+          "max_s": 2.9,
+          "plans": [
+            [
+              "hitl_confirm",
+              "file_to_knowledge"
+            ]
+          ]
+        },
+        {
+          "id": "rag_added_document",
+          "path": "knowledge search incl. the added file",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 5.5,
+          "min_s": 5.5,
+          "max_s": 5.5,
+          "plans": [
+            [
+              "rag_search"
+            ]
+          ]
+        }
+      ],
+      "dev": [
+        {
+          "id": "D01",
+          "status": "ok",
+          "seconds": 11.33,
+          "llm_calls": 4,
+          "prompt_tokens": 10739,
+          "completion_tokens": 435,
+          "plan": [
+            "rag_search"
+          ]
+        },
+        {
+          "id": "D02",
+          "status": "ok",
+          "seconds": 18.03,
+          "llm_calls": 6,
+          "prompt_tokens": 13619,
+          "completion_tokens": 828,
+          "plan": [
+            "rag_search",
+            "python",
+            "llm_synthesis"
+          ]
+        },
+        {
+          "id": "D03",
+          "status": "ok",
+          "seconds": 23.48,
+          "llm_calls": 6,
+          "prompt_tokens": 14359,
+          "completion_tokens": 1125,
+          "plan": [
+            "rag_search",
+            "python",
+            "llm_synthesis"
+          ]
+        },
+        {
+          "id": "D04",
+          "status": "ok",
+          "seconds": 12.27,
+          "llm_calls": 5,
+          "prompt_tokens": 12013,
+          "completion_tokens": 695,
+          "plan": [
+            "rag_search",
+            "llm_synthesis"
+          ]
+        },
+        {
+          "id": "D05",
+          "status": "ok",
+          "seconds": 9.68,
+          "llm_calls": 4,
+          "prompt_tokens": 10914,
+          "completion_tokens": 544,
+          "plan": [
+            "rag_search"
+          ]
+        },
+        {
+          "id": "D06",
+          "status": "ok",
+          "seconds": 9.64,
+          "llm_calls": 3,
+          "prompt_tokens": 4966,
+          "completion_tokens": 255,
+          "plan": [
+            "python"
+          ]
+        },
+        {
+          "id": "D07",
+          "status": "ok",
+          "seconds": 27.89,
+          "llm_calls": 5,
+          "prompt_tokens": 13960,
+          "completion_tokens": 1661,
+          "plan": [
+            "rag_search",
+            "template_pdf"
+          ]
+        },
+        {
+          "id": "D08",
+          "status": "ok",
+          "seconds": 6.38,
+          "llm_calls": 4,
+          "prompt_tokens": 10247,
+          "completion_tokens": 336,
+          "plan": [
+            "rag_search"
+          ]
+        },
+        {
+          "id": "D09",
+          "status": "ok",
+          "seconds": 28.31,
+          "llm_calls": 6,
+          "prompt_tokens": 15026,
+          "completion_tokens": 1581,
+          "plan": [
+            "rag_search",
+            "python",
+            "llm_synthesis"
+          ]
+        },
+        {
+          "id": "D10",
+          "status": "ok",
+          "seconds": 8.4,
+          "llm_calls": 4,
+          "prompt_tokens": 10549,
+          "completion_tokens": 442,
+          "plan": [
+            "rag_search"
+          ]
+        }
+      ],
+      "model_loads": [
+        {
+          "model": "bielik-11b-v3-q8",
+          "loads": 8,
+          "first_s": 2.0,
+          "median_s": 2.0,
+          "max_s": 2.0
+        },
+        {
+          "model": "qwen3-coder-30b-a3b-q4km",
+          "loads": 7,
+          "first_s": 3.0,
+          "median_s": 3.0,
+          "max_s": 3.0
+        }
+      ]
+    },
+    "best-local": {
+      "models": [
+        "qwen3.6-27b-q4km"
+      ],
+      "startup_s": 4.2,
+      "smoke": [
+        {
+          "id": "chat",
+          "path": "conversation, no tools",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 10.7,
+          "min_s": 10.5,
+          "max_s": 10.7,
+          "plans": [
+            [
+              "chat"
+            ]
+          ]
+        },
+        {
+          "id": "rag_leave",
+          "path": "knowledge search, short answer",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 8.4,
+          "min_s": 8.3,
+          "max_s": 8.7,
+          "plans": [
+            [
+              "rag_search"
+            ]
+          ]
+        },
+        {
+          "id": "rag_complaints",
+          "path": "knowledge search, two facts",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 10.2,
+          "min_s": 10.0,
+          "max_s": 10.2,
+          "plans": [
+            [
+              "rag_search"
+            ]
+          ]
+        },
+        {
+          "id": "python_sum",
+          "path": "Python in the sandbox",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 5.6,
+          "min_s": 5.5,
+          "max_s": 5.6,
+          "plans": [
+            [
+              "python"
+            ]
+          ]
+        },
+        {
+          "id": "email_no_pdf",
+          "path": "writer: e-mail text",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 6.1,
+          "min_s": 6.1,
+          "max_s": 6.3,
+          "plans": [
+            [
+              "llm_synthesis"
+            ]
+          ]
+        },
+        {
+          "id": "pdf_letter",
+          "path": "document: letter as PDF",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 13.3,
+          "min_s": 13.3,
+          "max_s": 13.3,
+          "plans": [
+            [
+              "template_pdf"
+            ]
+          ]
+        },
+        {
+          "id": "pdf_modify",
+          "path": "edit the generated PDF",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 12.8,
+          "min_s": 12.3,
+          "max_s": 13.0,
+          "plans": [
+            [
+              "modify_document"
+            ]
+          ]
+        },
+        {
+          "id": "file_summary",
+          "path": "summary of an uploaded 10-page PDF",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 64.7,
+          "min_s": 62.3,
+          "max_s": 64.7,
+          "plans": [
+            [
+              "file_summary",
+              "llm_synthesis"
+            ]
+          ]
+        },
+        {
+          "id": "file_edit",
+          "path": "edit an uploaded Word file",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 12.9,
+          "min_s": 12.9,
+          "max_s": 13.0,
+          "plans": [
+            [
+              "file_edit"
+            ]
+          ]
+        },
+        {
+          "id": "file_to_knowledge",
+          "path": "add an uploaded file to the knowledge base",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 3.9,
+          "min_s": 3.8,
+          "max_s": 3.9,
+          "plans": [
+            [
+              "file_to_knowledge"
+            ]
+          ]
+        },
+        {
+          "id": "rag_added_document",
+          "path": "knowledge search incl. the added file",
+          "runs": 3,
+          "passed": 3,
+          "median_s": 6.3,
+          "min_s": 5.9,
+          "max_s": 6.3,
+          "plans": [
+            [
+              "rag_search"
+            ]
+          ]
+        }
+      ],
+      "dev": [
+        {
+          "id": "D01",
+          "status": "ok",
+          "seconds": 18.51,
+          "llm_calls": 5,
+          "prompt_tokens": 8938,
+          "completion_tokens": 519,
+          "plan": [
+            "rag_search",
+            "llm_synthesis"
+          ]
+        },
+        {
+          "id": "D02",
+          "status": "ok",
+          "seconds": 18.66,
+          "llm_calls": 5,
+          "prompt_tokens": 9218,
+          "completion_tokens": 692,
+          "plan": [
+            "rag_search",
+            "python"
+          ]
+        },
+        {
+          "id": "D03",
+          "status": "ok",
+          "seconds": 14.8,
+          "llm_calls": 5,
+          "prompt_tokens": 8898,
+          "completion_tokens": 525,
+          "plan": [
+            "rag_search",
+            "llm_synthesis"
+          ]
+        },
+        {
+          "id": "D04",
+          "status": "ok",
+          "seconds": 14.03,
+          "llm_calls": 5,
+          "prompt_tokens": 8993,
+          "completion_tokens": 491,
+          "plan": [
+            "rag_search",
+            "llm_synthesis"
+          ]
+        },
+        {
+          "id": "D05",
+          "status": "ok",
+          "seconds": 17.02,
+          "llm_calls": 5,
+          "prompt_tokens": 9379,
+          "completion_tokens": 630,
+          "plan": [
+            "rag_search",
+            "llm_synthesis"
+          ]
+        },
+        {
+          "id": "D06",
+          "status": "ok",
+          "seconds": 8.6,
+          "llm_calls": 3,
+          "prompt_tokens": 4016,
+          "completion_tokens": 288,
+          "plan": [
+            "python"
+          ]
+        },
+        {
+          "id": "D07",
+          "status": "ok",
+          "seconds": 15.23,
+          "llm_calls": 3,
+          "prompt_tokens": 5704,
+          "completion_tokens": 576,
+          "plan": [
+            "template_pdf"
+          ]
+        },
+        {
+          "id": "D08",
+          "status": "ok",
+          "seconds": 15.09,
+          "llm_calls": 5,
+          "prompt_tokens": 8989,
+          "completion_tokens": 542,
+          "plan": [
+            "rag_search",
+            "llm_synthesis"
+          ]
+        },
+        {
+          "id": "D09",
+          "status": "ok",
+          "seconds": 15.27,
+          "llm_calls": 5,
+          "prompt_tokens": 8967,
+          "completion_tokens": 551,
+          "plan": [
+            "rag_search",
+            "llm_synthesis"
+          ]
+        },
+        {
+          "id": "D10",
+          "status": "ok",
+          "seconds": 15.52,
+          "llm_calls": 5,
+          "prompt_tokens": 9152,
+          "completion_tokens": 560,
+          "plan": [
+            "rag_search",
+            "llm_synthesis"
+          ]
+        }
+      ],
+      "model_loads": [
+        {
+          "model": "qwen3.6-27b-q4km",
+          "loads": 1,
+          "first_s": 3.2,
+          "median_s": 3.2,
+          "max_s": 3.2
+        }
+      ]
+    }
+  }
+}

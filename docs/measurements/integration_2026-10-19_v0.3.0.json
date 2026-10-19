@@ -1,0 +1,110 @@
+{
+  "date": "2026-10-19T16:42:38",
+  "git": {
+    "commit": "0c0e60985353ce924aa9f955397cd81b7324cd5c",
+    "describe": "v0.3.0",
+    "dirty": false
+  },
+  "profiles": {
+    "reference": {
+      "models": [
+        "bielik-11b-v3-q8",
+        "qwen3-coder-30b-a3b-q4km"
+      ],
+      "smoke": {
+        "comparison": {
+          "passed": 11,
+          "total": 11,
+          "regressions": [],
+          "known_failures": [],
+          "now_passing": []
+        },
+        "seconds": 160.7,
+        "egress_attempts": [],
+        "failures": {}
+      },
+      "planner": {
+        "comparison": {
+          "passed": 25,
+          "total": 25,
+          "regressions": [],
+          "known_failures": [],
+          "now_passing": []
+        },
+        "seconds": 75.8,
+        "egress_attempts": [],
+        "failures": {}
+      },
+      "dev": {
+        "comparison": {
+          "passed": 9,
+          "total": 10,
+          "regressions": [],
+          "known_failures": [
+            "D03"
+          ],
+          "now_passing": [
+            "D05",
+            "D09"
+          ]
+        },
+        "valid": true,
+        "seconds": 152.6,
+        "egress_attempts": [],
+        "failures": {
+          "D03": [
+            "kara_zl=1100, expected 300"
+          ]
+        }
+      }
+    },
+    "best-local": {
+      "models": [
+        "qwen3.6-27b-q4km"
+      ],
+      "smoke": {
+        "comparison": {
+          "passed": 11,
+          "total": 11,
+          "regressions": [],
+          "known_failures": [],
+          "now_passing": []
+        },
+        "seconds": 154.9,
+        "egress_attempts": [],
+        "failures": {}
+      },
+      "planner": {
+        "comparison": {
+          "passed": 25,
+          "total": 25,
+          "regressions": [],
+          "known_failures": [],
+          "now_passing": []
+        },
+        "seconds": 105.6,
+        "egress_attempts": [],
+        "failures": {}
+      },
+      "dev": {
+        "comparison": {
+          "passed": 10,
+          "total": 10,
+          "regressions": [],
+          "known_failures": [],
+          "now_passing": []
+        },
+        "valid": true,
+        "seconds": 149.7,
+        "egress_attempts": [],
+        "failures": {}
+      }
+    }
+  },
+  "unit": {
+    "ok": true,
+    "summary": "218 passed in 4.28s",
+    "seconds": 5.9
+  },
+  "passed": true
+}
