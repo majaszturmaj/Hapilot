@@ -1,8 +1,9 @@
 # Hapilot
 
 A local multi-agent assistant for office work in Polish companies: it answers questions from company
-documents, writes letters, reports and meeting minutes as PDF, edits them, and runs Python for
-calculations — with local language models, on your own hardware.
+documents, writes letters, reports and meeting minutes as PDF, edits them, works on files you upload
+(summarises them, edits them, adds them to the knowledge base), and runs Python for calculations — with
+local language models, on your own hardware.
 
 - **Local by design.** Models run on your GPU host; the knowledge base is embedded; generated code and
   LaTeX run in a throwaway container without network. Model endpoints must be local/LAN addresses.
@@ -12,7 +13,24 @@ calculations — with local language models, on your own hardware.
   and graph are built from the manifests; a new tool needs no change to the core (example:
   [examples/extensions/vat_calculator](examples/extensions/vat_calculator)).
 
-> Status: under active development (version 0.1). See [CHANGELOG.md](CHANGELOG.md).
+> Status: under active development. See [CHANGELOG.md](CHANGELOG.md). A scripted 10-minute demo is in
+> [docs/demo.md](docs/demo.md).
+
+## Screenshots
+
+From the scripted demo ([docs/demo.md](docs/demo.md)) with the fictional demo company, profile `best-local` on an
+RTX 4090, taken by [scripts/ui_demo.py](scripts/ui_demo.py) through the SSH tunnel (2026-10-19).
+
+| | |
+|---|---|
+| ![Start screen](docs/img/01_welcome.png) | ![Answer from company documents with sources](docs/img/02_rag_question.png) |
+| Start screen | Answer from company documents, with sources |
+| ![Letter as PDF after the document form](docs/img/03_find_then_letter.png) | ![Calculation on a spreadsheet](docs/img/05_python_register.png) |
+| Search, then a letter as PDF (after the document form) | Calculation on a spreadsheet in the sandbox |
+| ![Summary of an uploaded 10-page report](docs/img/06_summarize_upload.png) | ![Edited Word file to download](docs/img/07_edit_upload.png) |
+| Summary of an uploaded 10-page report | An uploaded Word file, corrected |
+| ![Adding a file to the knowledge base after confirmation](docs/img/08_add_to_knowledge.png) | ![Answer from the added document](docs/img/09_ask_new_knowledge.png) |
+| Adding a file to the knowledge base (asks first) | Answer from the newly added document |
 
 ---
 
@@ -27,11 +45,11 @@ calculations — with local language models, on your own hardware.
                            ┌───────▼───────┐
                            │    router     │  no LLM: step tool → node
                            └───────┬───────┘
-   ┌──────────────┬──────────────┬─┴───────────┬────────────────────┬──────────────────┐
-knowledge       writer          chat     document_generator   modify_document     coder → execute
-(RAG search)  (text, e-mail   (conver-   (LaTeX template,      (edit a document    (Python in the
-               drafts)         sation)    review form, PDF)     from this session)  sandbox, retries)
-   └──────────────┴──────────────┴─────────────┴────────────────────┴──────────────────┘
+   ┌──────────────┬──────────────┬─┴───────────┬────────────────────┬──────────────────┬──────────────────┐
+knowledge       writer          chat     document_generator   modify_document     coder → execute    file tools
+(RAG search)  (text, e-mail   (conver-   (LaTeX template,      (edit a document    (Python in the     (summarise, edit,
+               drafts)         sation)    review form, PDF)     from this session)  sandbox, retries)  add to knowledge)
+   └──────────────┴──────────────┴─────────────┴────────────────────┴──────────────────┴──────────────────┘
                                    │  next plan step, or end
 ```
 
@@ -41,12 +59,14 @@ knowledge       writer          chat     document_generator   modify_document   
 | Models | Any OpenAI-compatible local server; roles mapped to models by **profiles** ([config/profiles.yaml](config/profiles.yaml)) |
 | Model serving | [tools/modelswap.py](tools/modelswap.py): one local endpoint that loads one llama.cpp model at a time |
 | Knowledge base | ChromaDB embedded in the Hapilot process; hybrid search: `intfloat/multilingual-e5-base` vectors (CPU) and BM25, fused by reciprocal rank fusion; .pdf, .docx, .eml, .xlsx, .txt, .md |
-| Documents | LaTeX templates (letter, report, protocol) in [templates/](templates/), compiled to PDF in the sandbox |
+| Documents | LaTeX templates (letter, report, protocol) in [templates/](templates/), compiled to PDF in the sandbox; Polish text in the PDF can be copied and searched; short reports get a compact layout |
+| Uploaded files | .pdf, .docx, .eml, .xlsx, .txt, .md attached in the chat: short ones go into the message, long ones are indexed for the session. Tools: summary of the whole file, editing (Word files keep styles, lists and tables), adding to the company knowledge base after confirmation ([extensions/file_tools](extensions/file_tools)) |
 | Sandbox | Fresh Docker container per run: no network, non-root, read-only root filesystem, CPU/memory/process limits, timeout; the session's workspace is the only writable mount, company documents are readable at `/data` ([src/sandbox.py](src/sandbox.py)) |
 | UI | Chainlit, per-session workspace and model profile, optional password login |
 
 Human in the loop: under the default `ask` policy Hapilot asks before running plans longer than two
-steps, shows document parameters in a form before generating a PDF, and stops at confirmation steps.
+steps, shows document parameters in a form before generating a PDF, asks before adding a file to the shared
+knowledge base, and stops at confirmation steps.
 Scripts and evaluation runs use the `auto` policy.
 
 ## Model profiles
@@ -72,15 +92,15 @@ What Hapilot does to keep data on your machines:
 - Hugging Face, Chroma and LangChain telemetry and downloads are switched off at run time (`src/privacy.py`);
   the embedding model is downloaded once during setup;
 - the sandbox has no network; the UI, model proxy and optional n8n listen on 127.0.0.1 only;
-- each chat session has its own workspace; files are never served across sessions.
+- each chat session has its own workspace; files are never served across sessions. A file a user adds to the
+  knowledge base becomes searchable in every session of that installation; Hapilot asks before adding it.
 
 The claim is tested, not only stated: `scripts/hapilotctl.py egress-test` runs the scenario suite with
 the model server, the UI, indexing and the agent under `strace`, blocks non-local connections from
 Hapilot's Python process, and fails on any outbound connection attempt (including DNS).
-**Last egress test: passed on 2026-10-18, commit `62a949e`, profile `best-local`** (earlier the same day also on
-`0752d4f` with both profiles; 7/7 scenarios each;
-traced: model server, UI start-up and page load, indexing, agent runs; no outbound connection, no DNS lookup; every
-sandbox run had network mode `none`). Not covered by the trace: the Docker daemon itself (root) and a full browser chat
+**Last egress test: passed on 2026-10-19, commit `25a14c6`, profiles `best-local` and `reference`** (11/11 scenarios
+each, including uploaded files, editing them and adding one to the knowledge base; traced: model server, UI start-up
+and page load, indexing, agent runs; no outbound connection, no DNS lookup; every sandbox run had network mode `none`). Not covered by the trace: the Docker daemon itself (root) and a full browser chat
 session over the UI's websocket (the agent code it runs is the same as in the scenarios).
 
 The optional n8n extension (Outlook e-mail drafts and calendar) is outside this claim: n8n talks to
@@ -131,11 +151,16 @@ set `HAPILOT_UI_USERS_FILE` in `.env`.
 | 8612 | llama-server started by the proxy | `HAPILOT_BACKEND_PORT` |
 | 8678 | n8n (optional, compose profile `n8n`) | `HAPILOT_N8N_PORT` |
 
+Set the variables in `.env` (or the environment) when a port is taken; `hapilotctl` refuses to start on a
+port that is in use and prints the tunnel command with the configured UI port (`hapilotctl.py tunnel`).
+
 ### Your documents
 
 Put company documents (.pdf, .docx, .eml, .xlsx, .txt, .md) in a folder, set `HAPILOT_DOCS_DIR` in `.env`, and run
 `hapilotctl.py ingest`. The default is the fictional demo company in
-[examples/demo_company/](examples/demo_company/). `data/private_docs/` is ignored by git.
+[examples/demo_company/](examples/demo_company/). `data/private_docs/` is ignored by git. Files that users add
+from the chat are kept in `var/added_docs/` (`HAPILOT_ADDED_DOCS_DIR`) and indexed together with your documents
+(source path `dodane/…`); to remove one, delete it there and run `hapilotctl.py ingest --force`.
 
 ## Evaluation (headless)
 

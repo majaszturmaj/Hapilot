@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased (stage 5: showcase)
+
+Behaviour changes after v0.2.0 (the benchmark stays on `eval-v1`).
+
+Verification on the GPU host (RTX 4090): integration suite passed at `ad9fa98` — `reference` smoke 11/11,
+planner 25/25, dev 9/10 (D03 known); `best-local` smoke 11/11, planner 25/25, dev 10/10. Egress test passed at
+`25a14c6` with both profiles (11/11 scenarios each). UI walk-through (`scripts/ui_demo.py`) 9/9 at `25a14c6`.
+Unit tests 218.
+
+- Uploaded files: new built-in extension `file_tools` — summary of a whole attached file (long files part by
+  part), editing (.docx/.txt/.md keep their format, .pdf/.eml become .docx; Word styles, lists and tables kept),
+  adding a file to the company knowledge base after confirmation (`HAPILOT_ADDED_DOCS_DIR`, indexed at once;
+  never in evaluation runs).
+- Planner guards read the user's own words, not attached text; an edit request with a new attachment is not
+  forced to `modify_document`; a `modify_document` step that can only fail and a confirmation step at the end of
+  a plan are dropped (both seen with Bielik in the integration runs).
+- PDFs: Polish text can be copied and searched (OT4 encoding, PL fonts, Unicode map); signature lines in the
+  letter and report; short reports get a compact layout; § × • ° ± ² ³ € → ← ≤ ≥ ≈ are set with scalable glyphs,
+  unsupported symbols are dropped instead of failing the document; Markdown bold becomes bold.
+- Fix: LaTeX commands in template fields (lists, line breaks, bold) were printed as `\_\_LATEX\_…` (also in
+  `eval-v1`).
+- UI: plain wording instead of `WYNIK: SUKCES`, program output in a code block, downloads for .docx/.txt/.md
+  too, plain form title, Polish profile descriptions, welcome text mentions files; Chainlit's own labels in Polish
+  (`.chainlit/translations/pl-PL.json`); after a click both buttons of a question disappear.
+- Knowledge base: a file with the same content is not added twice; re-indexing while the UI runs no longer
+  leaves the UI searching a deleted collection (found by the UI walk-through).
+- Ports set in `.env` reach the launcher; port values are checked.
+- Requirements: unused `langchain-community` removed; `pyproject.toml` matches `requirements.txt`; a test keeps
+  it that way.
+- Demo: files to upload (`examples/demo_company/uploads/`), presenter's script `docs/demo.md`, automated UI
+  walk-through `scripts/ui_demo.py` (Playwright, optional); smoke scenarios with uploads run on a temporary
+  knowledge base; planner scenarios with attachments.
+
 ## v0.2.0 — 2026-10-19 (stages 3–4: extension SDK, tests and CI)
 
 ### Stage 4: tests and CI

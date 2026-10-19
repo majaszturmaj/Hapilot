@@ -69,11 +69,14 @@ Output (default `var/integration/<timestamp>/`): `integration_report.md` (table 
 (`planner_traces/`, `hapilot.trace/1`), the evaluation run directory (`dev_eval/`) and the logs. The run
 stops the model proxy it started; it refuses to start while Hapilot is already running.
 
-**Last integration run: passed on 2026-10-19, commit `3a7c32a`, both profiles** (RTX 4090):
+**Last integration run: passed on 2026-10-19, commit `ad9fa98`, both profiles** (RTX 4090):
 
 | Profile | Smoke | Planner | Dev tasks | Time (s, sum of suites) |
 |---|---|---|---|---|
-| reference | 7/7 | 20/20 | 8/10 (D03, D05: known, listed in the baseline) | 324 |
-| best-local | 7/7 | 20/20 | 10/10 | 316 |
+| reference | 11/11 | 25/25 | 9/10 (D03: known, listed in the baseline) | 392 |
+| best-local | 11/11 | 25/25 | 10/10 | 410 |
 
-Unit tests in the deployed checkout 181/181; both evaluation runs schema-valid; no egress attempts.
+Unit tests in the deployed checkout 217/217; both evaluation runs schema-valid; no egress attempts. Later commits
+of the same day changed the UI, adding files to the knowledge base and re-loading a rebuilt index; they were
+checked with the unit tests, the egress test (which runs the smoke scenarios) and the UI walk-through
+(`scripts/ui_demo.py`, 9/9 steps).
