@@ -280,33 +280,35 @@ async def _handle_hitl_form(hitl_request: dict, continuation: dict):
     await _continue_after_hitl(response)
 
 
-async def _clear_actions() -> None:
-    """Remove every button of the question once one was clicked (not only the clicked one)."""
-    for action in cl.user_session.get("hitl_actions") or []:
-        try:
-            await _clear_actions()
-        except Exception:
-            pass
+async def _clear_actions(clicked: cl.Action) -> None:
+    """Remove the clicked button and the other buttons of the same question."""
+    await clicked.remove()
+    for other in cl.user_session.get("hitl_actions") or []:
+        if other.id != clicked.id:
+            try:
+                await other.remove()
+            except Exception as exc:  # a stale button is harmless; say so in the log
+                print(f"⚠️ [UI] could not remove button {other.label!r}: {exc}")
     cl.user_session.set("hitl_actions", [])
 
 
 @cl.action_callback("hitl_cancel")
 async def on_hitl_cancel(action: cl.Action):
-    await _clear_actions()
+    await _clear_actions(action)
     await cl.Message(content="Rozumiem — anulowałem. Jestem tu, gdybyś potrzebował czegoś innego! 😊", author="Hapilot").send()
 
 
 @cl.action_callback("hitl_yes")
 async def on_hitl_yes(action: cl.Action):
     continuation = cl.user_session.get("hitl_continuation") or {}
-    await _clear_actions()
+    await _clear_actions(action)
     await _continue_after_hitl({**continuation, "continuation_type": continuation.get("type", ""), "confirmed": True})
 
 
 @cl.action_callback("hitl_no")
 async def on_hitl_no(action: cl.Action):
     continuation = cl.user_session.get("hitl_continuation") or {}
-    await _clear_actions()
+    await _clear_actions(action)
     if continuation.get("type") == "resume_node":  # let the node record the refusal and finish its plan
         await _continue_after_hitl({**continuation, "continuation_type": "resume_node", "confirmed": False})
         return
@@ -317,7 +319,7 @@ async def on_hitl_no(action: cl.Action):
 async def on_hitl_select(action: cl.Action):
     defs = cl.user_session.get("hitl_action_defs") or []
     continuation = cl.user_session.get("hitl_continuation") or {}
-    await _clear_actions()
+    await _clear_actions(action)
     payload = dict(action.payload) if isinstance(action.payload, dict) else {}
     idx = payload.pop("index", 0)
     selected = defs[idx] if idx < len(defs) else {}

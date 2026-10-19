@@ -46,14 +46,21 @@ BUTTONS = ["Tak, działaj!", "Generuj PDF"]  # plan approval / confirmation, doc
 def wait_for_answer(page, timeout_s: float) -> list[str]:
     """Wait until the run ends, answering approvals and forms on the way; returns the buttons clicked."""
     clicked, idle_since, deadline = [], None, time.monotonic() + timeout_s
+    seen = {label: page.get_by_role("button", name=label).count() for label in BUTTONS}  # buttons of earlier steps
     while time.monotonic() < deadline:
         for label in BUTTONS:
             button = page.get_by_role("button", name=label)
-            if button.count() and button.last.is_visible() and button.last.is_enabled():
+            # only a button that appeared in this step, once: a button left on screen is never clicked twice
+            if button.count() > seen[label] and button.last.is_visible() and button.last.is_enabled():
+                before = button.count()
                 button.last.click()
                 clicked.append(label)
                 idle_since = None
-                time.sleep(1)
+                for _ in range(10):  # the UI removes a question's buttons once one is clicked
+                    if button.count() < before:
+                        break
+                    time.sleep(0.5)
+                seen[label] = button.count()
         running = page.locator("#stop-button").count() > 0
         if running:
             idle_since = None
