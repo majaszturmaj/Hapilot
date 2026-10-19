@@ -82,7 +82,7 @@ def test_templates_use_polish_glyph_fonts_and_signature_lines():
 
     for name in ("letter", "report", "protocol"):
         tex = (TEMPLATES_DIR / f"{name}.tex").read_text(encoding="utf-8")
-        assert "\\usepackage[OT4]{fontenc}" in tex and "\\pdfgentounicode=1" in tex, name
+        assert "\\usepackage[T1]{fontenc}" in tex and "\\usepackage{tgtermes}" in tex and "\\pdfgentounicode=1" in tex, name
         assert "utf8x" not in tex and "{times}" not in tex, name
     assert "\\rule{6cm}{0.4pt}" in (TEMPLATES_DIR / "letter.tex").read_text(encoding="utf-8")
     assert (TEMPLATES_DIR / "report.tex").read_text(encoding="utf-8").count("\\dotfill") == 2

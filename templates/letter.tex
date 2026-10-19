@@ -1,20 +1,22 @@
 \documentclass[a4paper,11pt]{article}
-% Polish letters as real glyphs (OT4 encoding, PL fonts) and a Unicode map: text copied from the PDF stays Polish
+% TeX Gyre Termes (Times-like) in the T1 encoding: every Polish letter is a real glyph, and with the Unicode map
+% text copied from the PDF stays Polish. Needs the sandbox image 0.2 (package tex-gyre).
 \input{glyphtounicode}\pdfgentounicode=1
-\usepackage[OT4]{fontenc}
+\usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
+\usepackage{tgtermes}
 \usepackage{polski}
 \usepackage[expansion=false]{microtype}
-% Symbols that would otherwise come from the TS1 font (bitmap-only in the sandbox image: not copyable, and it
-% breaks microtype): § × • ° ± ² ³ € → ← ≤ ≥ ≈. Keep in step with LATEX_SYMBOLS in src/agent_tools.py.
-\DeclareUnicodeCharacter{00A7}{\ensuremath{\mathsection}}
-\DeclareUnicodeCharacter{00D7}{\ensuremath{\times}}
-\DeclareUnicodeCharacter{2022}{\ensuremath{\bullet}}
-\DeclareUnicodeCharacter{00B0}{\ensuremath{^{\circ}}}
-\DeclareUnicodeCharacter{00B1}{\ensuremath{\pm}}
-\DeclareUnicodeCharacter{00B2}{\ensuremath{^{2}}}
-\DeclareUnicodeCharacter{00B3}{\ensuremath{^{3}}}
-\DeclareUnicodeCharacter{20AC}{EUR}
+% Symbols a model may write: § × • ° ± ² ³ € from the same typeface (TS1), arrows and relations from the math
+% fonts. Keep in step with LATEX_SYMBOLS in src/agent_tools.py.
+\DeclareUnicodeCharacter{00A7}{\textsection}
+\DeclareUnicodeCharacter{00D7}{\texttimes}
+\DeclareUnicodeCharacter{2022}{\textbullet}
+\DeclareUnicodeCharacter{00B0}{\textdegree}
+\DeclareUnicodeCharacter{00B1}{\textpm}
+\DeclareUnicodeCharacter{00B2}{\texttwosuperior}
+\DeclareUnicodeCharacter{00B3}{\textthreesuperior}
+\DeclareUnicodeCharacter{20AC}{\texteuro}
 \DeclareUnicodeCharacter{2192}{\ensuremath{\rightarrow}}
 \DeclareUnicodeCharacter{2190}{\ensuremath{\leftarrow}}
 \DeclareUnicodeCharacter{2264}{\ensuremath{\leq}}

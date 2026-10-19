@@ -22,6 +22,11 @@ RUN pip install --no-cache-dir \
         fpdf \
         docxtpl
 
+# TeX Gyre fonts (added in image 0.2): Termes is a Times-like typeface with every Polish letter as a real glyph in
+# the T1 encoding, so text copied from a generated PDF stays Polish. Last layer, so the layers above stay as in 0.1.
+RUN apt-get update && apt-get install -y --no-install-recommends tex-gyre \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 RUN mkdir -p /work
 WORKDIR /work
 CMD ["python3", "--version"]

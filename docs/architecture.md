@@ -98,7 +98,7 @@ Templates: [templates/templates.json](../templates/templates.json) (parameters, 
 and `templates/*.tex` with `{{PARAMETER}}` placeholders. Values are LaTeX-escaped
 (`_sanitize_latex_value`). Every generated document stores its parameters next to the `.tex`
 (`<name>.params.json`); edits change those parameters and regenerate the PDF, so nothing is truncated.
-The templates use the OT4 encoding with the Polish PL fonts and a Unicode map (`glyphtounicode`), so text
+The templates use TeX Gyre Termes (Times-like, sandbox image 0.2) in the T1 encoding with a Unicode map (`glyphtounicode`), so text
 copied from a PDF keeps its Polish letters. A report whose sections are short together
 (`compact_below_chars` in templates.json) is laid out without title page and table of contents.
 
