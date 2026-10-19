@@ -41,9 +41,10 @@ sys.path.insert(0, str(ROOT))
 from src.config import get_settings  # noqa: E402
 
 PY = Path(sys.executable)
-UI_PORT = int(os.environ.get("HAPILOT_UI_PORT", "8601"))
-PROXY_PORT = int(os.environ.get("HAPILOT_MODELSWAP_PORT", "8611"))
-BACKEND_PORT = int(os.environ.get("HAPILOT_BACKEND_PORT", "8612"))
+# Ports come from the environment or .env (HAPILOT_UI_PORT, HAPILOT_MODELSWAP_PORT, HAPILOT_BACKEND_PORT).
+UI_PORT = get_settings().ui_port
+PROXY_PORT = get_settings().modelswap_port
+BACKEND_PORT = get_settings().backend_port
 MODELS_LOCAL = ROOT / "config" / "models.local.yaml"
 EMBEDDING_FILES = ["*.json", "*.txt", "model.safetensors", "sentencepiece.bpe.model", "tokenizer*", "1_Pooling/*"]
 
@@ -357,7 +358,6 @@ def cmd_smoke(args) -> None:
     started_here = not owned("modelswap")
     if started_here:
         models_up(args.profile)
-    cmd_ingest(argparse.Namespace(docs=None, force=False))
     cmd = [str(PY), str(ROOT / "scripts" / "smoke.py"), "--model-url", f"http://127.0.0.1:{PROXY_PORT}/v1"]
     if args.profile:
         cmd += ["--profile", args.profile]

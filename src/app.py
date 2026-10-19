@@ -23,8 +23,9 @@ from langchain_core.messages import HumanMessage  # noqa: E402
 from src import attachments, run_context  # noqa: E402
 from src.agent_graph import get_app  # noqa: E402
 from src.config import get_settings  # noqa: E402
-from src.graph_runner import (extract_hitl_request, final_text, generated_pdf_name, last_generated_file,  # noqa: E402
-                              new_messages, run_graph_streaming)
+from src.graph_runner import (display_text, extract_hitl_request, final_text, generated_file_names,  # noqa: E402
+                              last_generated_file, new_messages, run_graph_streaming)
+from src.graph_runner import form_title  # noqa: E402
 from src.ui_auth import check_password, users_file  # noqa: E402
 
 _CORE_NODE_LABELS = {
@@ -116,6 +117,8 @@ async def start():
             "Oto co razem możemy zrobić:\n"
             "- 📄 **Tworzyć dokumenty** — listy, raporty i protokoły gotowe do druku\n"
             "- 🧠 **Znajdować odpowiedzi** w dokumentach firmy\n"
+            "- 📎 **Pracować na Twoich plikach** (PDF, Word, e-mail, Excel, tekst) — streścić, poprawić "
+            "albo dodać do bazy wiedzy\n"
             "- 🐍 **Uruchamiać kod Python** w izolowanym środowisku — obliczenia, wykresy, analiza danych\n"
             "- 💬 **Rozmawiać** — po prostu zapytaj\n\n"
             f"Profil modeli: **{profile.name}** ({profile.description}). Zmienisz go w ⚙️."
@@ -176,19 +179,22 @@ async def _finish(history: list, run) -> None:
         await _handle_hitl_request(hitl)
         return
     text = final_text(run)
-    elements = []
-    pdf_name = generated_pdf_name(text)
-    if pdf_name:
+    elements, missing = [], []
+    for name in generated_file_names(text):
         with run_context.use_context(session_id=cl.context.session.id):
             try:
-                pdf_path = run_context.workspace_file(pdf_name)
+                path = run_context.workspace_file(name)
             except ValueError:
-                pdf_path = None
-        if pdf_path is not None and pdf_path.is_file():
-            elements.append(cl.File(name=pdf_name, path=str(pdf_path), display="inline"))
-            text += "\n\n✅ **Twój dokument PDF jest gotowy! Kliknij poniżej, aby go pobrać.**"
+                path = None
+        if path is not None and path.is_file():
+            elements.append(cl.File(name=name, path=str(path), display="inline"))
         else:
-            text += "\n\n⚠️ *Nie znalazłem wygenerowanego pliku w tej sesji. Spróbujmy jeszcze raz.*"
+            missing.append(name)
+    text = display_text(text)
+    if elements:
+        text += "\n\n⬇️ **Plik do pobrania poniżej.**" if len(elements) == 1 else "\n\n⬇️ **Pliki do pobrania poniżej.**"
+    if missing:
+        text += f"\n\n⚠️ *Nie znalazłem pliku {', '.join(missing)} w tej rozmowie. Spróbujmy jeszcze raz.*"
     await cl.Message(content=text, elements=elements, author="Hapilot").send()
 
 
@@ -246,7 +252,7 @@ async def _handle_hitl_request(hitl_request: dict):
 async def _handle_hitl_form(hitl_request: dict, continuation: dict):
     fields = hitl_request.get("fields", [])
     element = cl.CustomElement(name="hitl_form", display="inline", props={
-        "title": hitl_request.get("content") or "Parametry dokumentu", "fields": fields,
+        "title": form_title(hitl_request.get("content") or ""), "fields": fields,
         "template_id": continuation.get("template_id", "")})
     res = await cl.AskElementMessage(
         content="📋 Przygotowałem wstępne dane dokumentu. Sprawdź je i popraw co trzeba, a potem kliknij **Generuj PDF**:",

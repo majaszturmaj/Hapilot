@@ -1,6 +1,7 @@
 # Model profiles: which local model serves which agent role.
 #
 # - Operators define profiles here; users pick one per chat session in the UI settings panel.
+# - `description` is shown in the (Polish) UI, so it is written in Polish.
 #   Adding an endpoint is a configuration change, not a UI action.
 # - Every endpoint must be a local/LAN address; anything else is rejected at startup.
 # - Model names must match the names served by the model server (see config/models.example.yaml
@@ -16,7 +17,7 @@ endpoint: ${HAPILOT_MODEL_URL:-http://127.0.0.1:8611/v1}
 
 profiles:
   reference:
-    description: "Bielik-11B v3 for language roles + Qwen3-Coder-30B-A3B for Python code (the original design; the two models are swapped in turn on a 24 GB GPU)"
+    description: "Bielik-11B v3 do tekstu i Qwen3-Coder-30B-A3B do kodu Python (modele ładowane na zmianę)"
     models:
       general:
         model: bielik-11b-v3-q8
@@ -31,7 +32,7 @@ profiles:
       coder: coder
 
   best-local:
-    description: "Qwen3.6-27B (Q4_K_M, reasoning off) for all roles — one model, no swapping"
+    description: "Qwen3.6-27B do wszystkich zadań (jeden model, bez przełączania)"
     models:
       general:
         model: qwen3.6-27b-q4km

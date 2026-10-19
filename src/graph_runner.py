@@ -93,3 +93,41 @@ def generated_pdf_name(text: str) -> Optional[str]:
     """The PDF file name announced by the document tools ("Wygenerowano plik: x.pdf")."""
     match = re.search(r"Wygenerowano plik:\s*(\S+\.pdf)", text or "")
     return match.group(1) if match else None
+
+
+DOWNLOADABLE = ("pdf", "docx", "txt", "md")
+_GENERATED = re.compile(r"Wygenerowano plik:\s*(\S+\.(?:" + "|".join(DOWNLOADABLE) + r"))\b(?:\s*\(\d+ bajtów\))?")
+
+
+def generated_file_names(text: str) -> list[str]:
+    """Files announced by the tools ("Wygenerowano plik: x.pdf" / ".docx" / ".txt" / ".md"), in order, once each."""
+    names: list[str] = []
+    for match in _GENERATED.finditer(text or ""):
+        if match.group(1) not in names:
+            names.append(match.group(1))
+    return names
+
+
+def display_text(text: str) -> str:
+    """The final answer as shown in the UI: tool result markers ("WYNIK:", "SUKCES!") become plain wording.
+
+    Only the presentation changes; the conversation history, evaluation answers and traces keep the original text.
+    """
+    body = re.sub(r"^\s*WYNIK:\s*\n?", "", text or "")
+    program = re.match(r"^SUKCES:\s*\n?([\s\S]*)$", body)
+    if program:
+        output = program.group(1).strip() or "(program nic nie wypisał)"
+        return f"🐍 **Wynik programu:**\n\n```text\n{output}\n```"
+    body = re.sub(r"^SUKCES!?\s*", "", body)
+    body = _GENERATED.sub(lambda m: f"📄 Gotowe: **{m.group(1)}**", body)
+    if body.startswith("BŁĄD"):
+        body = "⚠️ " + body
+    return body.strip()
+
+
+def form_title(content: str) -> str:
+    """A plain one-line title for the document form (the form adds its own icon; no Markdown there)."""
+    first = next((line for line in (content or "").splitlines() if line.strip()), "")
+    plain = re.sub(r"[*_`#]+", "", first)
+    plain = re.sub(r"^[^\w(„\"]+", "", plain, flags=re.UNICODE)  # leading emoji and punctuation
+    return plain.strip() or "Parametry dokumentu"

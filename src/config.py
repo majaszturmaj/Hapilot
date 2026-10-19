@@ -153,6 +153,7 @@ class Settings:
     workspace_root: Path
     state_dir: Path
     docs_dir: Path
+    added_docs_dir: Path
     chroma_path: Path
     collection: str
     embedding_model: str
@@ -170,6 +171,9 @@ class Settings:
     sandbox_pids: int
     max_edit_chars: int
     n8n_webhook_base: str
+    ui_port: int = 8601
+    modelswap_port: int = 8611
+    backend_port: int = 8612
 
     def profile(self, name: Optional[str] = None) -> Profile:
         name = name or self.default_profile
@@ -191,6 +195,15 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         p = Path(get(name, str(default))).expanduser()
         return p if p.is_absolute() else (PROJECT_ROOT / p)
 
+    def port(name: str, default: int) -> int:
+        try:
+            value = int(get(name, str(default)))
+        except ValueError:
+            raise ConfigError(f"{name} must be a port number") from None
+        if not 1024 <= value <= 65535:
+            raise ConfigError(f"{name}={value}: use a port between 1024 and 65535")
+        return value
+
     data_dir = path("HAPILOT_DATA_DIR", PROJECT_ROOT / "var")
     profiles, default_profile = load_profiles(path("HAPILOT_PROFILES_FILE", PROJECT_ROOT / "config" / "profiles.yaml"), env)
     default_profile = get("HAPILOT_PROFILE", default_profile)
@@ -211,6 +224,7 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         workspace_root=path("HAPILOT_WORKSPACE_DIR", data_dir / "workspace"),
         state_dir=path("HAPILOT_STATE_DIR", data_dir / "task_states"),
         docs_dir=path("HAPILOT_DOCS_DIR", PROJECT_ROOT / "examples" / "demo_company" / "docs"),
+        added_docs_dir=path("HAPILOT_ADDED_DOCS_DIR", data_dir / "added_docs"),
         chroma_path=path("HAPILOT_CHROMA_DIR", data_dir / "chroma"),
         collection=get("HAPILOT_COLLECTION", "company_knowledge"),
         embedding_model=get("HAPILOT_EMBEDDING_MODEL", "intfloat/multilingual-e5-base"),
@@ -228,6 +242,9 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         sandbox_pids=int(get("HAPILOT_SANDBOX_PIDS", "128")),
         max_edit_chars=int(get("HAPILOT_MAX_EDIT_CHARS", "20000")),
         n8n_webhook_base=n8n_base,
+        ui_port=port("HAPILOT_UI_PORT", 8601),
+        modelswap_port=port("HAPILOT_MODELSWAP_PORT", 8611),
+        backend_port=port("HAPILOT_BACKEND_PORT", 8612),
     )
 
 

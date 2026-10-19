@@ -171,3 +171,26 @@ def test_compose_ports_are_bound_to_localhost():
     for line in compose.splitlines():
         if re.match(r"\s*-\s*\"?[\d.:]*\d+:\d+", line):
             assert "127.0.0.1:" in line, line
+
+
+def test_display_text_hides_tool_markers():
+    from src.graph_runner import display_text
+
+    assert display_text("WYNIK:\nSUKCES! Wygenerowano plik: letter_1.pdf (1234 bajtów)") == "📄 Gotowe: **letter_1.pdf**"
+    assert display_text("WYNIK:\nSUKCES:\n338350\n") == "🐍 **Wynik programu:**\n\n```text\n338350\n```"
+    assert display_text("WYNIK:\nSUKCES:\n") .endswith("(program nic nie wypisał)\n```")
+    assert display_text("WYNIK:\nBŁĄD: Nie zmieniłem pliku a.txt: x") == "⚠️ BŁĄD: Nie zmieniłem pliku a.txt: x"
+    edited = display_text("WYNIK:\nSUKCES! Wygenerowano plik: umowa_zmieniony.docx (99 bajtów)\nNowa wersja pliku umowa.docx.")
+    assert edited == "📄 Gotowe: **umowa_zmieniony.docx**\nNowa wersja pliku umowa.docx."
+    assert display_text("Zwykła odpowiedź o SUKCES-ie firmy.") == "Zwykła odpowiedź o SUKCES-ie firmy."
+
+
+def test_generated_file_names_and_form_title():
+    from src.graph_runner import form_title, generated_file_names
+
+    text = "Wygenerowano plik: a.pdf (1 bajtów) i Wygenerowano plik: b_zmieniony.docx; znowu Wygenerowano plik: a.pdf"
+    assert generated_file_names(text) == ["a.pdf", "b_zmieniony.docx"]
+    assert generated_file_names("Wygenerowano plik: skrypt.sh") == []
+    assert form_title("📋 **Przegląd parametrów dokumentu: List / Podanie**\n\nSprawdź pola.") == \
+        "Przegląd parametrów dokumentu: List / Podanie"
+    assert form_title("") == "Parametry dokumentu"

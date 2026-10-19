@@ -86,3 +86,37 @@ def test_invalid_approval_policy_fails():
 def test_n8n_webhook_must_be_local():
     with pytest.raises(NotLocalEndpoint):
         load_settings({"HAPILOT_N8N_WEBHOOK_BASE": "https://hooks.example.com/webhook"})
+
+
+def test_ports_and_added_documents_folder_are_configurable(tmp_path):
+    defaults = load_settings({})
+    assert (defaults.ui_port, defaults.modelswap_port, defaults.backend_port) == (8601, 8611, 8612)
+    assert defaults.added_docs_dir == defaults.data_dir / "added_docs"
+    custom = load_settings({"HAPILOT_UI_PORT": "9601", "HAPILOT_MODELSWAP_PORT": "9611", "HAPILOT_BACKEND_PORT": "9612",
+                            "HAPILOT_ADDED_DOCS_DIR": str(tmp_path / "dodane")})
+    assert (custom.ui_port, custom.modelswap_port, custom.backend_port) == (9601, 9611, 9612)
+    assert custom.added_docs_dir == tmp_path / "dodane"
+
+
+@pytest.mark.parametrize("value", ["80", "70000", "osiem"])
+def test_bad_ports_are_rejected(value):
+    with pytest.raises(ConfigError, match="HAPILOT_UI_PORT"):
+        load_settings({"HAPILOT_UI_PORT": value})
+
+
+def test_launcher_ports_follow_dotenv(tmp_path):
+    """Ports set only in the project's .env reach the launcher (it used to read os.environ before .env was loaded)."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    (tmp_path / ".env").write_text("HAPILOT_UI_PORT=9701\nHAPILOT_MODELSWAP_PORT=9711\n")
+    code = (f"import sys; from pathlib import Path; import src.config as c; c.PROJECT_ROOT = Path({str(tmp_path)!r}); "
+            "sys.path.insert(0, 'scripts'); import hapilotctl; "
+            "print(hapilotctl.UI_PORT, hapilotctl.PROXY_PORT, hapilotctl.BACKEND_PORT)")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("HAPILOT_")}
+    env.update(HAPILOT_PROFILES_FILE=str(root / "config" / "profiles.yaml"), HAPILOT_DATA_DIR=str(tmp_path / "var"))
+    out = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True, env=env, timeout=60)
+    assert out.stdout.split()[-3:] == ["9701", "9711", "8612"], out.stderr[-500:]
