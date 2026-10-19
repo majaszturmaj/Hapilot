@@ -120,6 +120,18 @@ def _load_templates_metadata() -> dict:
         return {"error": str(exc), "templates": {}}
 
 
+# Non-ASCII symbols the templates map to scalable glyphs (\DeclareUnicodeCharacter in templates/*.tex).
+LATEX_SYMBOLS = set("§×•°±²³€→←≤≥≈")
+
+
+def _drop_unprintable_symbols(value: str) -> str:
+    """Remove symbols LaTeX cannot typeset with the template fonts (emoji, dingbats, …) instead of failing the PDF."""
+    import unicodedata
+
+    return "".join(c for c in value if c in LATEX_SYMBOLS or ord(c) < 0x2000 or ord(c) in range(0x2010, 0x2027)
+                    or unicodedata.category(c) not in ("So", "Sk", "Sm", "Cs", "Co", "Cn"))
+
+
 def _sanitize_latex_value(value: str) -> str:
     """Escape LaTeX special characters in a parameter value while preserving
     intentional LaTeX commands (\\begin, \\end, \\item, \\textbf, \\\\, etc.).
@@ -131,6 +143,8 @@ def _sanitize_latex_value(value: str) -> str:
     """
     if not value:
         return value
+    value = _drop_unprintable_symbols(value)
+    value = re.sub(r"\*\*([^*\n]+?)\*\*", r"\\textbf{\1}", value)  # Markdown bold from a model → LaTeX bold
 
     # Known LaTeX command patterns to preserve (order matters)
     PRESERVED_PATTERNS = [
@@ -164,8 +178,9 @@ def _sanitize_latex_value(value: str) -> str:
     for pattern, placeholder_tmpl in PRESERVED_PATTERNS:
         matches = list(re.finditer(pattern, result))
         for i, m in enumerate(reversed(matches)):
-            idx = len(preserved)
-            placeholder = placeholder_tmpl.replace('{}', str(idx))
+            # Private-use characters only: step 2 must not touch the placeholder (an underscore in it was
+            # escaped, so the command was never restored and "\_\_LATEX\_…" ended up in the PDF)
+            placeholder = f"\ue000{len(preserved)}\ue001"
             preserved.append((placeholder, m.group(0)))
             result = result[:m.start()] + placeholder + result[m.end():]
 

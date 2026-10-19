@@ -101,3 +101,26 @@ def test_short_reports_get_the_compact_layout(docker, session, words, compact):
     assert result.startswith("SUKCES"), result
     tex = run_context.workspace_file(_generated_tex(result)).read_text(encoding="utf-8")
     assert ("\\compacttrue" in tex.splitlines()) is compact  # the marker line, not the comment that explains it
+
+
+def test_values_keep_mapped_symbols_and_lose_unprintable_ones():
+    from src.agent_tools import LATEX_SYMBOLS, TEMPLATES_DIR, _sanitize_latex_value
+
+    value = _sanitize_latex_value("Zgodnie z § 4: **10 h × 100 zł** → 1000 zł ✅🚀, „cytat” — koniec…")
+    assert value == "Zgodnie z § 4: \\textbf{10 h × 100 zł} → 1000 zł , „cytat” — koniec…"
+    for name in ("letter", "report", "protocol"):  # every mapped symbol is declared in every template
+        tex = (TEMPLATES_DIR / f"{name}.tex").read_text(encoding="utf-8")
+        assert "expansion=false" in tex
+        for symbol in LATEX_SYMBOLS:
+            assert f"\\DeclareUnicodeCharacter{{{ord(symbol):04X}}}" in tex, (name, symbol)
+
+
+def test_latex_commands_in_values_survive_escaping():
+    # regression: placeholders contained "_", which step 2 escaped, so "\_\_LATEX\_ITEM\_\_" was printed in the PDF
+    from src.agent_tools import _sanitize_latex_value
+
+    assert _sanitize_latex_value("\\begin{enumerate}\\item a_1 \\item 50% \\end{enumerate}") == \
+        "\\begin{enumerate}\\item a\\_1 \\item 50\\% \\end{enumerate}"
+    assert _sanitize_latex_value("linia\\\\druga \\textbf{ważne} & \\textit{kursywa}") == \
+        "linia\\\\druga \\textbf{ważne} \\& \\textit{kursywa}"
+    assert "LATEX" not in _sanitize_latex_value("\\noindent\\hfill\\vskip 1cm \\section{A} \\small x")

@@ -4,7 +4,22 @@
 \usepackage[OT4]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{polski}
-\usepackage{microtype}
+\usepackage[expansion=false]{microtype}
+% Symbols that would otherwise come from the TS1 font (bitmap-only in the sandbox image: not copyable, and it
+% breaks microtype): § × • ° ± ² ³ € → ← ≤ ≥ ≈. Keep in step with LATEX_SYMBOLS in src/agent_tools.py.
+\DeclareUnicodeCharacter{00A7}{\ensuremath{\mathsection}}
+\DeclareUnicodeCharacter{00D7}{\ensuremath{\times}}
+\DeclareUnicodeCharacter{2022}{\ensuremath{\bullet}}
+\DeclareUnicodeCharacter{00B0}{\ensuremath{^{\circ}}}
+\DeclareUnicodeCharacter{00B1}{\ensuremath{\pm}}
+\DeclareUnicodeCharacter{00B2}{\ensuremath{^{2}}}
+\DeclareUnicodeCharacter{00B3}{\ensuremath{^{3}}}
+\DeclareUnicodeCharacter{20AC}{EUR}
+\DeclareUnicodeCharacter{2192}{\ensuremath{\rightarrow}}
+\DeclareUnicodeCharacter{2190}{\ensuremath{\leftarrow}}
+\DeclareUnicodeCharacter{2264}{\ensuremath{\leq}}
+\DeclareUnicodeCharacter{2265}{\ensuremath{\geq}}
+\DeclareUnicodeCharacter{2248}{\ensuremath{\approx}}
 
 \usepackage[
 pdftitle={{{REPORT_TITLE}}}, pdflang={pl-PL},
