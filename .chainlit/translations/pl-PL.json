@@ -1,0 +1,255 @@
+{
+  "common": {
+    "actions": {
+      "cancel": "Anuluj",
+      "confirm": "Potwierdź",
+      "continue": "Dalej",
+      "goBack": "Wstecz",
+      "reset": "Wyczyść",
+      "submit": "Wyślij"
+    },
+    "status": {
+      "loading": "Wczytywanie...",
+      "error": {
+        "default": "Wystąpił błąd",
+        "serverConnection": "Brak połączenia z serwerem"
+      }
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Zaloguj się do Hapilota",
+      "form": {
+        "email": {
+          "label": "Nazwa użytkownika",
+          "required": "podaj nazwę użytkownika",
+          "placeholder": "nazwa użytkownika"
+        },
+        "password": {
+          "label": "Hasło",
+          "required": "podaj hasło"
+        },
+        "actions": {
+          "signin": "Zaloguj"
+        },
+        "alternativeText": {
+          "or": "LUB"
+        }
+      },
+      "errors": {
+        "default": "Nie udało się zalogować",
+        "signin": "Spróbuj zalogować się innym kontem",
+        "oauthSignin": "Spróbuj zalogować się innym kontem",
+        "redirectUriMismatch": "Adres przekierowania nie zgadza się z konfiguracją aplikacji OAuth",
+        "oauthCallback": "Spróbuj zalogować się innym kontem",
+        "oauthCreateAccount": "Spróbuj zalogować się innym kontem",
+        "emailCreateAccount": "Spróbuj zalogować się innym kontem",
+        "callback": "Spróbuj zalogować się innym kontem",
+        "oauthAccountNotLinked": "Aby potwierdzić tożsamość, zaloguj się tym samym kontem co poprzednio",
+        "emailSignin": "Nie udało się wysłać wiadomości e-mail",
+        "emailVerify": "Potwierdź adres e-mail — wysłaliśmy nową wiadomość",
+        "credentialsSignin": "Logowanie nieudane. Sprawdź nazwę użytkownika i hasło",
+        "sessionRequired": "Zaloguj się, aby otworzyć tę stronę"
+      }
+    },
+    "provider": {
+      "continue": "Kontynuuj przez {{provider}}"
+    }
+  },
+  "chat": {
+    "input": {
+      "placeholder": "Napisz wiadomość...",
+      "actions": {
+        "send": "Wyślij wiadomość",
+        "stop": "Zatrzymaj",
+        "attachFiles": "Załącz pliki"
+      }
+    },
+    "favorites": {
+      "use": "Użyj ulubionej wiadomości",
+      "headline": "Ulubione wiadomości"
+    },
+    "commands": {
+      "button": "Narzędzia",
+      "changeTool": "Zmień narzędzie",
+      "availableTools": "Dostępne narzędzia"
+    },
+    "speech": {
+      "start": "Zacznij nagrywanie",
+      "stop": "Zatrzymaj nagrywanie",
+      "connecting": "Łączenie"
+    },
+    "fileUpload": {
+      "dragDrop": "Przeciągnij i upuść pliki tutaj",
+      "browse": "Wybierz pliki",
+      "sizeLimit": "Limit:",
+      "errors": {
+        "failed": "Nie udało się przesłać",
+        "cancelled": "Anulowano przesyłanie"
+      },
+      "actions": {
+        "cancelUpload": "Anuluj przesyłanie",
+        "removeAttachment": "Usuń załącznik"
+      }
+    },
+    "messages": {
+      "status": {
+        "using": "Wykonuję",
+        "used": "Wykonano"
+      },
+      "actions": {
+        "copy": {
+          "button": "Kopiuj do schowka",
+          "success": "Skopiowano!"
+        }
+      },
+      "feedback": {
+        "positive": "Pomocne",
+        "negative": "Niepomocne",
+        "edit": "Zmień ocenę",
+        "dialog": {
+          "title": "Dodaj komentarz",
+          "submit": "Wyślij ocenę",
+          "yourFeedback": "Twoja opinia..."
+        },
+        "status": {
+          "updating": "Aktualizuję",
+          "updated": "Ocena zapisana"
+        }
+      }
+    },
+    "history": {
+      "title": "Ostatnie wiadomości",
+      "empty": "Pusto...",
+      "show": "Pokaż historię"
+    },
+    "settings": {
+      "title": "Ustawienia",
+      "customize": "Ustawienia tej rozmowy"
+    },
+    "watermark": "Modele językowe mogą się mylić. Sprawdzaj ważne informacje."
+  },
+  "threadHistory": {
+    "sidebar": {
+      "title": "Poprzednie rozmowy",
+      "filters": {
+        "search": "Szukaj",
+        "placeholder": "Szukaj w rozmowach..."
+      },
+      "timeframes": {
+        "today": "Dzisiaj",
+        "yesterday": "Wczoraj",
+        "previous7days": "Ostatnie 7 dni",
+        "previous30days": "Ostatnie 30 dni"
+      },
+      "empty": "Brak rozmów",
+      "actions": {
+        "close": "Zamknij panel",
+        "open": "Otwórz panel"
+      }
+    },
+    "thread": {
+      "untitled": "Rozmowa bez tytułu",
+      "menu": {
+        "rename": "Zmień nazwę",
+        "share": "Udostępnij",
+        "delete": "Usuń"
+      },
+      "actions": {
+        "share": {
+          "title": "Udostępnij link do rozmowy",
+          "button": "Udostępnij",
+          "status": {
+            "copied": "Skopiowano link",
+            "created": "Utworzono link!",
+            "unshared": "Udostępnianie wyłączone"
+          },
+          "error": {
+            "create": "Nie udało się utworzyć linku",
+            "unshare": "Nie udało się wyłączyć udostępniania"
+          }
+        },
+        "delete": {
+          "title": "Potwierdź usunięcie",
+          "description": "Rozmowa zostanie usunięta razem z wiadomościami i plikami. Tej operacji nie można cofnąć",
+          "success": "Usunięto rozmowę",
+          "inProgress": "Usuwam rozmowę"
+        },
+        "rename": {
+          "title": "Zmień nazwę rozmowy",
+          "description": "Podaj nową nazwę rozmowy",
+          "form": {
+            "name": {
+              "label": "Nazwa",
+              "placeholder": "Nowa nazwa"
+            }
+          },
+          "success": "Zmieniono nazwę!",
+          "inProgress": "Zmieniam nazwę"
+        }
+      }
+    }
+  },
+  "navigation": {
+    "header": {
+      "chat": "Czat",
+      "readme": "O Hapilocie",
+      "theme": {
+        "light": "Jasny motyw",
+        "dark": "Ciemny motyw",
+        "system": "Jak w systemie"
+      }
+    },
+    "newChat": {
+      "button": "Nowa rozmowa",
+      "dialog": {
+        "title": "Nowa rozmowa",
+        "description": "Bieżąca rozmowa zostanie wyczyszczona. Kontynuować?",
+        "tooltip": "Nowa rozmowa"
+      }
+    },
+    "user": {
+      "menu": {
+        "settings": "Ustawienia",
+        "settingsKey": "S",
+        "apiKeys": "Klucze API",
+        "logout": "Wyloguj"
+      }
+    }
+  },
+  "apiKeys": {
+    "title": "Wymagane klucze API",
+    "description": "Ta aplikacja wymaga poniższych kluczy API. Klucze są przechowywane w pamięci przeglądarki.",
+    "success": {
+      "saved": "Zapisano"
+    }
+  },
+  "alerts": {
+    "info": "Informacja",
+    "note": "Uwaga",
+    "tip": "Wskazówka",
+    "important": "Ważne",
+    "warning": "Ostrzeżenie",
+    "caution": "Ostrożnie",
+    "debug": "Debug",
+    "example": "Przykład",
+    "success": "Sukces",
+    "help": "Pomoc",
+    "idea": "Pomysł",
+    "pending": "W toku",
+    "security": "Bezpieczeństwo",
+    "beta": "Beta",
+    "best-practice": "Dobra praktyka"
+  },
+  "components": {
+    "MultiSelectInput": {
+      "placeholder": "Wybierz..."
+    },
+    "DatePickerInput": {
+      "placeholder": {
+        "single": "Wybierz datę",
+        "range": "Wybierz zakres dat"
+      }
+    }
+  }
+}

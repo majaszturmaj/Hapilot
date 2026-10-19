@@ -34,7 +34,8 @@ chainlit.log
 *.log
 
 # Chainlit auto-generated
-.chainlit/translations/
+.chainlit/translations/*
+!.chainlit/translations/pl-PL.json
 
 # IDE
 .vscode/

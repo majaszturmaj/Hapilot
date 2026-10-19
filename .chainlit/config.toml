@@ -104,7 +104,7 @@ name = "Hapilot"
 
 # Force a specific language for all users (e.g., "en-US", "he-IL", "fr-FR")
 # If not set, the browser's language will be used
-# language = "en-US"
+language = "pl-PL"   # the UI texts of Hapilot are Polish; .chainlit/translations/pl-PL.json
 
 # layout = "wide"
 

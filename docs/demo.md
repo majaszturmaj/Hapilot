@@ -32,7 +32,7 @@ step below in the same chat unless it says "new chat".
 |---|---|---|---|
 | 0:00 | Welcome | Show the start screen and ⚙️ → model profile | Runs on one local GPU; the profile (model per role) is chosen per conversation |
 | 0:45 | Question about company documents | `Ile dni przed urlopem wypoczynkowym trzeba złożyć wniosek?` | Answer **14 dni** with the source file `regulamin_urlopow.txt`; open the steps to show the plan and the search |
-| 1:45 | Find, then write a document | `Sprawdź w umowie serwisowej karę za opóźnienie interwencji i przygotuj pismo do Serwis-Wymyślony Sp. z o.o. z wezwaniem do zapłaty kary za opóźnienie z 12 października 2026 r.` | The plan is shown for approval (more than two steps) → **Tak, działaj!**; the document form lets you check every field before the PDF is made |
+| 1:45 | Find, then write a document | `Sprawdź w umowie serwisowej karę za opóźnienie interwencji i przygotuj pismo do Serwis-Wymyślony Sp. z o.o. z wezwaniem do zapłaty kary za opóźnienie z 12 października 2026 r.` | Search first, then the letter; if the plan has more than two steps it is shown for approval (**Tak, działaj!**); the document form lets you check every field → **Generuj PDF** |
 | 3:30 | The PDF | Open the PDF, select and copy a sentence into the chat box | Polish letters copy correctly; signature line at the end |
 | 4:00 | Edit the document | `Zmień w tym piśmie termin zapłaty na 7 dni.` | A new PDF; only the requested part changes |
 | 4:45 | Calculation on data | `Ile reklamacji uznano w marcu 2026 r. według rejestru reklamacji i na jaką łączną kwotę?` | Python runs in an isolated container without network; the code reads the spreadsheet from the documents |

@@ -151,7 +151,7 @@ def _inputs(history: list, hitl_response=None) -> dict:
 
 async def _run(inputs: dict, user_content: str):
     labels, descriptions = _node_display_config()
-    async with cl.Step(name="🔄 Pracuję nad Twoim zapytaniem", type="run") as main_step:
+    async with cl.Step(name="kroki zadania", type="run") as main_step:  # shown as "Wykonuję / Wykonano kroki zadania"
         main_step.input = user_content
 
         async def on_event(node_name: str, output: dict):
@@ -242,10 +242,12 @@ async def _handle_hitl_request(hitl_request: dict):
         actions = [cl.Action(name="hitl_select", label=a.get("label", a.get("name", f"Opcja {i + 1}")),
                              payload={"index": i, **(a.get("payload", {}))}) for i, a in enumerate(hitl_request.get("actions", []))]
         actions.append(cl.Action(name="hitl_cancel", label="↩️ Anuluj", payload={"action": "cancel"}))
+        cl.user_session.set("hitl_actions", actions)
         await cl.Message(content=hitl_request.get("content", "Którą opcję wybierasz?"), author="Hapilot", actions=actions).send()
     else:
         actions = [cl.Action(name="hitl_yes", label="✅ Tak, działaj!", payload={"action": "yes"}),
                    cl.Action(name="hitl_no", label="↩️ Nie, dziękuję", payload={"action": "no"})]
+        cl.user_session.set("hitl_actions", actions)
         await cl.Message(content=hitl_request.get("content", "Kontynuować?"), author="Hapilot", actions=actions).send()
 
 
@@ -254,9 +256,14 @@ async def _handle_hitl_form(hitl_request: dict, continuation: dict):
     element = cl.CustomElement(name="hitl_form", display="inline", props={
         "title": form_title(hitl_request.get("content") or ""), "fields": fields,
         "template_id": continuation.get("template_id", "")})
-    res = await cl.AskElementMessage(
+    ask = cl.AskElementMessage(
         content="📋 Przygotowałem wstępne dane dokumentu. Sprawdź je i popraw co trzeba, a potem kliknij **Generuj PDF**:",
-        element=element, author="Hapilot", timeout=600).send()
+        element=element, author="Hapilot", timeout=600)
+    res = await ask.send()
+    # Chainlit replaces the question with an English status ("Thanks for submitting"); say it in Polish
+    ask.content = ("📋 Dane dokumentu zatwierdzone." if res and res.get("submitted") else
+                   "📋 Formularz zamknięty bez zatwierdzenia." if res else "📋 Czas na wypełnienie formularza minął.")
+    await ask.update()
     if res is None or not res.get("submitted"):
         await cl.Message(content="Rozumiem — anulowałem operację. Daj znać, jeśli zmienisz zdanie! 😊", author="Hapilot").send()
         return
@@ -273,23 +280,33 @@ async def _handle_hitl_form(hitl_request: dict, continuation: dict):
     await _continue_after_hitl(response)
 
 
+async def _clear_actions() -> None:
+    """Remove every button of the question once one was clicked (not only the clicked one)."""
+    for action in cl.user_session.get("hitl_actions") or []:
+        try:
+            await _clear_actions()
+        except Exception:
+            pass
+    cl.user_session.set("hitl_actions", [])
+
+
 @cl.action_callback("hitl_cancel")
 async def on_hitl_cancel(action: cl.Action):
-    await action.remove()
+    await _clear_actions()
     await cl.Message(content="Rozumiem — anulowałem. Jestem tu, gdybyś potrzebował czegoś innego! 😊", author="Hapilot").send()
 
 
 @cl.action_callback("hitl_yes")
 async def on_hitl_yes(action: cl.Action):
     continuation = cl.user_session.get("hitl_continuation") or {}
-    await action.remove()
+    await _clear_actions()
     await _continue_after_hitl({**continuation, "continuation_type": continuation.get("type", ""), "confirmed": True})
 
 
 @cl.action_callback("hitl_no")
 async def on_hitl_no(action: cl.Action):
     continuation = cl.user_session.get("hitl_continuation") or {}
-    await action.remove()
+    await _clear_actions()
     if continuation.get("type") == "resume_node":  # let the node record the refusal and finish its plan
         await _continue_after_hitl({**continuation, "continuation_type": "resume_node", "confirmed": False})
         return
@@ -300,7 +317,7 @@ async def on_hitl_no(action: cl.Action):
 async def on_hitl_select(action: cl.Action):
     defs = cl.user_session.get("hitl_action_defs") or []
     continuation = cl.user_session.get("hitl_continuation") or {}
-    await action.remove()
+    await _clear_actions()
     payload = dict(action.payload) if isinstance(action.payload, dict) else {}
     idx = payload.pop("index", 0)
     selected = defs[idx] if idx < len(defs) else {}
