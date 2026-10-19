@@ -266,3 +266,21 @@ def test_failed_edit_reports_the_error_and_keeps_the_document(graph, invoke, llm
     assert "BŁĄD" in "\n".join(m.content for m in second["messages"][len(first["messages"]):])
     assert second["last_generated_file"] == first["last_generated_file"]
     assert len(docker.runs) == 1  # nothing recompiled
+
+
+def test_trailing_confirmation_is_dropped_so_the_document_stays_the_answer(graph, invoke, llm, docker):
+    # Bielik planned this for "Przygotuj podanie o urlop…" (integration run 2026-10-19): the PDF was made, but the
+    # final answer was the confirmation's "(Potwierdzono automatycznie.)", so the UI showed no download.
+    llm.on("task_planner", plan(("template_pdf", "Podanie", "Podanie o urlop"), ("hitl_confirm", "Czy wysłać?", "")))
+    llm.on("template_filler", LETTER)
+    state = invoke(graph, "Przygotuj podanie o urlop", "s-trailing", approval_policy="auto")
+    assert [s["tool"] for s in state["task_plan"]["steps"]] == ["template_pdf"]
+    assert "Wygenerowano plik: letter_" in last_text(state)
+
+
+def test_confirmation_between_steps_is_kept(graph, invoke, llm):
+    llm.on("task_planner", plan(("llm_synthesis", "Szkic", "Szkic"), ("hitl_confirm", "Dalej?", ""), ("chat", "Koniec", "")))
+    llm.on("writer", "szkic")
+    llm.on("chat", "koniec")
+    state = invoke(graph, "Szkic, potwierdzenie, koniec", "s-middle", approval_policy="auto")
+    assert [s["tool"] for s in state["task_plan"]["steps"]] == ["llm_synthesis", "hitl_confirm", "chat"]

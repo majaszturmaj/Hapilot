@@ -224,6 +224,12 @@ def task_planner_node(state: AgentState):
             steps = steps + [{"id": len(steps) + 1, "action": "Przygotuj dokument PDF, o który prosi użytkownik",
                               "tool": "template_pdf", "input": last_user_msg}]
             guards.append("added_template_pdf")
+    # Guard 4: a confirmation with nothing after it asks about nothing — and its message would replace the
+    # last real result (seen with Bielik: rag_search, template_pdf, hitl_confirm → the PDF link was lost).
+    while len(steps) > 1 and steps[-1].get("tool") == "hitl_confirm":
+        steps = steps[:-1]
+        guards.append("removed_trailing_hitl_confirm")
+        print("🔒 [PLANNER GUARD] Usunięto końcowy krok hitl_confirm — po nim nie ma już nic do potwierdzenia")
     task_plan["steps"] = steps
     task_plan["complexity"] = complexity if len(steps) > 1 else "low"
     is_complex = task_plan["complexity"] in ("medium", "high")
