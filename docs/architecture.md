@@ -11,7 +11,8 @@ __start__ → task_planner ─┬─(HITL request / halt)───────�
                                         │
             document_generator / modify_document ── success → next step's node, else __end__
             coder → execute ── success → next step's node; error → coder (max 3 attempts)
-            knowledge, writer, chat, hitl_confirm, operations ── next step's node, or __end__
+            knowledge, writer, chat, hitl_confirm, operations,
+            summarize_file, edit_file, add_to_knowledge ── next step's node, or __end__
 ```
 
 - **task_planner** ([src/agent_graph.py](../src/agent_graph.py)) asks the `task_planner` role for a JSON
@@ -19,13 +20,17 @@ __start__ → task_planner ─┬─(HITL request / halt)───────�
   [src/core/prompts/task_planner.txt](../src/core/prompts/task_planner.txt); the list of tools with their
   descriptions (`KIEDY` / `KIEDY NIE` / `PRZYKŁAD`) is built from the manifests of the loaded extensions
   ([`planner_catalog`](../src/agent_tools.py)), so a disabled extension's tools are never offered.
-  Deterministic guards then apply (each only when its tool is loaded):
+  Deterministic guards then apply (each only when its tool is loaded). They read the user's own words,
+  not the text of attached files:
   - an edit request (`zmień`, `popraw`, …, matched on word boundaries) becomes a single
-    `modify_document` step — only if a document was generated earlier in the session;
+    `modify_document` step — only if a document was generated earlier in the session and the message
+    does not bring a new attachment (then the request is about that file);
   - `template_pdf` steps are removed unless the user asked for a document (`pdf`, `podanie`, `raport`,
     `protokół`, …) and did not say otherwise (`nie rób PDF`, `bez PDF`, `tylko tekst`);
   - an explicit request to create a document (a creation verb with a document noun or with "PDF", e.g.
     `przygotuj pismo w PDF`) gets a `template_pdf` step at the end if the plan has none;
+  - a `hitl_confirm` step at the end of a plan is dropped (nothing follows it to confirm, and its message
+    would replace the last real result);
   - under the `ask` approval policy, plans longer than two steps wait for the user's approval.
 - **router** maps the current step's tool (or one of its aliases) to the node that provides it, without
   calling a model; unknown tool or no plan → `chat`. Extension hooks (`on_before_route`) may redirect.
@@ -71,6 +76,9 @@ before anything is registered; an extension that fails is skipped with a reason
 | `modify_document` | `document_modifier` | edits a document generated in this session (via its saved parameters) |
 | `coder`, `execute` | `python_coder` | writes Python, runs it in the sandbox, retries with the error |
 | `hitl_confirm` | core | confirmation step (auto-confirmed under `auto`) |
+| `summarize_file` | `file_tools` | summary of a whole attached file; long files part by part, then combined |
+| `edit_file` | `file_tools` | changed copy of an attached .docx/.txt/.md (.pdf/.eml → .docx); Word page set-up, styles, lists, tables kept |
+| `add_to_knowledge` | `file_tools` | adds an attached file to the company knowledge base after confirmation (never in evaluation runs) |
 | `operations` | `n8n_operations` (off) | Outlook draft after confirmation / calendar look-up via local n8n |
 
 ## Models
@@ -88,6 +96,9 @@ Templates: [templates/templates.json](../templates/templates.json) (parameters, 
 and `templates/*.tex` with `{{PARAMETER}}` placeholders. Values are LaTeX-escaped
 (`_sanitize_latex_value`). Every generated document stores its parameters next to the `.tex`
 (`<name>.params.json`); edits change those parameters and regenerate the PDF, so nothing is truncated.
+The templates use the OT4 encoding with the Polish PL fonts and a Unicode map (`glyphtounicode`), so text
+copied from a PDF keeps its Polish letters. A report whose sections are short together
+(`compact_below_chars` in templates.json) is laid out without title page and table of contents.
 
 ## Knowledge base
 
@@ -101,13 +112,17 @@ Indexing: [src/ingest_data.py](../src/ingest_data.py) with [src/extractors.py](.
 .pdf (per page), .docx (paragraphs and tables in order), .eml (headers, body, attached files), .xlsx (rows
 per sheet, values), .txt, .md; chunks of 800 characters with 200 overlap (spreadsheet chunks start with
 the column names); each chunk keeps its relative file path, page or sheet and an id `path#index:sha`.
-Unreadable files are listed, not dropped. An unchanged corpus is not re-indexed.
+Unreadable files are listed, not dropped. An unchanged corpus is not re-indexed. Files added from the chat
+live in `HAPILOT_ADDED_DOCS_DIR` and are indexed with the corpus under the source prefix `dodane/`
+(`add_documents` indexes a new one at once and updates the corpus fingerprint).
 
 ## Attachments
 
 [src/attachments.py](../src/attachments.py) (UI uploads and evaluation tasks): files are copied into the
 session workspace (readable by sandboxed code) and their text is added to the message (up to 20,000
-characters) or indexed into a per-session collection.
+characters) or indexed into a per-session collection. The message lists the attached files
+(`Załączone pliki …: a.pdf, b.docx`); the file tools find "the attached file" from that list
+(`attachments.pick`: the files the request names, else those of the latest message with attachments).
 
 ## Evaluation and tracing
 

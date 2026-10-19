@@ -46,13 +46,13 @@ and 3.12: lint, unit tests with the coverage gate, and a load check of the exten
 .venv/bin/python scripts/hapilotctl.py integration --help                # --out, --skip, --planner-repeat
 ```
 
-It first runs the unit tests in the deployed checkout, then for each profile starts the model proxy,
-indexes the demo corpus ([examples/demo_company/docs](../examples/demo_company/docs)) and runs:
+It first runs the unit tests in the deployed checkout, then for each profile starts the model proxy and
+runs three suites on the demo company ([examples/demo_company/](../examples/demo_company/)):
 
 | Suite | Input | Checks |
 |---|---|---|
-| smoke | [tests/scenarios/smoke.yaml](../tests/scenarios/smoke.yaml), 7 requests through the whole graph | the answer contains / does not contain given text; a PDF was generated; egress guard on |
-| planner | [tests/scenarios/planner.yaml](../tests/scenarios/planner.yaml), 20 requests, planner node only (guards included) | required, alternative, forbidden tools and their order |
+| smoke | [tests/scenarios/smoke.yaml](../tests/scenarios/smoke.yaml), 11 requests through the whole graph, 3 of them with uploaded files; indexes the demo corpus into a temporary knowledge base | the answer contains / does not contain given text; a PDF or other file was generated and contains / lacks given text; egress guard on |
+| planner | [tests/scenarios/planner.yaml](../tests/scenarios/planner.yaml), 25 requests, planner node only (guards included) | required, alternative, forbidden tools and their order |
 | dev | [tests/eval/dev_tasks.jsonl](../tests/eval/dev_tasks.jsonl), 10 tasks through the evaluation interface, date 2026-10-14 | schema validation; JSON answer values, sources, plan tools, created files ([scripts/dev_eval_check.py](../scripts/dev_eval_check.py)) |
 
 The scenarios and tasks are about Hapilot's own fictional demo company. They are development checks, not
