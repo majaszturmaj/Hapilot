@@ -17,24 +17,26 @@ dependencies = [
     "langgraph",
     "langchain-core",
     "langchain-openai",
-    "langchain-community",
     "langchain-text-splitters",
     "langchain-huggingface",
     "langchain-chroma",
     "chromadb",
     "sentence-transformers",
+    "torch",
     "pypdf",
+    "python-docx",
+    "openpyxl",
     "chainlit",
     "docker",
     "httpx",
-    "pydantic",
     "python-dotenv",
     "PyYAML",
+    "jsonschema",
+    "mcp",
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp"]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "coverage"]
 
 [tool.setuptools.packages.find]
 where = ["."]

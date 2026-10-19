@@ -10,7 +10,6 @@ langchain-openai==1.1.7
 openai==2.17.0
 
 # knowledge base
-langchain-community==0.4.1
 langchain-text-splitters==1.1.0
 langchain-huggingface==1.2.0
 langchain-chroma==1.1.0
@@ -30,5 +29,5 @@ python-dotenv==1.2.1
 PyYAML==6.0.3
 jsonschema==4.26.0
 
-# optional MCP servers (src/*_server.py)
+# MCP: optional servers (src/*_server.py); chainlit needs it too
 mcp==1.26.0
