@@ -1,6 +1,26 @@
 # Changelog
 
-## Unreleased (stage 3: extension SDK)
+## Unreleased
+
+### Stage 4: tests and CI
+
+No behaviour change in the agent. Test and tooling changes only.
+
+Verification on the GPU host (RTX 4090, commit `3a7c32a`): integration suite passed — `reference` smoke 7/7,
+planner 20/20, dev 8/10 (D03, D05 known); `best-local` smoke 7/7, planner 20/20, dev 10/10; unit tests 181 passed;
+evaluation runs schema-valid; no egress attempts.
+
+- Integration suite for the GPU host: `hapilotctl.py integration` runs the unit tests, then per profile the smoke
+  scenarios, a new planner check (`tests/scenarios/planner.yaml`, 20 requests, expected tools; planner node only,
+  traced) and the development tasks through the evaluation interface; known failures per profile in
+  `tests/integration/baseline.yaml`; Markdown and JSON report.
+- New unit tests: editing a generated document through the graph, the knowledge node's no-data handling in plans,
+  corpus and attachment indexing, the evaluation command line, the integration suite's own logic.
+- CI: coverage gate (85 % over `src`, `extensions`, `examples`), extension manifest load check, timeout and
+  concurrency group. `coverage` added to `requirements-test.txt`.
+- `docs/testing.md`: unit tests, CI, integration suite.
+
+### Stage 3: extension SDK
 
 Behaviour change after `eval-v1`: the planner prompt is now built from the extension manifests (same tools,
 reworded descriptions). Evaluation runs record the commit, so results of `eval-v1` and later builds stay apart.

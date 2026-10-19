@@ -68,3 +68,12 @@ Output (default `var/integration/<timestamp>/`): `integration_report.md` (table 
 `integration_report.json`, and per profile the smoke and planner reports, the planner's model-call traces
 (`planner_traces/`, `hapilot.trace/1`), the evaluation run directory (`dev_eval/`) and the logs. The run
 stops the model proxy it started; it refuses to start while Hapilot is already running.
+
+**Last integration run: passed on 2026-10-19, commit `3a7c32a`, both profiles** (RTX 4090):
+
+| Profile | Smoke | Planner | Dev tasks | Time (s, sum of suites) |
+|---|---|---|---|---|
+| reference | 7/7 | 20/20 | 8/10 (D03, D05: known, listed in the baseline) | 324 |
+| best-local | 7/7 | 20/20 | 10/10 | 316 |
+
+Unit tests in the deployed checkout 181/181; both evaluation runs schema-valid; no egress attempts.
