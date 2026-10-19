@@ -1,13 +1,13 @@
 \documentclass[a4paper,12pt]{article}
-\usepackage[T1]{fontenc}
+% Polish letters as real glyphs (OT4 encoding, PL fonts) and a Unicode map: text copied from the PDF stays Polish
+\input{glyphtounicode}\pdfgentounicode=1
+\usepackage[OT4]{fontenc}
+\usepackage[utf8]{inputenc}
 \usepackage{polski}
-\usepackage[utf8x]{inputenc}
 \usepackage{microtype}
 
-\usepackage{times}
-
 \usepackage[
-pdftitle={Raport},
+pdftitle={{{REPORT_TITLE}}}, pdflang={pl-PL},
 colorlinks=true,linkcolor=black,urlcolor=black,citecolor=black]{hyperref}
 \urlstyle{same}
 
@@ -30,8 +30,27 @@ bindingoffset=0mm, top=25mm,bottom=25mm}
 \renewcommand{\headrulewidth}{0.4pt}
 
 
+% A short report (all sections together below the limit in templates.json) gets a compact layout:
+% no title page and no table of contents. The generator replaces the marker below with \compacttrue.
+\newif\ifcompact
+%%COMPACT%%
+
 \begin{document}
 
+\ifcompact
+\linespread{1.2}\selectfont
+\begin{center}
+{\small {{INSTITUTION}}}\par\vskip 0.4cm
+{\Large\bfseries {{REPORT_TITLE}}}\par\vskip 0.2cm
+{{REPORT_SUBTITLE}}
+\end{center}
+\noindent
+\begin{tabular}{@{}ll@{}}
+\textbf{Autor:} & {{AUTHOR_NAME}}, {{AUTHOR_POSITION}} ({{DEPARTMENT}}) \\
+\textbf{Data:} & {{REPORT_DATE}} \qquad \textbf{Nr raportu:} {{REPORT_NUMBER}} \\
+\end{tabular}
+\vskip 0.4cm
+\else
 \begin{titlepage}
 \centering
 \vspace*{2cm}
@@ -64,6 +83,7 @@ bindingoffset=0mm, top=25mm,bottom=25mm}
 
 \tableofcontents
 \newpage
+\fi
 
 \section{Wstęp}
 {{SECTION_INTRODUCTION}}
@@ -80,12 +100,12 @@ bindingoffset=0mm, top=25mm,bottom=25mm}
 \section{Wnioski i rekomendacje}
 {{SECTION_CONCLUSIONS}}
 
-\vskip 1.0cm
+\vskip 1.5cm
 \noindent
-\textbf{Sporządził:} {{AUTHOR_NAME}} \hfill \textbf{Data:} {{REPORT_DATE}}
-
-\vskip 1.0cm
-\noindent
-\textbf{Zatwierdził:} {{APPROVER_NAME}}
+\begin{tabular}{@{}p{7cm}p{7cm}@{}}
+\textbf{Sporządził(a):} & \textbf{Zatwierdził(a):} \\[1.2cm]
+\dotfill & \dotfill \\
+{{AUTHOR_NAME}} & {{APPROVER_NAME}} \\
+\end{tabular}
 
 \end{document}

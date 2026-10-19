@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from src import run_context
 from src.agent_tools import tool_generate_pdf_from_template, tool_modify_document
 
@@ -71,3 +73,31 @@ def test_edit_never_reaches_another_session(docker, llm):
         result = tool_modify_document(_generated_tex(first), "Zmień datę")
     assert result.startswith("BŁĄD") and "tej sesji" in result
     assert llm.calls == []
+
+
+# --------------------------------------------------------------------------- templates: copyable Polish text, signatures, compact reports
+
+def test_templates_use_polish_glyph_fonts_and_signature_lines():
+    from src.agent_tools import TEMPLATES_DIR
+
+    for name in ("letter", "report", "protocol"):
+        tex = (TEMPLATES_DIR / f"{name}.tex").read_text(encoding="utf-8")
+        assert "\\usepackage[OT4]{fontenc}" in tex and "\\pdfgentounicode=1" in tex, name
+        assert "utf8x" not in tex and "{times}" not in tex, name
+    assert "\\rule{6cm}{0.4pt}" in (TEMPLATES_DIR / "letter.tex").read_text(encoding="utf-8")
+    assert (TEMPLATES_DIR / "report.tex").read_text(encoding="utf-8").count("\\dotfill") == 2
+
+
+REPORT = {"INSTITUTION": "Przykładowa Sp. z o.o.", "REPORT_TITLE": "Raport z przeglądu drukarek", "AUTHOR_NAME": "Anna Nowak",
+          "AUTHOR_POSITION": "Specjalistka IT", "DEPARTMENT": "Dział IT", "REPORT_DATE": "19 października 2026 r.",
+          "REPORT_NUMBER": "IT/2026/7", "APPROVER_NAME": "Ewa Przykładowa"}
+SECTIONS = ("SECTION_INTRODUCTION", "SECTION_SCOPE", "SECTION_ANALYSIS", "SECTION_RESULTS", "SECTION_CONCLUSIONS")
+
+
+@pytest.mark.parametrize("words, compact", [(20, True), (200, False)])
+def test_short_reports_get_the_compact_layout(docker, session, words, compact):
+    params = {**REPORT, **{s: " ".join(["treść"] * words) for s in SECTIONS}}
+    result = tool_generate_pdf_from_template("report", params)
+    assert result.startswith("SUKCES"), result
+    tex = run_context.workspace_file(_generated_tex(result)).read_text(encoding="utf-8")
+    assert ("\\compacttrue" in tex.splitlines()) is compact  # the marker line, not the comment that explains it

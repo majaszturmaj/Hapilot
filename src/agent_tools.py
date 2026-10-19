@@ -246,7 +246,11 @@ def tool_generate_pdf_from_template(template_id: str, parameters: dict) -> str:
     if missing:
         return "BŁĄD: Brakujące wymagane parametry:\n" + "\n".join(f"  - {m}" for m in missing)
 
-    filled = _fill_template(template_file.read_text(encoding="utf-8"), parameters)
+    template_text = template_file.read_text(encoding="utf-8")
+    compact = info.get("compact_below_chars")
+    if compact and sum(len(str(parameters.get(f, ""))) for f in compact["fields"]) < compact["limit"]:
+        template_text = template_text.replace("%%COMPACT%%", "\\compacttrue")  # short content: compact layout
+    filled = _fill_template(template_text, parameters)
     for placeholder in re.findall(r"\{\{([A-Z_]+)\}\}", filled):  # unfilled optional parameters
         filled = filled.replace("{{" + placeholder + "}}", "")
 

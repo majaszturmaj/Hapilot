@@ -22,8 +22,9 @@
     },
     "report": {
       "name": "Raport",
-      "description": "Formalny raport z tabelą tytułową, spisem treści i sekcjami analitycznymi. Odpowiedni do raportów okresowych, analiz i sprawozdań.",
+      "description": "Formalny raport z sekcjami analitycznymi. Długi raport ma stronę tytułową i spis treści, krótki — zwarty układ bez nich. Odpowiedni do raportów okresowych, analiz i sprawozdań.",
       "file": "report.tex",
+      "compact_below_chars": {"limit": 2500, "fields": ["SECTION_INTRODUCTION", "SECTION_SCOPE", "SECTION_ANALYSIS", "SECTION_RESULTS", "SECTION_CONCLUSIONS"]},
       "parameters": {
         "INSTITUTION": {"description": "Nazwa instytucji", "example": "Przykładowa Sp. z o.o.", "required": true},
         "REPORT_TITLE": {"description": "Tytuł raportu", "example": "Raport kwartalny z realizacji zamówień", "required": true},
