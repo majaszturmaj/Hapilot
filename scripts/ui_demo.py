@@ -41,6 +41,7 @@ STEPS = [
 ]
 
 BUTTONS = ["Tak, działaj!", "Generuj PDF"]  # plan approval / confirmation, document form
+RUNNING_LABEL = "Wykonuję kroki zadania"     # .chainlit/translations/pl-PL.json "using" + the step name in src/app.py
 
 
 def wait_for_answer(page, timeout_s: float) -> list[str]:
@@ -61,7 +62,8 @@ def wait_for_answer(page, timeout_s: float) -> list[str]:
                         break
                     time.sleep(0.5)
                 seen[label] = button.count()
-        running = page.locator("#stop-button").count() > 0
+        # after a button click the run continues in a callback: no stop button then, but the step shows "Wykonuję"
+        running = page.locator("#stop-button").count() > 0 or page.get_by_text(RUNNING_LABEL).count() > 0
         if running:
             idle_since = None
         elif idle_since is None:

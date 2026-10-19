@@ -180,6 +180,19 @@ def set_backend(backend: Optional[Backend]) -> None:
     reset_cache()
 
 
+def _dense_fresh(path: Path, collection: str, query: str, k: int) -> list:
+    """Dense search; if the collection was rebuilt by another process (``ingest --force`` while the UI runs),
+    the cached handle points at a deleted collection — reload it once and retry."""
+    try:
+        return _backend.dense(path, collection, query, k)
+    except Exception as exc:
+        if "does not exist" not in str(exc):
+            raise
+        print(f"🔄 [RAG] {collection}: indeks przebudowany w międzyczasie — wczytuję go ponownie")
+        reset_cache()
+        return _backend.dense(path, collection, query, k)
+
+
 def _bm25_for(path: Path, collection: str) -> tuple[list, BM25]:
     chunks = _backend.all_chunks(path, collection)
     key = (str(path), collection)
@@ -218,7 +231,7 @@ def search(query: str, k: Optional[int] = None, targets: Optional[list[tuple[Pat
 
     for path, collection in targets:
         try:
-            dense = _backend.dense(path, collection, query, fetch)
+            dense = _dense_fresh(path, collection, query, fetch)
         except Exception as exc:  # e.g. a collection that does not exist
             print(f"⚠️ [RAG] {collection}: {exc}")
             continue

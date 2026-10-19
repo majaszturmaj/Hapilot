@@ -97,3 +97,27 @@ def test_demo_corpus_is_present_and_fictional():
         text = as_text(extract(f))
         for addr in re.findall(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", text):
             assert addr.endswith("@example.com"), (f.name, addr)
+
+
+def test_collection_rebuilt_by_another_process_is_reloaded(monkeypatch):
+    # regression: after "hapilotctl ingest --force" the running UI kept a handle to the deleted collection
+    # and found nothing until restarted
+    resets = []
+    monkeypatch.setattr(knowledge_base, "reset_cache", lambda: resets.append(1))
+
+    class Rebuilt(FakeBackend):
+        calls = 0
+
+        def dense(self, *a):
+            Rebuilt.calls += 1
+            if Rebuilt.calls == 1:
+                raise ValueError("Collection [2cdc…] does not exist.")
+            return super().dense(*a)
+
+    knowledge_base.set_backend(Rebuilt({"corpus": ["c1"]}))
+    resets.clear()  # set_backend resets the cache too
+    try:
+        chunks = knowledge_base.search("wniosek urlopowy", targets=[(Path("/x"), "corpus")])
+        assert [c.chunk_id for c in chunks] == ["c1"] and resets == [1]
+    finally:
+        knowledge_base.set_backend(None)
