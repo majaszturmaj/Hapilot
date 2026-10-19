@@ -1,8 +1,12 @@
 # Changelog
 
-## Unreleased (stage 6: deployment and timing)
+## Unreleased (stage 6: deployment and timing; fonts)
 
-No behaviour change in the agent.
+The agent's behaviour is unchanged; generated PDFs look different (fonts).
+
+- PDFs in TeX Gyre Termes (Times-like) instead of the PL fonts; Polish text still copies correctly, and
+  § € ° ± × come from the same typeface. Needs the sandbox image `hapilot-sandbox:0.2` (0.1 plus the `tex-gyre`
+  package in a last layer; run `hapilotctl.py setup`). eval-v1 keeps using 0.1.
 
 - `scripts/timing.py`: time per path (smoke scenarios repeated), development tasks with model calls and tokens,
   model loads and swaps from the proxy log; Markdown and JSON report.

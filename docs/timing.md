@@ -17,6 +17,8 @@ How to read the numbers:
 - Model loads were served from the operating system's page cache (warm): 2–3 s per load or swap. A first load
   from disk took 52 s for Bielik-11B and 120 s for Qwen3-Coder-30B-A3B on 2026-10-18 (README, *Model profiles*).
   In `reference`, every Python step swaps to the coder model and back (two loads, about 5 s).
+- Measured with the sandbox image 0.1 (PL fonts). Image 0.2 only adds the TeX Gyre fonts used by the templates
+  since `c668641`; document times may differ slightly.
 - The knowledge base is the fictional demo company (7 documents); the 10-page upload is
   [examples/demo_company/uploads/raport_kwartalny_q3_2026.pdf](../examples/demo_company/uploads/raport_kwartalny_q3_2026.pdf).
 
