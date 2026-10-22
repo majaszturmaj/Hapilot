@@ -158,6 +158,54 @@ def test_document_generated_directly_under_auto_policy(graph, invoke, llm, docke
     assert pdf.is_file()
 
 
+CHAT_LETTER = ("Szanowny Panie,\nuprzejmie informujemy, że reklamacja nr R-7 została uznana. "
+               "Zwrot należności nastąpi w ciągu 14 dni.\nZ poważaniem\nDział Obsługi Klienta")
+
+
+def _letter_follow_up(text):
+    from langchain_core.messages import AIMessage
+
+    return [HumanMessage(content="Przygotuj krótki list do klienta Jan Testowy z informacją, że reklamacja nr R-7 "
+                                 "została uznana."),
+            AIMessage(content=CHAT_LETTER), HumanMessage(content=text)]
+
+
+def test_pdf_of_previous_answer_gets_that_answer(graph, invoke, llm, docker):
+    llm.on("task_planner", plan(("template_pdf", "PDF", "Wygeneruj list jako PDF")))
+    llm.on("template_filler", LETTER)
+    state = invoke(graph, _letter_follow_up("Wygeneruj ten list jako dokument PDF."), "s-prev", approval_policy="auto")
+    assert "Wygenerowano plik: letter_" in last_text(state)
+    prompt = llm.prompts_for("template_filler")[0]
+    assert "POPRZEDNIA ODPOWIEDŹ ASYSTENTA" in prompt and "reklamacja nr R-7 została uznana. Zwrot" in prompt
+
+
+def test_previous_answer_not_sent_without_a_reference(graph, invoke, llm, docker):
+    llm.on("task_planner", plan(("template_pdf", "Podanie", "Podanie o urlop")))
+    llm.on("template_filler", LETTER)
+    invoke(graph, _letter_follow_up("Napisz podanie o urlop w PDF."), "s-noprev", approval_policy="auto")
+    assert "R-7" not in llm.prompts_for("template_filler")[0]
+
+
+def test_document_generator_retries_once_on_prose_answer(graph, invoke, llm, docker):
+    from extensions.document_generator.nodes import JSON_ONLY_RETRY
+
+    llm.on("task_planner", plan(("template_pdf", "Podanie", "Podanie o urlop")))
+    llm.on("template_filler", "Oto list:\nSzanowna Pani, proszę o urlop.", LETTER)
+    state = invoke(graph, "Napisz podanie o urlop", "s-json-retry", approval_policy="auto")
+    assert "Wygenerowano plik: letter_" in last_text(state)
+    prompts = llm.prompts_for("template_filler")
+    assert len(prompts) == 2 and JSON_ONLY_RETRY in prompts[1]
+
+
+def test_document_generator_errors_after_failed_retry(graph, invoke, llm, docker):
+    llm.on("task_planner", plan(("template_pdf", "Podanie", "Podanie o urlop")))
+    llm.on("template_filler", "Nie potrafię.", "Nadal bez JSON.")
+    state = invoke(graph, "Napisz podanie o urlop", "s-json-fail", approval_policy="auto")
+    assert len(llm.prompts_for("template_filler")) == 2
+    assert docker.runs == []
+    assert any("Model nie zwrócił poprawnego JSON" in m.content for m in state["messages"])
+
+
 def test_edit_request_without_document_is_not_forced(graph, invoke, llm):
     llm.on("task_planner", plan(("chat", "Odpowiedz", "Zmień datę")))
     llm.on("chat", "Nie mam jeszcze dokumentu do zmiany.")

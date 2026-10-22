@@ -78,6 +78,30 @@ def _get_current_turn_ai_messages(messages) -> list:
     return current
 
 
+_PREVIOUS_ANSWER_PATTERNS = [
+    r"\b(ten|tę|te|ta|to|tego|tej|tych)\s+(list\w*|pism\w*|podani\w*|wnios\w*|tekst\w*|treś\w*|dokument\w*|raport\w*|"
+    r"protok\w*|notatk\w*|odpowied\w*|wiadomoś\w*|e-?mail\w*|maila?|szkic\w*|wersj\w*|sprawozdani\w*)",
+    r"\b(to|tę|ten)\s+(jako|do|w)\b", r"\b(powyższ|poprzedni|wcześniejsz)\w*", r"\bz\s+(czatu|rozmowy)\b",
+]
+
+
+def _refers_to_previous_answer(text: str) -> bool:
+    """True when the request points back at earlier output ("ten list", "to jako PDF", "powyższą treść")."""
+    lower = (text or "").lower()
+    return any(re.search(p, lower) for p in _PREVIOUS_ANSWER_PATTERNS)
+
+
+def _get_previous_turn_answer(messages) -> str:
+    """The assistant's last answer before the current user turn ("" if there is none)."""
+    seen_user_turn = False
+    for m in reversed(messages):
+        if isinstance(m, HumanMessage) and not m.content.lstrip().startswith("WYNIK:"):
+            seen_user_turn = True
+        elif seen_user_turn and isinstance(m, AIMessage) and isinstance(m.content, str) and m.content.strip():
+            return m.content
+    return ""
+
+
 NO_DATA_SIGNALS = [
     "brak informacji", "nie znaleziono", "brakuje szczegółowych", "nie zawiera", "brak procedur", "nie posiadam",
     "w dostępnych dokumentach brakuje", "dostarczone dokumenty nie zawierają", "nie znalazłem tej informacji",

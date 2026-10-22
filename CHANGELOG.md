@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-UI only; the agent's behaviour and the evaluation path are unchanged.
+UI changes, plus one agent fix in the document generator (below).
 
 - Right-hand panel **📎 Źródła i pliki** (Chainlit element sidebar, `public/elements/workspace_panel.jsx`). Opens
   after an answer that used company documents or changed files; the button under the answer reopens it.
@@ -23,6 +23,15 @@ UI only; the agent's behaviour and the evaluation path are unchanged.
   model call, no plan replay) and keeps the previous file. Buttons come back when a chat is resumed.
 - `tracing.event` also passes events to an optional run `observer` (no effect on traces).
 - New dependency `pypdfium2==5.14.0` (Apache-2.0/BSD-3): PDF page rendering and character positions.
+
+Agent fix (document generator):
+
+- A follow-up such as „Wygeneruj ten list jako dokument PDF" now fills the template from the assistant's answer
+  in the previous turn (passed to the template-filler prompt when the request refers back to earlier output;
+  `_refers_to_previous_answer`, `_get_previous_turn_answer` in `src/agent_graph.py`). Before, only the current
+  turn was used, so the model invented a different document or returned no JSON.
+- When the template filler answers without a JSON object, it is asked once more for the JSON only before the
+  step fails with „Model nie zwrócił poprawnego JSON".
 
 ## v0.3.1 — 2026-10-19 (stage 6: deployment and timing; fonts)
 

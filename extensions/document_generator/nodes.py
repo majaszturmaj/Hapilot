@@ -13,6 +13,10 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from src.core.tools_common import extract_json_object, invoke_llm_and_normalize
 from src.llm_config import get_bielik_chat
 
+PREVIOUS_ANSWER_LIMIT = 6000
+JSON_ONLY_RETRY = ('Odpowiedz WYŁĄCZNIE obiektem JSON w formacie {"template_id": "...", "parameters": {...}} — '
+                   "bez żadnego tekstu przed ani po nim.")
+
 
 def _generate(state, template_id: str, parameters: dict) -> dict:
     from src.agent_graph import _advance_plan_step
@@ -39,8 +43,8 @@ def _error(text: str) -> dict:
 
 def run_document_generator(state):
     from src import run_context
-    from src.agent_graph import (_contains_no_data_signal, _get_current_turn_ai_messages, _infer_template_hint,
-                                 _resolve_effective_user_message)
+    from src.agent_graph import (_contains_no_data_signal, _get_current_turn_ai_messages, _get_previous_turn_answer,
+                                 _infer_template_hint, _refers_to_previous_answer, _resolve_effective_user_message)
     from src.agent_tools import (_get_condensed_templates_info, _load_templates_metadata, build_document_hitl_form,
                                  normalize_template_params)
 
@@ -65,6 +69,13 @@ def run_document_generator(state):
     if len(context) > 1500:
         context = context[:1500] + "\n[...skrócono kontekst...]"
 
+    # "Wygeneruj ten list jako PDF": the content is the assistant's answer from the previous turn
+    previous_answer = _get_previous_turn_answer(messages) if _refers_to_previous_answer(last_user_msg) else ""
+    if len(previous_answer) > PREVIOUS_ANSWER_LIMIT:
+        previous_answer = previous_answer[:PREVIOUS_ANSWER_LIMIT] + "\n[...skrócono...]"
+    if previous_answer:
+        print(f"      📎 [DOC GEN] Użytkownik odnosi się do poprzedniej odpowiedzi ({len(previous_answer)} znaków)")
+
     user_request = last_user_msg
     task_plan = state.get("task_plan") or {}
     current_step = state.get("current_step")
@@ -87,6 +98,8 @@ ZAPYTANIE UŻYTKOWNIKA: "{user_request}"
 
 {forced}
 
+{f'POPRZEDNIA ODPOWIEDŹ ASYSTENTA (użytkownik prosi o dokument z tej treści — przenieś ją do parametrów szablonu wiernie, bez wymyślania nowej treści):{chr(10)}{previous_answer}' if previous_answer else ''}
+
 {f'KONTEKST:{chr(10)}{context}' if context else ''}
 
 Wybierz szablon i wypełnij WSZYSTKIE wymagane parametry. Treść po polsku, formalnym językiem.
@@ -108,10 +121,17 @@ Odpowiedz WYŁĄCZNIE w formacie JSON:
 }}"""
 
     try:
-        raw = invoke_llm_and_normalize(llm, [SystemMessage(content=system_prompt), HumanMessage(content=prompt)]).content
+        conversation = [SystemMessage(content=system_prompt), HumanMessage(content=prompt)]
+        raw = invoke_llm_and_normalize(llm, conversation).content
         if raw.startswith("[LLM"):
             return _error(f"Model nie może przetworzyć zapytania.\n{raw[:200]}")
         parsed = extract_json_object(raw)
+        if parsed is None:
+            # one retry: models sometimes answer with the letter itself instead of the JSON
+            print("      ⚠️ [DOC GEN] Odpowiedź bez JSON — ponawiam z prośbą o sam obiekt JSON")
+            retry = conversation + [AIMessage(content=raw), HumanMessage(content=JSON_ONLY_RETRY)]
+            raw = invoke_llm_and_normalize(llm, retry).content
+            parsed = None if raw.startswith("[LLM") else extract_json_object(raw)
         if parsed is None:
             return _error(f"Model nie zwrócił poprawnego JSON.\n{raw[:300]}")
     except Exception as exc:

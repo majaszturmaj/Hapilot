@@ -50,3 +50,17 @@ def test_wants_document(text, expected):
 ])
 def test_explicitly_wants_document(text, expected):
     assert explicitly_wants_document(text) is expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Wygeneruj ten list jako dokument PDF.", True),
+    ("Zrób z tego dokument PDF", True),
+    ("Zapisz to jako PDF", True),
+    ("Przenieś powyższą treść do pisma", True),
+    ("Napisz podanie o urlop w PDF.", False),
+    ("Przygotuj list do klienta", False),
+])
+def test_reference_to_previous_answer(text, expected):
+    from src.agent_graph import _refers_to_previous_answer
+
+    assert _refers_to_previous_answer(text) is expected
