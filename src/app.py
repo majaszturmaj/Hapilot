@@ -1,8 +1,13 @@
 """Chainlit front end.
 
 Run on the GPU host with ``scripts/hapilotctl.py ui up`` (binds to 127.0.0.1); open it through an
-SSH tunnel. Each chat session has its own workspace and its own model profile (chosen in the ⚙️
+SSH tunnel. Each chat has its own workspace and its own model profile (chosen in the ⚙️
 settings panel from the profiles defined by the operator in config/profiles.yaml).
+
+With login on (``HAPILOT_UI_USERS_FILE``) chats are kept per user (src/ui_history.py): past chats
+are listed in the left sidebar and can be continued — the agent gets the earlier messages back, and
+the chat's workspace and side panel are the same as before. Workspaces are keyed by the chat
+(thread) id, so they survive a reconnect.
 """
 
 import os
@@ -18,7 +23,7 @@ apply_offline_env()
 
 import chainlit as cl  # noqa: E402
 from chainlit.input_widget import Select  # noqa: E402
-from langchain_core.messages import HumanMessage  # noqa: E402
+from langchain_core.messages import HumanMessage, messages_from_dict, messages_to_dict  # noqa: E402
 
 from src import attachments, run_context, ui_panel  # noqa: E402
 from src.agent_graph import get_app  # noqa: E402
@@ -78,14 +83,57 @@ def _summarize_node_output(node_name: str, output: dict) -> str:
 
 ui_panel.install_route()  # PDF pages and downloads for the right-hand panel
 
-# --------------------------------------------------------------------------- optional login
+# --------------------------------------------------------------------------- optional login and chat history
+
+_STORE = None
 
 if users_file():
+    from src.chat_store import ChatStore
+    from src.ui_history import HistoryDataLayer, db_path
+
+    _STORE = ChatStore(db_path())
+
     @cl.password_auth_callback
     def _auth(username: str, password: str):
         if check_password(username, password):
             return cl.User(identifier=username, metadata={"provider": "credentials"})
         return None
+
+    @cl.data_layer
+    def _data_layer():
+        return HistoryDataLayer(_STORE)
+
+
+class _ChatState:
+    """The agent's state of a chat. Not JSON-serialisable on purpose: Chainlit copies the user session into
+    the thread metadata, and this state is stored separately (src/chat_store.py, ``agent_state``)."""
+
+    def __init__(self) -> None:
+        self.messages: list = []
+        self.panel_turns: list = []
+
+
+def _chat() -> str:
+    """The chat (thread) id: stays the same when a chat is resumed, unlike the websocket session id."""
+    return cl.context.session.thread_id
+
+
+def _state() -> _ChatState:
+    state = cl.user_session.get("chat_state")
+    if not isinstance(state, _ChatState):
+        state = _ChatState()
+        cl.user_session.set("chat_state", state)
+    return state
+
+
+def _save_chat() -> None:
+    if _STORE is None:
+        return
+    state, chat = _state(), _chat()
+    _STORE.save_state(chat, "messages", messages_to_dict(state.messages))
+    _STORE.save_state(chat, "panel_turns", state.panel_turns)
+    _STORE.save_state(chat, "panel_tokens", ui_panel.export_tokens(chat))
+    _STORE.save_state(chat, "last_generated_file", cl.user_session.get("last_generated_file") or "")
 
 
 # --------------------------------------------------------------------------- session
@@ -108,10 +156,9 @@ async def _send_settings() -> None:
 @cl.on_chat_start
 async def start():
     settings = get_settings()
-    cl.user_session.set("messages", [])
+    _state()
     cl.user_session.set("last_generated_file", "")
     cl.user_session.set("profile", settings.default_profile)
-    cl.user_session.set("panel_turns", [])
     await _send_settings()
     profile = settings.profile(settings.default_profile)
     await cl.Message(
@@ -138,14 +185,30 @@ async def settings_update(values: dict):
         await cl.Message(content=f"⚙️ Profil modeli dla tej rozmowy: **{name}**", author="Hapilot").send()
 
 
+@cl.on_chat_resume
+async def resume(thread: dict):
+    """A past chat is opened again: restore the agent's messages, the side panel and the profile."""
+    settings = get_settings()
+    saved = await cl.make_async(_STORE.load_state)(_chat()) if _STORE else {}
+    state = _ChatState()
+    state.messages = messages_from_dict(saved.get("messages") or [])
+    state.panel_turns = saved.get("panel_turns") or []
+    cl.user_session.set("chat_state", state)
+    cl.user_session.set("last_generated_file", saved.get("last_generated_file") or "")
+    ui_panel.import_tokens(_chat(), saved.get("panel_tokens") or {})
+    if cl.user_session.get("profile") not in settings.profiles:
+        cl.user_session.set("profile", settings.default_profile)
+    await _send_settings()
+
+
 @cl.on_chat_end
 async def end():
-    ui_panel.forget_session(cl.context.session.id)
+    ui_panel.forget_session(_chat())
 
 
 def _run_config() -> dict:
     pending = cl.user_session.get("panel_pending")
-    return run_context.make_config(cl.context.session.id, profile=cl.user_session.get("profile"),
+    return run_context.make_config(_chat(), profile=cl.user_session.get("profile"),
                                    extra_collections=cl.user_session.get("extra_collections") or None,
                                    observer=pending.observer if pending else None)
 
@@ -176,10 +239,11 @@ async def _run(inputs: dict, user_content: str):
 
 
 def _remember(history: list, run) -> None:
-    cl.user_session.set("messages", history + new_messages(run.events))
+    _state().messages = history + new_messages(run.events)
     lgf = last_generated_file(run.events)
     if lgf:
         cl.user_session.set("last_generated_file", lgf)
+    _save_chat()
 
 
 async def _finish(history: list, run) -> None:
@@ -191,7 +255,7 @@ async def _finish(history: list, run) -> None:
     text = final_text(run)
     elements, missing = [], []
     for name in generated_file_names(text):
-        with run_context.use_context(session_id=cl.context.session.id):
+        with run_context.use_context(session_id=_chat()):
             try:
                 path = run_context.workspace_file(name)
             except ValueError:
@@ -209,7 +273,7 @@ async def _finish(history: list, run) -> None:
     actions = [cl.Action(name="show_panel", label="📎 Źródła i pliki", payload={"turn": panel["id"]})] if panel else []
     await cl.Message(content=text, elements=elements, actions=actions, author="Hapilot").send()
     if panel:
-        await ui_panel.show(cl.user_session.get("panel_turns"), panel["id"])
+        await ui_panel.show(_state().panel_turns, panel["id"])
 
 
 async def _panel_turn(answer: str):
@@ -219,19 +283,21 @@ async def _panel_turn(answer: str):
     if pending is None:
         return None
     try:
-        turn = await cl.make_async(ui_panel.build_turn)(cl.context.session.id, pending, answer)
+        turn = await cl.make_async(ui_panel.build_turn)(_chat(), pending, answer)
     except Exception as exc:  # the answer matters more than the panel
         print(f"⚠️ [PANEL] {type(exc).__name__}: {exc}")
         return None
     if turn is None:
         return None
-    cl.user_session.set("panel_turns", ui_panel.add_turn(cl.user_session.get("panel_turns") or [], turn))
+    state = _state()
+    state.panel_turns = ui_panel.add_turn(state.panel_turns, turn)
+    await cl.make_async(_save_chat)()
     return turn
 
 
 @cl.action_callback("show_panel")
 async def on_show_panel(action: cl.Action):
-    turns = cl.user_session.get("panel_turns") or []
+    turns = _state().panel_turns
     wanted = (action.payload or {}).get("turn")
     if any(t["id"] == wanted for t in turns):
         await ui_panel.show(turns, wanted)
@@ -245,7 +311,7 @@ def _attach(message: cl.Message) -> str:
     files = [e for e in (message.elements or []) if getattr(e, "path", None)]
     if not files:
         return ""
-    with run_context.use_context(session_id=cl.context.session.id):
+    with run_context.use_context(session_id=_chat()):
         prepared = attachments.prepare([Path(e.path) for e in files], display_names=[e.name for e in files],
                                        index_path=get_settings().data_dir / "attachments_index")
     if prepared.collection:
@@ -258,16 +324,16 @@ def _attach(message: cl.Message) -> str:
 
 @cl.on_message
 async def main(message: cl.Message):
-    history = cl.user_session.get("messages")
+    history = _state().messages
     block = await cl.make_async(_attach)(message)
-    cl.user_session.set("panel_pending", await cl.make_async(ui_panel.start_turn)(cl.context.session.id, message.content))
+    cl.user_session.set("panel_pending", await cl.make_async(ui_panel.start_turn)(_chat(), message.content))
     history.append(HumanMessage(content=message.content + block))
     run = await _run(_inputs(history), message.content)
     await _finish(history, run)
 
 
 async def _continue_after_hitl(hitl_response: dict):
-    history = cl.user_session.get("messages")
+    history = _state().messages
     run = await _run(_inputs(history, hitl_response), "[kontynuacja po decyzji użytkownika]")
     await _finish(history, run)
 

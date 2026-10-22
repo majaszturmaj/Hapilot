@@ -54,7 +54,7 @@ select = ["E9", "F", "W6", "B006", "B008"]
 [tool.coverage.run]
 source = ["src", "extensions", "examples"]
 # The Chainlit UI and the optional MCP servers need chainlit/mcp, which the unit-test environment does not install.
-omit = ["src/app.py", "src/*_server.py"]
+omit = ["src/app.py", "src/ui_history.py", "src/*_server.py"]
 
 [tool.coverage.report]
 fail_under = 85

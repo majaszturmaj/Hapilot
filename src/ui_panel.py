@@ -6,8 +6,9 @@ answer is ready, ``finish_turn`` builds the panel data; the panel opens only if 
 sources or changed files.
 
 PDF page images and downloads are served by one route, ``/hapilot/panel/{token}``. A token is a
-random capability bound to one chat session and one file (and page); it is handed only to that
-session's browser and forgotten when the chat ends. The route never takes a path from the request.
+random capability bound to one chat and one file (and page); it is handed only to that chat's
+browser and forgotten when the chat ends (a resumed chat restores its tokens from the chat history,
+src/ui_history.py). The route never takes a path from the request.
 """
 
 from __future__ import annotations
@@ -41,6 +42,23 @@ def _register(session: str, path: Path, page: Optional[int] = None) -> str:
         token = secrets.token_urlsafe(24)
         _tokens[token] = {"session": session, "path": path, "page": page}
         return token
+
+
+def url_for(session: str, path: Path, page: Optional[int] = None) -> str:
+    return _url(_register(session, path, page))
+
+
+def export_tokens(session: str) -> dict:
+    """The session's tokens, to store with a chat (``{token: [path, page]}``)."""
+    with _tokens_lock:
+        return {t: [str(e["path"]), e["page"]] for t, e in _tokens.items() if e["session"] == session}
+
+
+def import_tokens(session: str, tokens: dict) -> None:
+    """Restore stored tokens of a resumed chat, so its panel URLs work again."""
+    with _tokens_lock:
+        for token, (path, page) in (tokens or {}).items():
+            _tokens[token] = {"session": session, "path": Path(path), "page": page}
 
 
 def forget_session(session: str) -> None:
