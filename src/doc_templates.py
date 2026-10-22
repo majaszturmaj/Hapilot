@@ -168,8 +168,9 @@ def render_block(block: dict) -> str:
         n = len(headers)
         head = " & ".join("\\textbf{" + escape_literal(h) + "}" for h in headers)
         spec = "|" + "|".join(["X"] * n) + "|"
-        return (f"\\begin{{tabularx}}{{\\linewidth}}{{{spec}}}\n\\hline\n{head} \\\\\n\\hline\n"
-                f"{{{{{field}|tabela:{n}}}}}\n\\hline\n\\end{{tabularx}}")
+        # every filled row ends with its own \\hline (src/agent_tools.py, filter "tabela")
+        return (f"\\par\\smallskip\n\\begin{{tabularx}}{{\\linewidth}}{{{spec}}}\n\\hline\n{head} \\\\\n\\hline\n"
+                f"{{{{{field}|tabela:{n}}}}}\n\\end{{tabularx}}\n\\par\\smallskip")
     if kind == "signature":
         return ("\\vspace{14mm}\n\\begin{flushright}\n\\begin{tabular}{c}\n\\rule{6cm}{0.4pt}\\\\\n"
                 + _lines(text) + "\n\\end{tabular}\n\\end{flushright}")
