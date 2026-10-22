@@ -11,6 +11,8 @@ UI only; the agent's behaviour and the evaluation path are unchanged.
     full extracted text (spreadsheets as tables) with the chunks marked; buttons jump to each chunk.
   - *Pliki*: files created or modified by the request (workspace snapshot before/after), with preview,
     diff for text files and download.
+  - A permanent tab on the right edge (`public/panel_tab.js`, Chainlit `custom_js`) minimises the panel and
+    opens it again on the answer viewed last (Chainlit's own ← button drops the panel).
 - `tracing.event` also passes events to an optional run `observer` (no effect on traces).
 - New dependency `pypdfium2==5.14.0` (Apache-2.0/BSD-3): PDF page rendering and character positions.
 
