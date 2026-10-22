@@ -14,11 +14,12 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
-from src import admin
+from src import admin, doc_templates
 
 PREFIX = "/hapilot/admin"
 ASSETS = Path(__file__).resolve().parent / "admin_ui"
-ASSET_TYPES = {"admin.css": "text/css; charset=utf-8", "admin.js": "text/javascript; charset=utf-8"}
+ASSET_TYPES = {"admin.css": "text/css; charset=utf-8", "admin.js": "text/javascript; charset=utf-8",
+               "templates.js": "text/javascript; charset=utf-8"}
 NO_STORE = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY",
             "Referrer-Policy": "same-origin"}
 
@@ -67,8 +68,16 @@ async def _guard(request, write: bool = False, admin_only: bool = False):
 async def _call(fn, *args):
     try:
         return _json(await asyncio.to_thread(fn, *args))
-    except admin.AdminError as exc:
+    except (admin.AdminError, doc_templates.TemplateError) as exc:
         return _json({"error": str(exc)}, 400)
+
+
+async def _body(request) -> dict:
+    try:
+        body = await request.json()
+    except Exception:
+        return {}
+    return body if isinstance(body, dict) else {}
 
 
 # --------------------------------------------------------------------------- page
@@ -161,6 +170,46 @@ async def audit(request):
     return error or await _call(admin.audit_log, user)
 
 
+# --------------------------------------------------------------------------- document templates
+
+async def templates(request):
+    if request.method == "GET":
+        user, error = await _guard(request)
+        if error:
+            return error
+        return await _call(lambda u: {"templates": doc_templates.list_templates(u), **doc_templates.builder_info(),
+                                      "admin": admin.is_admin(u)}, user)
+    user, error = await _guard(request, write=True)
+    return error or await _call(doc_templates.create_template, await _body(request), user)
+
+
+async def template(request):
+    tid = request.path_params["tid"]
+    if request.method == "GET":
+        user, error = await _guard(request)
+        return error or await _call(doc_templates.get_template, tid, user)
+    user, error = await _guard(request, write=True)
+    if error:
+        return error
+    if request.method == "PUT":
+        return await _call(doc_templates.update_template, tid, await _body(request), user)
+    if tid in doc_templates.catalog(None)["templates"]:  # DELETE of a built-in = restore its default
+        return await _call(doc_templates.restore_builtin, tid, user)
+    return await _call(doc_templates.delete_template, tid, user)
+
+
+async def template_share(request):
+    user, error = await _guard(request, write=True, admin_only=True)
+    if error:
+        return error
+    return await _call(doc_templates.set_global, request.path_params["tid"], bool((await _body(request)).get("global")), user)
+
+
+async def template_preview(request):
+    user, error = await _guard(request, write=True)  # compiles in the sandbox: same-origin requests only
+    return error or await _call(doc_templates.preview, await _body(request), user)
+
+
 ROUTES = [
     ("", page, ["GET"]),
     ("/assets/{name}", asset, ["GET"]),
@@ -172,6 +221,10 @@ ROUTES = [
     ("/api/nodes/{name}", node, ["PUT", "DELETE"]),
     ("/api/nodes/{name}/global", share, ["PUT"]),
     ("/api/audit", audit, ["GET"]),
+    ("/api/templates", templates, ["GET", "POST"]),
+    ("/api/templates/preview", template_preview, ["POST"]),
+    ("/api/templates/{tid}", template, ["GET", "PUT", "DELETE"]),
+    ("/api/templates/{tid}/global", template_share, ["PUT"]),
 ]
 _installed = False
 

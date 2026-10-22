@@ -12,6 +12,9 @@
   const ACTIONS = {
     node_created: ["✨", "Dodano węzeł"], node_deleted: ["🗑️", "Usunięto węzeł"],
     prompt_saved: ["✏️", "Zmieniono prompt"], prompt_restored: ["↩️", "Przywrócono prompt"],
+    template_created: ["📄", "Dodano szablon"], template_updated: ["📝", "Zmieniono szablon"], template_deleted: ["🗑️", "Usunięto szablon"],
+    template_shared: ["🌐", "Udostępniono szablon"], template_unshared: ["🔒", "Wycofano udostępnienie szablonu"],
+    template_builtin_saved: ["📝", "Zmieniono wbudowany szablon"], template_builtin_restored: ["↩️", "Przywrócono wbudowany szablon"],
     node_updated: ["🛠️", "Zmieniono węzeł"], node_shared: ["🌐", "Udostępniono wszystkim"], node_unshared: ["🔒", "Wycofano udostępnienie"],
   };
   const isAdmin = () => Boolean(state.graph && state.graph.admin);
@@ -750,6 +753,7 @@
     if (location.hash !== "#" + tab) history.replaceState(null, "", "#" + tab);
     if (tab === "prompts" && !state.promptsLoaded) loadPrompts().catch((err) => toast(err.message, "error"));
     if (tab === "audit") loadAudit();
+    if (tab === "templates" && window.HapilotTemplates) window.HapilotTemplates.open();
     if (tab === "graph") setTimeout(() => fit(), 0);
   }
 
@@ -791,16 +795,23 @@
       if (ev.key !== "Escape") return;
       if (!$("#modal-backdrop").hidden) closeModal(); else if (state.selected) selectNode(null);
     });
-    window.addEventListener("beforeunload", (ev) => { if (state.dirty) { ev.preventDefault(); ev.returnValue = ""; } });
+    window.addEventListener("beforeunload", (ev) => {
+      if (state.dirty || (window.HapilotTemplates && window.HapilotTemplates.dirty())) { ev.preventDefault(); ev.returnValue = ""; }
+    });
     try {
       const me = await api("/me");
+      state.me = me;
       $("#user-chip").replaceChildren(h("span", { class: "avatar" }, (me.identifier || "?")[0].toUpperCase()), h("span", {}, me.identifier),
         h("span", { class: `role-badge${me.admin ? " admin" : ""}` }, me.admin ? "administrator" : "użytkownik"));
     } catch (e) { /* shown by the API calls below */ }
     try { await loadGraph(); } catch (err) { $("#graph-loading").textContent = "Nie udało się wczytać grafu: " + err.message; }
     const tab = (location.hash || "#graph").slice(1);
-    if (["graph", "prompts", "audit"].includes(tab)) switchTab(tab);
+    if (["graph", "prompts", "templates", "audit"].includes(tab)) switchTab(tab);
   }
+
+  // helpers for the template editor (templates.js)
+  window.HapilotAdmin = { h, api, toast, confirmDialog, openModal, closeModal, fmtDate, plural, slugify, splitLabel,
+                          isAdmin: () => Boolean(state.me && state.me.admin), state };
 
   start();
 })();

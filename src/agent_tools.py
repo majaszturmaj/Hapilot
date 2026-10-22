@@ -114,8 +114,12 @@ Zwróć plan jako obiekt JSON: {{"task_name": "...", "complexity": "low|medium|h
 # =========================================================================== LaTeX templates
 
 def _load_templates_metadata() -> dict:
+    """Templates for the current run: the repository's, plus — for a logged-in UI user (``user`` in the run
+    context) — administrator edits of them, global templates and the user's own (src/doc_templates.py)."""
+    from src import doc_templates
+
     try:
-        return json.loads(TEMPLATES_METADATA_FILE.read_text(encoding="utf-8"))
+        return doc_templates.catalog(run_context.current("user"))
     except Exception as exc:
         return {"error": str(exc), "templates": {}}
 
@@ -205,11 +209,40 @@ def _sanitize_latex_value(value: str) -> str:
 
 
 def _fill_template(template_content: str, parameters: dict) -> str:
-    """Replace ``{{PARAM}}`` placeholders with sanitised values."""
-    result = template_content
-    for key, value in parameters.items():
-        result = result.replace("{{" + key + "}}", _sanitize_latex_value(str(value)))
-    return result
+    """Replace ``{{PARAM}}`` placeholders with sanitised values (missing optional ones become empty).
+
+    ``{{PARAM|lista}}``: one ``\\item`` per non-empty line (leading "-", "•", "*" or numbering dropped);
+    ``{{PARAM|tabela:N}}``: one table row per line, cells separated by ``|``, ``;`` or a tab, padded or cut to N;
+    ``{{PARAM|linie}}``: line breaks kept; ``{{PARAM|akapity}}``: blank lines start paragraphs, single ones break lines.
+    """
+    from src.doc_templates import PLACEHOLDER
+
+    def fill(m: re.Match) -> str:
+        name, kind, width = m.group(1), m.group(2), m.group(3)
+        value = str(parameters.get(name, "") or "")
+        if kind == "lista":
+            items = [re.sub(r"^\s*(?:[-•*]|\d+[.)])\s*", "", line).strip() for line in value.splitlines()]
+            items = [i for i in items if i]
+            return "\n".join("\\item " + _sanitize_latex_value(i) for i in items) or "\\item[] ~"
+        if kind == "linie":
+            return " \\\\\n".join(_sanitize_latex_value(line.strip()) for line in value.strip().splitlines() if line.strip())
+        if kind == "akapity":
+            parts = [p for p in re.split(r"\n\s*\n", value.strip()) if p.strip()]
+            return "\n\n".join(" \\\\\n".join(_sanitize_latex_value(line.strip()) for line in part.splitlines() if line.strip())
+                                for part in parts)
+        if kind == "tabela":
+            n = max(1, int(width or 1))
+            rows = []
+            for line in value.splitlines():
+                if not line.strip():
+                    continue
+                cells = [c.strip() for c in re.split(r"[|;\t]", line)]
+                cells = (cells + [""] * n)[:n]
+                rows.append(" & ".join(_sanitize_latex_value(c) for c in cells) + " \\\\ \\hline")
+            return "\n".join(rows) or " & ".join(["~"] * n) + " \\\\ \\hline"
+        return _sanitize_latex_value(value)
+
+    return PLACEHOLDER.sub(fill, template_content)
 
 
 def _get_condensed_templates_info() -> str:
@@ -251,9 +284,9 @@ def tool_generate_pdf_from_template(template_id: str, parameters: dict) -> str:
     if template_id not in templates:
         return f"BŁĄD: Nieznany szablon '{template_id}'. Dostępne szablony: {', '.join(templates)}"
     info = templates[template_id]
-    template_file = TEMPLATES_DIR / info["file"]
+    template_file = Path(info["path"])
     if not template_file.is_file():
-        return f"BŁĄD: Plik szablonu nie istnieje: {info['file']}"
+        return f"BŁĄD: Plik szablonu nie istnieje: {template_file.name}"
 
     parameters = normalize_template_params(template_id, parameters or {})
     missing = [f"{name} ({p['description']})" for name, p in info.get("parameters", {}).items()
@@ -685,7 +718,7 @@ def build_document_hitl_form(template_id: str, parameters: dict, templates_metad
         fields.append({
             "id": param_name,
             "label": param_def.get("description", param_name),
-            "type": "textarea" if len(str(value)) > 100 else "text",
+            "type": "textarea" if param_def.get("multiline") or len(str(value)) > 100 else "text",
             "value": str(value),
             "required": param_def.get("required", True),
         })

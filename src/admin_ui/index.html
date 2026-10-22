@@ -19,6 +19,7 @@
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="graph" class="tab active">🕸️ Graf agenta</button>
       <button role="tab" data-tab="prompts" class="tab">📝 Prompty</button>
+      <button role="tab" data-tab="templates" class="tab">📄 Szablony</button>
       <button role="tab" data-tab="audit" class="tab">📜 Dziennik zmian</button>
     </nav>
     <div class="topbar-right">
@@ -88,6 +89,31 @@
       </div>
     </section>
 
+    <!-- ======================= templates ======================= -->
+    <section class="view" data-view="templates">
+      <div class="tpl-layout">
+        <div class="tpl-list-pane">
+          <div class="tpl-list-head">
+            <button class="btn primary" id="tpl-new">＋ Nowy szablon</button>
+            <input class="search" id="tpl-search" type="search" placeholder="Szukaj szablonu…" autocomplete="off">
+          </div>
+          <div class="tpl-list" id="tpl-list"></div>
+        </div>
+        <div class="tpl-editor" id="tpl-editor">
+          <div class="empty-state">
+            <div class="empty-icon">📄</div>
+            <p>Wybierz szablon z listy albo utwórz nowy.</p>
+            <p class="muted">Szablon to układ dokumentu PDF z polami, które Hapilot wypełnia w rozmowie. Twoje szablony są prywatne — działają tylko w Twoich rozmowach.</p>
+          </div>
+        </div>
+        <aside class="tpl-preview" id="tpl-preview">
+          <div class="tpl-preview-head"><b>Podgląd PDF</b><span class="tpl-status" id="tpl-status"></span>
+            <button class="icon-btn" id="tpl-refresh" title="Odśwież podgląd">↻</button></div>
+          <div class="tpl-pages" id="tpl-pages"><p class="muted">Podgląd pojawi się po wybraniu szablonu. Wypełniam go przykładowymi wartościami pól.</p></div>
+        </aside>
+      </div>
+    </section>
+
     <!-- ======================= audit ======================= -->
     <section class="view" data-view="audit">
       <div class="audit-wrap">
@@ -105,5 +131,6 @@
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
   <script src="/hapilot/admin/assets/admin.js"></script>
+  <script src="/hapilot/admin/assets/templates.js"></script>
 </body>
 </html>

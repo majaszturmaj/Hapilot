@@ -59,9 +59,17 @@ def run_document_generator(state):
         return _generate(state, hitl_response["template_id"], hitl_response.get("parameters", {}))
 
     # --- first pass: choose a template and fill its parameters
+    from src import doc_templates
+
+    user = run_context.current("user")
+
+    def hint(text: str):
+        """A user's own/global template named in the request wins over the built-in keyword guess."""
+        return doc_templates.custom_hint(text, user) or _infer_template_hint(text)
+
     messages = state["messages"]
     last_user_msg = _resolve_effective_user_message(messages)
-    template_hint = _infer_template_hint(last_user_msg)
+    template_hint = hint(last_user_msg)
 
     context_parts = [m.content for m in _get_current_turn_ai_messages(messages)
                      if isinstance(m, AIMessage) and m.content and not (template_hint and _contains_no_data_signal(m.content))]
@@ -83,10 +91,10 @@ def run_document_generator(state):
         step_input = task_plan["steps"][current_step].get("input")
         if step_input and last_user_msg:
             user_request = f"Oryginalne zapytanie: {last_user_msg} (Instrukcja do kroku: {step_input})"
-            template_hint = _infer_template_hint(last_user_msg) or _infer_template_hint(step_input)
+            template_hint = hint(last_user_msg) or hint(step_input)
         elif step_input:
             user_request = step_input
-            template_hint = _infer_template_hint(step_input)
+            template_hint = hint(step_input)
 
     llm, system_prompt = get_bielik_chat(role="template_filler")
     forced = (f'WYMUSZENIE SZABLONU: Użytkownik jawnie poprosił o typ dokumentu "{template_hint}". '
@@ -107,13 +115,16 @@ Jeśli kontekst z RAG zawiera "brak danych", traktuj to jako kontekst pomocniczy
 Dla list użyj \\\\begin{{enumerate}} \\\\item ... \\\\end{{enumerate}}
 
 ZASADY WYBORU: (Priorytet!)
+0. Jeśli użytkownik wskazuje szablon z listy po nazwie lub opisie (np. „według szablonu oferty”), użyj tego szablonu
 1. Jeśli użytkownik prosi o PODANIE, WNIOSEK, LIST -> "template_id: letter"
 2. Jeśli użytkownik prosi o RAPORT, SPRAWOZDANIE, WYNIKI -> "template_id: report"
 3. Jeśli użytkownik prosi o PROTOKÓŁ, NOTATKĘ ZE SPOTKANIA -> "template_id: protocol"
+Parametry podawaj dokładnie pod nazwami pól wybranego szablonu. Pola listy i tabeli: jedna pozycja / jeden wiersz w linii
+(komórki tabeli rozdzielaj znakiem |).
 
 Odpowiedz WYŁĄCZNIE w formacie JSON:
 {{
-  "template_id": "letter|report|protocol",
+  "template_id": "identyfikator szablonu z listy",
   "parameters": {{
     "PARAM1": "wartość1",
     "PARAM2": "wartość2"
@@ -139,7 +150,11 @@ Odpowiedz WYŁĄCZNIE w formacie JSON:
 
     template_id = parsed.get("template_id")
     parameters = parsed.get("parameters", {}) or {}
-    if template_hint:
+    chosen = _load_templates_metadata().get("templates", {}).get(template_id or "")
+    if template_hint and chosen and chosen.get("kind") == "custom" and template_hint not in doc_templates.custom_ids(user):
+        # the model picked the user's own/global template and the request only matched a built-in keyword: keep it
+        print(f"      ℹ️ [DOC GEN] Model wybrał szablon własny {template_id} — zostawiam (słowo kluczowe: {template_hint})")
+    elif template_hint:
         if template_id and template_id != template_hint:
             print(f"      ⚠️ [DOC GEN] Nadpisuję template_id modelu ({template_id}) -> {template_hint}")
         template_id = template_hint

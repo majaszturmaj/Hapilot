@@ -236,11 +236,18 @@ def _agent():
     return get_app(), None
 
 
+def _user() -> Optional[str]:
+    """The logged-in user (None without login): picks their custom templates (src/doc_templates.py)."""
+    user = getattr(cl.context.session, "user", None)
+    return user.identifier if _STORE is not None and user is not None else None
+
+
 def _run_config(manager=None) -> dict:
     pending = cl.user_session.get("panel_pending")
     return run_context.make_config(_chat(), profile=cl.user_session.get("profile"),
                                    extra_collections=cl.user_session.get("extra_collections") or None,
-                                   observer=pending.observer if pending else None, extension_manager=manager)
+                                   observer=pending.observer if pending else None, extension_manager=manager,
+                                   user=_user())
 
 
 def _inputs(history: list, hitl_response=None) -> dict:
@@ -471,7 +478,7 @@ def _document_params(pdf_name: str) -> Optional[dict]:
 def _compile_document(template_id: str, parameters: dict) -> str:
     from src.agent_tools import tool_generate_pdf_from_template
 
-    with run_context.use_context(session_id=_chat(), profile=cl.user_session.get("profile")):
+    with run_context.use_context(session_id=_chat(), profile=cl.user_session.get("profile"), user=_user()):
         return tool_generate_pdf_from_template(template_id, parameters)
 
 
@@ -486,7 +493,8 @@ async def on_edit_document(action: cl.Action):
         await cl.Message(content=f"⚠️ Nie mogę już edytować **{name}** — brak zapisanych danych tego dokumentu.",
                          author="Hapilot").send()
         return
-    form = build_document_hitl_form(saved["template_id"], saved.get("parameters") or {}, _load_templates_metadata())
+    with run_context.use_context(user=_user()):
+        form = build_document_hitl_form(saved["template_id"], saved.get("parameters") or {}, _load_templates_metadata())
     answer = await _ask_document_form(
         form["fields"], f"Edycja dokumentu {name}", saved["template_id"],
         f"✏️ Popraw dane dokumentu **{name}** i kliknij **Generuj PDF**. Powstanie nowa wersja pliku; "
