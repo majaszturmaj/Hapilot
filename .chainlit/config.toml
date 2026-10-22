@@ -135,6 +135,7 @@ custom_css = "/public/custom.css"
 # Specify a JavaScript file that can be used to customize the user interface.
 # The JavaScript file can be served from the public directory.
 # custom_js = "/public/test.js"
+custom_js = "/public/panel_tab.js"   # permanent tab that reopens/minimises the side panel
 
 # The style of alert boxes. Can be "classic" or "modern".
 alert_style = "classic"

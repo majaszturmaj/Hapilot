@@ -284,6 +284,7 @@ export default function WorkspacePanel() {
     setTurnId(props.active);
   }, [props.active]);
   useEffect(() => {
+    if (turn) window.hapilotPanelTurn = turn.id; // public/panel_tab.js reopens the panel on this turn
     setOpenDoc(turn && turn.sources.length === 1 ? 0 : null);
     if (turn) setTab(!turn.sources.length && turn.files.length ? "files" : "sources");
   }, [turn && turn.id]);
