@@ -210,9 +210,15 @@ def _apply_run_overrides(spec: ModelSpec) -> ModelSpec:
     return dataclasses.replace(spec, **changes) if changes else spec
 
 
-def get_llm(role: str) -> tuple[Any, str]:
-    """(chat model, system prompt) for a role."""
-    spec, fallback = resolve_model(role)
+def get_llm(role: str, *, model_role: Optional[str] = None, temperature: Optional[float] = None) -> tuple[Any, str]:
+    """(chat model, system prompt) for a role.
+
+    ``model_role`` picks the model by another role than the prompt (custom nodes use "default" or "coder");
+    ``temperature`` replaces the profile's value (evaluation runs still fix it, see ``_apply_run_overrides``).
+    """
+    spec, fallback = resolve_model(model_role or role)
+    if temperature is not None:
+        spec = dataclasses.replace(spec, temperature=float(temperature))
     spec = _apply_run_overrides(spec)
     prompt_role = role
     if fallback:

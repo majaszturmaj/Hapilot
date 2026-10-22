@@ -7,7 +7,8 @@ settings panel from the profiles defined by the operator in config/profiles.yaml
 With login on (``HAPILOT_UI_USERS_FILE``) chats are kept per user (src/ui_history.py): past chats
 are listed in the left sidebar and can be continued — the agent gets the earlier messages back, and
 the chat's workspace and side panel are the same as before. Workspaces are keyed by the chat
-(thread) id, so they survive a reconnect.
+(thread) id, so they survive a reconnect. Administrators (``HAPILOT_UI_ADMINS``) also get the admin
+panel at ``/hapilot/admin`` (src/ui_admin.py).
 """
 
 import json
@@ -94,6 +95,13 @@ if users_file():
     from src.ui_history import HistoryDataLayer, db_path
 
     _STORE = ChatStore(db_path())
+
+    # admin panel (/hapilot/admin): custom nodes and prompt overrides apply to the UI only (src/admin.py)
+    from src import admin as _admin
+    from src.ui_admin import install_routes as _install_admin_routes
+
+    _admin.enable_for_ui()
+    _install_admin_routes()
 
     @cl.password_auth_callback
     def _auth(username: str, password: str):

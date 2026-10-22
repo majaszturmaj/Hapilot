@@ -567,6 +567,24 @@ def reset_app() -> None:
     _app = None
 
 
+def rebuild_app():
+    """Load the extensions again into a new manager and compile a new graph, then swap both in.
+
+    Used by the admin panel after a custom node is added or deleted. A request that is already running
+    keeps its compiled graph; its nodes then read the new manager (a superset or subset of the old one).
+    Returns the new manager.
+    """
+    global _app
+    import src.core.extension_manager as em
+
+    manager = em.ExtensionManager()
+    manager.discover_and_load()
+    app = build_dynamic_graph(manager)  # also makes ``manager`` the active one
+    em.extension_manager = manager
+    _app = app
+    return manager
+
+
 def __getattr__(name: str):  # lazy module attribute ``app`` (backwards compatible)
     if name == "app":
         return get_app()

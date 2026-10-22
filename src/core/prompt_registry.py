@@ -19,8 +19,9 @@ class PromptRegistry:
     Singleton — import the module-level `prompt_registry` instance.
 
     Prompt resolution order (highest priority first):
-    1. Extension-specific override (last registered wins)
-    2. Default prompt registered by core or first extension
+    1. Administrator override (``set_override``; the UI's admin panel, src/admin.py)
+    2. Dynamic composer
+    3. Prompt registered by core or an extension (last registered wins) — the "default"
     """
 
     _instance: Optional["PromptRegistry"] = None
@@ -31,6 +32,7 @@ class PromptRegistry:
             inst._prompts: Dict[str, str] = {}
             inst._prompt_sources: Dict[str, str] = {}  # role -> extension_id
             inst._prompt_composers: Dict[str, Callable] = {}  # role -> dynamic composer fn
+            inst._overrides: Dict[str, str] = {}  # role -> text set by an administrator
             cls._instance = inst
         return cls._instance
 
@@ -69,7 +71,9 @@ class PromptRegistry:
         Returns:
             The system prompt string, or None if no prompt is registered for this role.
         """
-        # Dynamic composers take priority
+        if role in self._overrides:
+            return self._overrides[role]
+        # Dynamic composers take priority over registered prompts
         if role in self._prompt_composers:
             try:
                 return self._prompt_composers[role]()
@@ -78,6 +82,26 @@ class PromptRegistry:
                 # Fall through to static prompt
 
         return self._prompts.get(role)
+
+    def default(self, role: str) -> Optional[str]:
+        """The registered prompt of a role, ignoring an administrator override."""
+        return self._prompts.get(role)
+
+    def set_override(self, role: str, text: str) -> None:
+        self._overrides[role] = text
+
+    def clear_override(self, role: str) -> None:
+        self._overrides.pop(role, None)
+
+    def overridden(self, role: str) -> bool:
+        return role in self._overrides
+
+    def unregister(self, role: str) -> None:
+        """Forget a role (a deleted custom node)."""
+        self._prompts.pop(role, None)
+        self._prompt_sources.pop(role, None)
+        self._prompt_composers.pop(role, None)
+        self._overrides.pop(role, None)
 
     def get_or_default(self, role: str, default: str = "") -> str:
         """Get prompt for a role, returning a default if not found."""
@@ -101,6 +125,7 @@ class PromptRegistry:
         self._prompts.clear()
         self._prompt_sources.clear()
         self._prompt_composers.clear()
+        self._overrides.clear()
 
 
 # Module-level singleton
