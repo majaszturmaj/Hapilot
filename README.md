@@ -159,6 +159,15 @@ edit the prompts of the built-in nodes, with version history and restore; other 
 Changes are recorded in `var/admin_audit.jsonl` and apply to the UI only — evaluation runs use the repository's
 extensions and prompts ([src/admin.py](src/admin.py), [src/ui_admin.py](src/ui_admin.py)).
 
+The panel's **📄 Szablony** tab manages PDF document templates the same way: users build their own private
+templates — with a block builder (title, sender, recipient, place and date, paragraphs, lists, tables, signature,
+footer; same fonts and Polish setup as the built-in templates) or directly in LaTeX — with a live preview compiled in
+the sandbox from the fields' example values; a template is saved only if it compiles. Administrators share theirs
+globally and edit the built-in templates (with history and restore). Hapilot offers each user the built-in, global
+and own templates; a request can name one („według szablonu Oferta handlowa”). Fields are `{{NAME}}` placeholders;
+`{{NAME|lista}}`, `{{NAME|tabela:N}}`, `{{NAME|linie}}` and `{{NAME|akapity}}` format multi-line values
+([src/doc_templates.py](src/doc_templates.py)).
+
 ### Ports
 
 | Port (127.0.0.1) | Service | Variable |

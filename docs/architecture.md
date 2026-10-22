@@ -150,6 +150,12 @@ the user's private ones; cached, rebuilt when those files change), and the run c
 extension manager, which `get_active()` returns inside the run. Administrator prompt overrides of built-in nodes
 sit on top of the prompt registry (`set_override`). None of this is loaded by evaluation runs.
 
+Document templates ([src/doc_templates.py](../src/doc_templates.py)) follow the same rules. `catalog(user)` gives a
+run its templates: the repository's (`templates/`), administrator edits of them (`var/template_overrides/`), global
+and the user's own (`var/custom_templates/<owner>/<id>/`); the run config carries `user`, and
+`agent_tools._load_templates_metadata()` returns that catalog, so the document node, the form and regeneration all
+see the same list. Without a user (evaluation, no login) the catalog is exactly `templates/`.
+
 ## Sandbox
 
 [src/sandbox.py](../src/sandbox.py): every code run or LaTeX compilation is a new container from

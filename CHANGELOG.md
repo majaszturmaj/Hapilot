@@ -27,6 +27,11 @@ UI changes, plus one agent fix in the document generator (below).
   nodes **global** (used in everyone's chats) and edit built-in prompts with version history and restore; others
   read them. Each user's chats run on their own compiled graph; an audit log records every change. UI only:
   evaluation runs never load custom nodes or prompt overrides.
+- Document templates (agent panel, tab „📄 Szablony”): users create private PDF templates with a block builder or in
+  LaTeX, with a live PDF preview compiled in the sandbox; a template is saved only if it compiles. Administrators share
+  templates globally and edit the built-in ones (history, restore). Each user's chats see built-in + global + own
+  templates; a template named in the request is used even if a built-in keyword matches. New fill filters
+  `|lista`, `|tabela:N`, `|linie`, `|akapity`; form fields honour `multiline`. Evaluation runs use only `templates/`.
 - `tracing.event` also passes events to an optional run `observer` (no effect on traces).
 - New dependency `pypdfium2==5.14.0` (Apache-2.0/BSD-3): PDF page rendering and character positions.
 
