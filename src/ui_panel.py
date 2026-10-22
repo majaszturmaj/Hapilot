@@ -109,6 +109,16 @@ def install_route() -> None:
 
     app.add_api_route(ROUTE_PREFIX + "/{token}", serve, methods=["GET"], include_in_schema=False)
     app.router.routes.insert(0, app.router.routes.pop())
+
+    @app.middleware("http")
+    async def revalidate_public(request, call_next):
+        """Browsers must re-check /public (custom elements, panel_tab.js, CSS): without this an updated form
+        component kept running from the browser cache after a deployment."""
+        response = await call_next(request)
+        if request.url.path.startswith("/public/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     _installed = True
 
 
