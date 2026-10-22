@@ -199,6 +199,9 @@ async def resume(thread: dict):
     if cl.user_session.get("profile") not in settings.profiles:
         cl.user_session.set("profile", settings.default_profile)
     await _send_settings()
+    for turn in state.panel_turns:  # buttons are not stored with the messages; put them back
+        if turn.get("message_id"):
+            await _panel_action(turn["id"]).send(for_id=turn["message_id"])
 
 
 @cl.on_chat_end
@@ -270,10 +273,17 @@ async def _finish(history: list, run) -> None:
         text += "\n\n⬇️ **Plik do pobrania poniżej.**" if len(elements) == 1 else "\n\n⬇️ **Pliki do pobrania poniżej.**"
     if missing:
         text += f"\n\n⚠️ *Nie znalazłem pliku {', '.join(missing)} w tej rozmowie. Spróbujmy jeszcze raz.*"
-    actions = [cl.Action(name="show_panel", label="📎 Źródła i pliki", payload={"turn": panel["id"]})] if panel else []
-    await cl.Message(content=text, elements=elements, actions=actions, author="Hapilot").send()
+    actions = [_panel_action(panel["id"])] if panel else []
+    message = cl.Message(content=text, elements=elements, actions=actions, author="Hapilot")
+    await message.send()
     if panel:
+        panel["message_id"] = message.id  # a resumed chat puts the button back under this message
+        await cl.make_async(_save_chat)()
         await ui_panel.show(_state().panel_turns, panel["id"])
+
+
+def _panel_action(turn_id: int) -> cl.Action:
+    return cl.Action(name="show_panel", label="📎 Źródła i pliki", payload={"turn": turn_id})
 
 
 async def _panel_turn(answer: str):

@@ -204,7 +204,7 @@
       "button": "Nowa rozmowa",
       "dialog": {
         "title": "Nowa rozmowa",
-        "description": "Bieżąca rozmowa zostanie wyczyszczona. Kontynuować?",
+        "description": "Rozpocząć nową rozmowę? Po zalogowaniu obecna rozmowa zostaje w historii po lewej; bez logowania zostanie wyczyszczona.",
         "tooltip": "Nowa rozmowa"
       }
     },
