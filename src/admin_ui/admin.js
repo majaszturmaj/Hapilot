@@ -7,6 +7,8 @@
   const SVG = "http://www.w3.org/2000/svg";
   const CARD = { w: 228, h: 112, gap: 34 };
   const KIND = { core: "Rdzeń", extension: "Rozszerzenie", custom: "Własny" };
+  // nodes shipped with Hapilot are "built-in"; "Rozszerzenie" only for extensions added from outside the repository
+  const kindLabel = (n) => (n.kind === "extension" && n.builtin ? "Wbudowany" : KIND[n.kind] || n.kind);
   const ACTIONS = {
     node_created: ["✨", "Dodano węzeł"], node_deleted: ["🗑️", "Usunięto węzeł"],
     prompt_saved: ["✏️", "Zmieniono prompt"], prompt_restored: ["↩️", "Przywrócono prompt"],
@@ -206,7 +208,7 @@
   function nodeCard(n, extraClass = "") {
     const [icon, title] = splitLabel(n.label, n.kind === "custom" ? "🟣" : "🔹");
     const changed = overriddenRoles();
-    const chips = [h("span", { class: "chip kind" }, n.kind === "custom" ? (n.global ? "🌐 Globalny" : "🔒 Prywatny") : (KIND[n.kind] || n.kind))];
+    const chips = [h("span", { class: "chip kind" }, n.kind === "custom" ? (n.global ? "🌐 Globalny" : "🔒 Prywatny") : kindLabel(n))];
     if (n.kind === "custom" && n.owner && !n.mine) chips.push(h("span", { class: "chip" }, "👤 " + n.owner));
     for (const t of (n.tools || []).slice(0, n.kind === "custom" ? 1 : 2)) chips.push(h("span", { class: "chip" }, "🛠 " + t.name));
     if ((n.prompts || []).some((r) => changed.has(r))) chips.push(h("span", { class: "chip mod", title: "Prompt zmieniony przez administratora" }, "✏️ prompt"));
@@ -413,7 +415,7 @@
     sections.push(h("div", { class: `insp-head ${n.kind}${customClass(n)}` },
       h("div", { class: "insp-icon" }, icon), h("h3", {}, title), h("code", {}, n.id),
       h("div", { class: "chips" },
-        h("span", { class: "chip kind" }, n.kind === "custom" ? (n.global ? "🌐 Globalny — dla wszystkich" : "🔒 Prywatny — tylko Twoje rozmowy") : KIND[n.kind]),
+        h("span", { class: "chip kind" }, n.kind === "custom" ? (n.global ? "🌐 Globalny — dla wszystkich" : "🔒 Prywatny — tylko Twoje rozmowy") : kindLabel(n)),
         n.kind === "custom" ? h("span", { class: "chip" }, "👤 " + (n.mine ? "Twój węzeł" : n.owner)) : h("span", { class: "chip" }, "📦 " + n.extension_name))));
     if (n.description) sections.push(h("div", { class: "insp-section" }, h("h4", {}, "Opis"), h("p", {}, n.description)));
     if (n.kind === "custom") {

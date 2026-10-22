@@ -46,6 +46,7 @@ CORE_NODES = {
     "router": ("🔀 Router", "Kieruje bieżący krok planu do węzła jego narzędzia", []),
     "hitl_confirm": ("🤝 Potwierdzenie", "Zatrzymuje plan i pyta użytkownika o zgodę", []),
 }
+BUILTIN_EXTENSIONS = (Path(__file__).resolve().parents[1] / "extensions").resolve()  # shipped with Hapilot
 _lock = threading.RLock()
 _agents: dict[str, tuple] = {}   # user -> (signature, manager, compiled graph)
 
@@ -516,8 +517,9 @@ def _nodes(manager, user: Optional[str]) -> list[dict]:
              for nid, (label, desc, prompts) in CORE_NODES.items()]
     for name, spec in manager.get_node_specs().items():
         m = manifests.get(spec.extension_id)
+        builtin = bool(m) and Path(m.directory).resolve().parent == BUILTIN_EXTENSIONS
         node = {"id": name, "label": spec.label or name, "description": spec.description, "kind": "extension",
-                "extension": spec.extension_id, "extension_name": m.name if m else spec.extension_id,
+                "builtin": builtin, "extension": spec.extension_id, "extension_name": m.name if m else spec.extension_id,
                 "tools": tools_by_node.get(name, []), "then": spec.then,
                 "policy": None if spec.then else dict(spec.after), "config": {}}
         if name in custom:

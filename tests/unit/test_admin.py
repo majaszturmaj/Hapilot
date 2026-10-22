@@ -196,6 +196,8 @@ def test_graph_edges_match_the_compiled_graph(panel):
     assert kinds[("router", "streszczacz")] == "route" and kinds[("streszczacz", "__next__")] == "next"
     assert {("writer", "__end__"), ("writer", "streszczacz"), ("streszczacz", "writer")} <= compiled
     assert data["user"] == "uzytkownik" and data["admin"] is False
+    nodes = {n["id"]: n for n in data["nodes"]}
+    assert nodes["writer"]["builtin"] is True and "builtin" not in nodes["task_planner"]  # shipped with Hapilot
 
 
 def test_evaluation_runs_never_see_custom_nodes():
