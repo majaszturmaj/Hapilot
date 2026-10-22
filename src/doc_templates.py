@@ -172,7 +172,7 @@ def render_block(block: dict) -> str:
         return (f"\\par\\smallskip\n\\begin{{tabularx}}{{\\linewidth}}{{{spec}}}\n\\hline\n{head} \\\\\n\\hline\n"
                 f"{{{{{field}|tabela:{n}}}}}\n\\end{{tabularx}}\n\\par\\smallskip")
     if kind == "signature":  # {{PODPIS_SLOT}}: blank place or the user's scan, chosen in the form (src/signatures.py)
-        return ("\\vspace{4mm}\n\\begin{flushright}\n\\begin{tabular}{c}\n{{PODPIS_SLOT}}\\\\\n\\rule{6cm}{0.4pt}\\\\\n"
+        return ("\\vspace{4mm}\n\\begin{flushright}\n\\begin{tabular}{c}\n{{PODPIS_SLOT}}\\\\[-3mm]\n\\rule{6cm}{0.4pt}\\\\\n"
                 + _lines(text) + "\n\\end{tabular}\n\\end{flushright}")
     if kind == "spacer":
         return "\\vspace{" + {"small": "4mm", "large": "20mm"}.get(block.get("size", ""), "10mm") + "}"
