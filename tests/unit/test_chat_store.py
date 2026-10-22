@@ -94,6 +94,32 @@ def test_agent_state_round_trip_and_delete(store):
     assert store.list_threads(admin["id"])[0] == []
 
 
+def test_concurrent_first_steps_create_the_thread_once(store):
+    """Chainlit saves the first steps of a chat in parallel; each may be the one that creates the thread."""
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    admin = store.create_user("admin")
+    query = store._q
+
+    def slow_q(sql, args=()):  # widen the gap between "does the thread exist?" and "create it"
+        rows = query(sql, args)
+        if sql.startswith("SELECT * FROM threads"):
+            time.sleep(0.005)
+        return rows
+
+    store._q = slow_q
+    steps = [{"id": f"s{i}", "threadId": "t1", "type": "run", "createdAt": f"2026-10-22T10:00:{i:02d}.000Z"}
+             for i in range(40)]
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(store.upsert_step, steps))
+        list(pool.map(lambda s: store.upsert_step({**s, "output": "gotowe"}), steps))
+    store.update_thread("t1", user_id=admin["id"], name="Równolegle")
+    thread = store.get_thread("t1")
+    assert len(thread["steps"]) == 40 and all(s["output"] == "gotowe" for s in thread["steps"])
+    assert store.list_threads(admin["id"])[0][0]["name"] == "Równolegle"
+
+
 def test_store_survives_reopening(tmp_path):
     path = tmp_path / "chats.sqlite"
     s = ChatStore(path)

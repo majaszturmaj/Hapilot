@@ -14,6 +14,7 @@ thread whose ``get_thread_author`` is not the logged-in user.
 
 from __future__ import annotations
 
+import functools
 import json
 import sqlite3
 import threading
@@ -42,6 +43,18 @@ CREATE TABLE IF NOT EXISTS agent_state (
 """
 
 
+def _atomic(method):
+    """Run a store method under the store's lock: Chainlit saves steps concurrently (worker threads), and
+    the check-then-write sequences (thread created by the first step, step created or merged) must not interleave."""
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
@@ -52,7 +65,7 @@ class ChatStore:
         self.path = path
         self._db = sqlite3.connect(str(path), check_same_thread=False, isolation_level=None)
         self._db.row_factory = sqlite3.Row
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         with self._lock:
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.execute("PRAGMA foreign_keys=ON")
@@ -68,10 +81,12 @@ class ChatStore:
 
     # ------------------------------------------------------------------ users
 
+    @_atomic
     def get_user(self, identifier: str) -> Optional[dict]:
         rows = self._q("SELECT * FROM users WHERE identifier = ?", (identifier,))
         return _user(rows[0]) if rows else None
 
+    @_atomic
     def create_user(self, identifier: str, metadata: Optional[dict] = None) -> dict:
         existing = self.get_user(identifier)
         if existing:
@@ -85,12 +100,13 @@ class ChatStore:
 
     # ------------------------------------------------------------------ threads
 
+    @_atomic
     def update_thread(self, thread_id: str, name: Optional[str] = None, user_id: Optional[str] = None,
                       metadata: Optional[dict] = None, tags: Optional[list] = None) -> None:
         """Create the thread if needed; set only the fields that are given (metadata is merged)."""
         rows = self._q("SELECT * FROM threads WHERE id = ?", (thread_id,))
         if not rows:
-            self._q("INSERT INTO threads (id, created_at) VALUES (?, ?)", (thread_id, now()))
+            self._q("INSERT OR IGNORE INTO threads (id, created_at) VALUES (?, ?)", (thread_id, now()))
             rows = self._q("SELECT * FROM threads WHERE id = ?", (thread_id,))
         row = rows[0]
         sets: dict[str, Any] = {}
@@ -107,10 +123,12 @@ class ChatStore:
         if sets:
             self._q(f"UPDATE threads SET {', '.join(f'{k} = ?' for k in sets)} WHERE id = ?", (*sets.values(), thread_id))
 
+    @_atomic
     def thread_author(self, thread_id: str) -> str:
         rows = self._q("SELECT user_identifier FROM threads WHERE id = ?", (thread_id,))
         return (rows[0]["user_identifier"] or "") if rows else ""
 
+    @_atomic
     def get_thread(self, thread_id: str) -> Optional[dict]:
         rows = self._q("SELECT * FROM threads WHERE id = ?", (thread_id,))
         if not rows:
@@ -129,6 +147,7 @@ class ChatStore:
                               self._q("SELECT data FROM elements WHERE thread_id = ? ORDER BY rowid", (thread_id,))]
         return thread
 
+    @_atomic
     def list_threads(self, user_id: Optional[str], first: int = 20, cursor: Optional[str] = None,
                      search: Optional[str] = None) -> tuple[list[dict], bool]:
         """A user's threads, newest first; (page, has_next_page). Threads without steps are not listed."""
@@ -149,6 +168,7 @@ class ChatStore:
         rows = self._q(sql, tuple(args))
         return [_thread(r) for r in rows[:first]], len(rows) > first
 
+    @_atomic
     def delete_thread(self, thread_id: str) -> None:
         for table, column in (("steps", "thread_id"), ("elements", "thread_id"), ("feedbacks", "thread_id"),
                               ("agent_state", "thread_id"), ("threads", "id")):
@@ -156,6 +176,7 @@ class ChatStore:
 
     # ------------------------------------------------------------------ steps, elements, feedback
 
+    @_atomic
     def upsert_step(self, step: dict) -> None:
         thread_id = step.get("threadId")
         if not thread_id or not step.get("id"):
@@ -170,23 +191,28 @@ class ChatStore:
             self._q("INSERT INTO steps (id, thread_id, created_at, data) VALUES (?, ?, ?, ?)",
                     (step["id"], thread_id, created, json.dumps(step, ensure_ascii=False)))
 
+    @_atomic
     def delete_step(self, step_id: str) -> None:
         self._q("DELETE FROM steps WHERE id = ?", (step_id,))
         self._q("DELETE FROM feedbacks WHERE for_id = ?", (step_id,))
 
+    @_atomic
     def upsert_element(self, element: dict) -> None:
         if not element.get("id"):
             return
         self._q("INSERT OR REPLACE INTO elements (id, thread_id, data) VALUES (?, ?, ?)",
                 (element["id"], element.get("threadId"), json.dumps(element, ensure_ascii=False)))
 
+    @_atomic
     def get_element(self, thread_id: str, element_id: str) -> Optional[dict]:
         rows = self._q("SELECT data FROM elements WHERE id = ? AND thread_id = ?", (element_id, thread_id))
         return json.loads(rows[0]["data"]) if rows else None
 
+    @_atomic
     def delete_element(self, element_id: str) -> None:
         self._q("DELETE FROM elements WHERE id = ?", (element_id,))
 
+    @_atomic
     def upsert_feedback(self, for_id: str, value: int, comment: Optional[str] = None,
                         feedback_id: Optional[str] = None) -> str:
         rows = self._q("SELECT id FROM feedbacks WHERE for_id = ?", (for_id,))
@@ -197,6 +223,7 @@ class ChatStore:
                 (fid, for_id, thread[0]["thread_id"] if thread else None, int(value), comment))
         return fid
 
+    @_atomic
     def delete_feedback(self, feedback_id: str) -> bool:
         existed = bool(self._q("SELECT 1 FROM feedbacks WHERE id = ?", (feedback_id,)))
         self._q("DELETE FROM feedbacks WHERE id = ?", (feedback_id,))
@@ -204,10 +231,12 @@ class ChatStore:
 
     # ------------------------------------------------------------------ agent state of a chat
 
+    @_atomic
     def save_state(self, thread_id: str, key: str, value: Any) -> None:
         self._q("INSERT OR REPLACE INTO agent_state (thread_id, key, data) VALUES (?, ?, ?)",
                 (thread_id, key, json.dumps(value, ensure_ascii=False, default=str)))
 
+    @_atomic
     def load_state(self, thread_id: str) -> dict:
         return {r["key"]: json.loads(r["data"]) for r in
                 self._q("SELECT key, data FROM agent_state WHERE thread_id = ?", (thread_id,))}
