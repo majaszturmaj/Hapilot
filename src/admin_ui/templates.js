@@ -455,8 +455,59 @@
     } catch (err) { toast(err.message, "error"); }
   }
 
+  // ------------------------------------------------------------------ my signature
+  async function openSignature() {
+    let sig;
+    try { sig = await api("/signature"); } catch (err) { toast(err.message, "error"); return; }
+    const errors = h("div", { class: "errors", hidden: true });
+    const input = h("input", { type: "file", accept: "image/png,image/jpeg", hidden: true });
+    const upload = (file) => {
+      errors.hidden = true;
+      if (!file) return;
+      if (!["image/png", "image/jpeg"].includes(file.type)) { errors.hidden = false; errors.textContent = "Wybierz plik PNG albo JPG."; return; }
+      if (file.size > 2 * 1024 * 1024) { errors.hidden = false; errors.textContent = "Plik jest za duży (najwyżej 2 MB)."; return; }
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          await api("/signature", { method: "PUT", body: { data: reader.result } });
+          toast("Zapisano skan podpisu. Wybierzesz go w formularzu dokumentu („Podpis”).", "violet");
+          A.closeModal(); openSignature();
+        } catch (err) { errors.hidden = false; errors.textContent = err.message; }
+      };
+      reader.readAsDataURL(file);
+    };
+    input.addEventListener("change", () => upload(input.files[0]));
+    const drop = h("div", { class: "sig-drop", tabindex: "0", onclick: () => input.click(),
+                            onkeydown: (ev) => { if (ev.key === "Enter" || ev.key === " ") input.click(); } },
+      h("div", { class: "empty-icon" }, "✍️"), h("b", {}, sig.present ? "Przeciągnij nowy plik albo kliknij, aby zastąpić" : "Przeciągnij plik PNG lub JPG albo kliknij"),
+      h("span", { class: "muted" }, "najwyżej 2 MB"));
+    for (const type of ["dragenter", "dragover"]) drop.addEventListener(type, (ev) => { ev.preventDefault(); drop.classList.add("over"); });
+    for (const type of ["dragleave", "drop"]) drop.addEventListener(type, () => drop.classList.remove("over"));
+    drop.addEventListener("drop", (ev) => { ev.preventDefault(); upload(ev.dataTransfer.files[0]); });
+    const current = sig.present ? h("div", { class: "sig-current" },
+      h("div", { class: "sig-paper" }, h("img", { src: sig.src, alt: "Twój podpis" }), h("div", { class: "sig-line" }), h("div", { class: "sig-name" }, "tak podpis wypadnie nad linią")),
+      h("div", { class: "sig-meta" }, h("span", {}, `${String(sig.format).toUpperCase()} · ${sig.width}×${sig.height} px`),
+        h("span", { class: "muted" }, "wgrano " + fmtDate(sig.uploaded_at)),
+        h("button", { class: "btn danger-ghost small", onclick: async () => {
+          const ok = await confirmDialog({ title: "Usunąć skan podpisu?", danger: true, confirmLabel: "Usuń",
+            text: "Nowe dokumenty dostaną puste miejsce na podpis. Już utworzone dokumenty się nie zmienią." });
+          if (!ok) { openSignature(); return; }
+          try { await api("/signature", { method: "DELETE" }); toast("Usunięto skan podpisu."); openSignature(); } catch (err) { toast(err.message, "error"); }
+        } }, "🗑️ Usuń skan"))) : null;
+    A.openModal(h("div", {},
+      h("div", { class: "modal-head" }, h("div", { class: "insp-icon" }, "✍️"),
+        h("div", {}, h("h3", {}, "Mój podpis"), h("p", {}, "Skan widzisz tylko Ty — nie widzą go inni użytkownicy ani administrator. Trafia do dokumentu tylko wtedy, gdy wybierzesz go w formularzu („Podpis → Skan mojego podpisu”)."))),
+      h("div", { class: "modal-body" }, errors, current, drop, input,
+        h("ul", { class: "sig-tips" },
+          h("li", {}, "Najlepiej PNG z przezroczystym albo białym tłem."),
+          h("li", {}, "Przytnij obraz tuż przy podpisie — Hapilot dopasuje go do ok. 5,6 × 1,5 cm nad linią."),
+          h("li", {}, "Ciemny tusz (czarny, granatowy) wygląda najlepiej po wydruku."))),
+      h("div", { class: "modal-foot" }, h("button", { class: "btn", onclick: A.closeModal }, "Zamknij"))));
+  }
+
   // ------------------------------------------------------------------ start
   $("#tpl-new").onclick = () => startNew();
+  $("#tpl-signature").onclick = openSignature;
   $("#tpl-search").addEventListener("input", renderList);
   $("#tpl-refresh").onclick = () => preview(0);
 

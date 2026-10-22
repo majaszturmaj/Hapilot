@@ -475,11 +475,11 @@ def _document_params(pdf_name: str) -> Optional[dict]:
     return saved if isinstance(saved, dict) and saved.get("template_id") else None
 
 
-def _compile_document(template_id: str, parameters: dict) -> str:
+def _compile_document(template_id: str, parameters: dict, signature: Optional[str] = None) -> str:
     from src.agent_tools import tool_generate_pdf_from_template
 
     with run_context.use_context(session_id=_chat(), profile=cl.user_session.get("profile"), user=_user()):
-        return tool_generate_pdf_from_template(template_id, parameters)
+        return tool_generate_pdf_from_template(template_id, parameters, signature=signature)
 
 
 @cl.action_callback("edit_document")
@@ -494,7 +494,8 @@ async def on_edit_document(action: cl.Action):
                          author="Hapilot").send()
         return
     with run_context.use_context(user=_user()):
-        form = build_document_hitl_form(saved["template_id"], saved.get("parameters") or {}, _load_templates_metadata())
+        form = build_document_hitl_form(saved["template_id"], saved.get("parameters") or {}, _load_templates_metadata(),
+                                        signature=saved.get("signature"))
     answer = await _ask_document_form(
         form["fields"], f"Edycja dokumentu {name}", saved["template_id"],
         f"✏️ Popraw dane dokumentu **{name}** i kliknij **Generuj PDF**. Powstanie nowa wersja pliku; "
@@ -504,7 +505,10 @@ async def on_edit_document(action: cl.Action):
     cl.user_session.set("panel_pending", await cl.make_async(ui_panel.start_turn)(_chat(), f"Nowa wersja: {name}"))
     async with cl.Step(name="📄 Generuję nową wersję dokumentu", type="tool") as step:
         step.input = f"{name} → szablon {answer['template_id']}"
-        result = await cl.make_async(_compile_document)(answer["template_id"], answer["parameters"])
+        from src.signatures import mode_from_form
+
+        result = await cl.make_async(_compile_document)(answer["template_id"], answer["parameters"],
+                                                        mode_from_form(answer["parameters"].get("_signature")))
         step.output = display_text(result)
     state = _state()
     state.messages = state.messages + [

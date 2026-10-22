@@ -18,11 +18,11 @@ JSON_ONLY_RETRY = ('Odpowiedz WYŁĄCZNIE obiektem JSON w formacie {"template_id
                    "bez żadnego tekstu przed ani po nim.")
 
 
-def _generate(state, template_id: str, parameters: dict) -> dict:
+def _generate(state, template_id: str, parameters: dict, signature=None) -> dict:
     from src.agent_graph import _advance_plan_step
     from src.agent_tools import tool_generate_pdf_from_template
 
-    result = tool_generate_pdf_from_template(template_id, parameters)
+    result = tool_generate_pdf_from_template(template_id, parameters, signature=signature)
     status = "error" if result.startswith("BŁĄD") else "success"
     out = {"messages": [HumanMessage(content=f"WYNIK:\n{result}")], "execution_status": status,
            "hitl_request": None, "hitl_response": None}
@@ -56,7 +56,12 @@ def run_document_generator(state):
         print("      ✅ [HITL] Odebrano potwierdzone parametry — generuję PDF...")
         if not hitl_response.get("template_id"):
             return _error("Brak template_id w odpowiedzi formularza.")
-        return _generate(state, hitl_response["template_id"], hitl_response.get("parameters", {}))
+        from src.signatures import mode_from_form
+
+        parameters = hitl_response.get("parameters", {}) or {}
+        # the signature comes only from the user's form, never from the model
+        return _generate(state, hitl_response["template_id"], parameters,
+                         signature=mode_from_form(parameters.get("_signature")))
 
     # --- first pass: choose a template and fill its parameters
     from src import doc_templates

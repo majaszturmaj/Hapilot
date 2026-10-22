@@ -14,6 +14,7 @@
     prompt_saved: ["✏️", "Zmieniono prompt"], prompt_restored: ["↩️", "Przywrócono prompt"],
     template_created: ["📄", "Dodano szablon"], template_updated: ["📝", "Zmieniono szablon"], template_deleted: ["🗑️", "Usunięto szablon"],
     template_shared: ["🌐", "Udostępniono szablon"], template_unshared: ["🔒", "Wycofano udostępnienie szablonu"],
+    signature_uploaded: ["✍️", "Wgrano skan podpisu"], signature_deleted: ["🗑️", "Usunięto skan podpisu"],
     template_builtin_saved: ["📝", "Zmieniono wbudowany szablon"], template_builtin_restored: ["↩️", "Przywrócono wbudowany szablon"],
     node_updated: ["🛠️", "Zmieniono węzeł"], node_shared: ["🌐", "Udostępniono wszystkim"], node_unshared: ["🔒", "Wycofano udostępnienie"],
   };

@@ -39,7 +39,7 @@ _HEADER = re.compile(r"^\[kolumny: [^\n]*\]\n")  # added to spreadsheet chunks a
 _MIN_PIECE = 12                       # shortest line (without whitespace) matched on its own
 TEXT_PREVIEW = (".txt", ".md", ".tex", ".csv", ".json", ".py", ".html", ".xml", ".log")
 PREVIEW_LIMIT = 200_000               # bytes of a text file kept for preview and diff
-HIDDEN = (re.compile(r"^snippet_.*\.py$"), re.compile(r".*\.params\.json$"), re.compile(r".*\.(aux|out)$"),
+HIDDEN = (re.compile(r"^podpis_[0-9a-f]+\.(png|jpe?g)$"), re.compile(r"^snippet_.*\.py$"), re.compile(r".*\.params\.json$"), re.compile(r".*\.(aux|out)$"),
           re.compile(r"^\."))
 
 

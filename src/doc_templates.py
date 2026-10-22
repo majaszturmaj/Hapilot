@@ -171,8 +171,8 @@ def render_block(block: dict) -> str:
         # every filled row ends with its own \\hline (src/agent_tools.py, filter "tabela")
         return (f"\\par\\smallskip\n\\begin{{tabularx}}{{\\linewidth}}{{{spec}}}\n\\hline\n{head} \\\\\n\\hline\n"
                 f"{{{{{field}|tabela:{n}}}}}\n\\end{{tabularx}}\n\\par\\smallskip")
-    if kind == "signature":
-        return ("\\vspace{14mm}\n\\begin{flushright}\n\\begin{tabular}{c}\n\\rule{6cm}{0.4pt}\\\\\n"
+    if kind == "signature":  # {{PODPIS_SLOT}}: blank place or the user's scan, chosen in the form (src/signatures.py)
+        return ("\\vspace{4mm}\n\\begin{flushright}\n\\begin{tabular}{c}\n{{PODPIS_SLOT}}\\\\\n\\rule{6cm}{0.4pt}\\\\\n"
                 + _lines(text) + "\n\\end{tabular}\n\\end{flushright}")
     if kind == "spacer":
         return "\\vspace{" + {"small": "4mm", "large": "20mm"}.get(block.get("size", ""), "10mm") + "}"
@@ -190,10 +190,13 @@ def render_blocks(blocks: list[dict]) -> str:
 
 # --------------------------------------------------------------------------- drafts and checks
 
+RESERVED_FIELDS = {"PODPIS_SLOT"}  # the signature place (src/signatures.py), not a field the model fills
+
+
 def used_fields(latex: str) -> list[str]:
     names = []
     for m in PLACEHOLDER.finditer(latex or ""):
-        if m.group(1) not in names:
+        if m.group(1) not in names and m.group(1) not in RESERVED_FIELDS:
             names.append(m.group(1))
     return names
 
@@ -222,6 +225,9 @@ def normalise_draft(data: dict) -> dict:
         spec = spec if isinstance(spec, dict) else {}
         if not FIELD.match(str(key)):
             problems.append(f"Pole {key!r}: nazwa wielkimi literami, cyframi i _ (np. NAZWA_KLIENTA).")
+            continue
+        if key in RESERVED_FIELDS:
+            problems.append(f"Pole {key}: ta nazwa oznacza miejsce na podpis — wstaw ją w treść, ale nie dodawaj jako pola.")
             continue
         label = str(spec.get("description", "")).strip()
         if not label or len(label) > 120:
@@ -388,7 +394,10 @@ def preview(data: dict, user: str, render: bool = True) -> dict:
     with lock, run_context.use_context(session_id=session, user=user):
         workspace = run_context.workspace_dir()
         try:
-            filled = _fill_template(draft["latex"], example_values(draft["parameters"]))
+            from src import signatures
+
+            latex, _mode = signatures.fill_slot(draft["latex"], "blank", None, None)  # preview: the blank place
+            filled = _fill_template(latex, example_values(draft["parameters"]))
             result = tool_generate_pdf(filled, "podglad.tex")
             ms = round((time.monotonic() - started) * 1000)
             if not result.startswith("SUKCES"):

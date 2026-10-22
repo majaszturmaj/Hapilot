@@ -292,8 +292,15 @@ def _params_path(tex_name: str) -> Path:
 
 
 @traced_tool("generate_pdf_from_template")
-def tool_generate_pdf_from_template(template_id: str, parameters: dict) -> str:
-    """Fill a template, store its parameters next to the .tex, and compile it to PDF."""
+def tool_generate_pdf_from_template(template_id: str, parameters: dict, signature: Optional[str] = None) -> str:
+    """Fill a template, store its parameters next to the .tex, and compile it to PDF.
+
+    ``signature`` ("blank" or "scan") comes only from the user's document form (src/signatures.py); a
+    "_signature" key in ``parameters`` (e.g. from a model) is ignored, and without a choice the place stays blank.
+    """
+    from src import signatures
+
+    parameters = {k: v for k, v in (parameters or {}).items() if k != "_signature"}
     print(f"📄 [TOOL USE] Generate PDF from template: {template_id}")
     templates = _load_templates_metadata().get("templates", {})
     if template_id not in templates:
@@ -310,6 +317,8 @@ def tool_generate_pdf_from_template(template_id: str, parameters: dict) -> str:
         return "BŁĄD: Brakujące wymagane parametry:\n" + "\n".join(f"  - {m}" for m in missing)
 
     template_text = template_file.read_text(encoding="utf-8")
+    template_text, signature_used = signatures.fill_slot(template_text, signature or "blank", run_context.current("user"),
+                                                         run_context.workspace_dir())
     compact = info.get("compact_below_chars")
     if compact and sum(len(str(parameters.get(f, ""))) for f in compact["fields"]) < compact["limit"]:
         template_text = template_text.replace("%%COMPACT%%", "\\compacttrue")  # short content: compact layout
@@ -318,7 +327,8 @@ def tool_generate_pdf_from_template(template_id: str, parameters: dict) -> str:
         filled = filled.replace("{{" + placeholder + "}}", "")
 
     filename = _generate_unique_filename(prefix=template_id)
-    _params_path(filename).write_text(json.dumps({"template_id": template_id, "parameters": parameters},
+    _params_path(filename).write_text(json.dumps({"template_id": template_id, "parameters": parameters,
+                                                  "signature": signature_used},
                                                  ensure_ascii=False, indent=2), encoding="utf-8")
     return tool_generate_pdf(filled, filename)
 
@@ -721,8 +731,15 @@ def normalize_template_params(template_id: str, parameters: dict) -> dict:
     return normalized
 
 
-def build_document_hitl_form(template_id: str, parameters: dict, templates_metadata: dict) -> dict:
-    """HITL form for reviewing/editing document parameters before PDF generation."""
+def build_document_hitl_form(template_id: str, parameters: dict, templates_metadata: dict,
+                             signature: Optional[str] = None) -> dict:
+    """HITL form for reviewing/editing document parameters before PDF generation.
+
+    Templates with a signature place get a "Podpis" choice (blank place / the user's scan; ``signature`` is the
+    choice saved with an earlier version of the document).
+    """
+    from src import signatures
+
     template_info = templates_metadata.get("templates", {}).get(template_id, {})
     template_name = template_info.get("name", template_id)
     normalized = normalize_template_params(template_id, parameters or {})
@@ -739,6 +756,13 @@ def build_document_hitl_form(template_id: str, parameters: dict, templates_metad
         })
     fields.insert(0, {"id": "_template_id", "label": "Szablon dokumentu", "type": "select", "value": template_id,
                       "options": list(templates_metadata.get("templates", {}).keys()), "required": True})
+    try:
+        latex = Path(template_info["path"]).read_text(encoding="utf-8") if template_info.get("path") else ""
+    except OSError:
+        latex = ""
+    signature_field = signatures.form_field(run_context.current("user"), latex, signature)
+    if signature_field:
+        fields.append(signature_field)
 
     return create_hitl_form_request(
         content=(f"📋 **Przegląd parametrów dokumentu: {template_name}**\n\n"

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
-from src import admin, doc_templates
+from src import admin, doc_templates, signatures
 
 PREFIX = "/hapilot/admin"
 ASSETS = Path(__file__).resolve().parent / "admin_ui"
@@ -68,7 +68,7 @@ async def _guard(request, write: bool = False, admin_only: bool = False):
 async def _call(fn, *args):
     try:
         return _json(await asyncio.to_thread(fn, *args))
-    except (admin.AdminError, doc_templates.TemplateError) as exc:
+    except (admin.AdminError, doc_templates.TemplateError, signatures.SignatureError) as exc:
         return _json({"error": str(exc)}, 400)
 
 
@@ -210,6 +210,26 @@ async def template_preview(request):
     return error or await _call(doc_templates.preview, await _body(request), user)
 
 
+async def signature(request):
+    """The user's own signature scan (never anyone else's — administrators included)."""
+    if request.method == "GET":
+        user, error = await _guard(request)
+        return error or await _call(signatures.info, user)
+    user, error = await _guard(request, write=True)
+    if error:
+        return error
+    if request.method == "DELETE":
+        return await _call(signatures.delete, user)
+    import base64
+    import binascii
+
+    try:
+        data = base64.b64decode(str((await _body(request)).get("data", "")).split(",")[-1], validate=True)
+    except (binascii.Error, ValueError):
+        return _json({"error": "Nie udało się odczytać pliku."}, 400)
+    return await _call(signatures.save, user, data)
+
+
 ROUTES = [
     ("", page, ["GET"]),
     ("/assets/{name}", asset, ["GET"]),
@@ -221,6 +241,7 @@ ROUTES = [
     ("/api/nodes/{name}", node, ["PUT", "DELETE"]),
     ("/api/nodes/{name}/global", share, ["PUT"]),
     ("/api/audit", audit, ["GET"]),
+    ("/api/signature", signature, ["GET", "PUT", "DELETE"]),
     ("/api/templates", templates, ["GET", "POST"]),
     ("/api/templates/preview", template_preview, ["POST"]),
     ("/api/templates/{tid}", template, ["GET", "PUT", "DELETE"]),
