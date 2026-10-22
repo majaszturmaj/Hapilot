@@ -21,7 +21,10 @@ def pytest_configure(config):
     os.environ["HAPILOT_DATA_DIR"] = str(data_dir)
     os.environ["HAPILOT_APPROVAL_POLICY"] = "ask"
     os.environ.pop("HAPILOT_PROFILE", None)
-    os.environ.pop("HAPILOT_UI_USERS_FILE", None)
+    # pinned, not removed: src/config.py loads .env, which only fills variables that are not set
+    os.environ["HAPILOT_PROFILES_FILE"] = str(ROOT / "config" / "profiles.yaml")
+    os.environ["HAPILOT_UI_USERS_FILE"] = ""
+    os.environ["HAPILOT_CHAT_DB"] = str(data_dir / "chat_history.sqlite")
 
     # Unit tests never touch the network: any non-local connection or DNS lookup is blocked and fails the test.
     from src.privacy import install_egress_guard
