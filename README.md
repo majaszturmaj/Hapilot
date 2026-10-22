@@ -168,6 +168,12 @@ and own templates; a request can name one („według szablonu Oferta handlowa�
 `{{NAME|lista}}`, `{{NAME|tabela:N}}`, `{{NAME|linie}}` and `{{NAME|akapity}}` format multi-line values
 ([src/doc_templates.py](src/doc_templates.py)).
 
+**Signatures.** Documents have a signature place (`{{PODPIS_SLOT}}` in the built-in templates and the builder's
+"Podpis" block). In the document form the user chooses a blank place to sign the printed document by hand
+(default) or their own signature scan, uploaded once in the panel (**✍️ Mój podpis**: PNG or JPEG, up to 2 MB).
+Scans are private — no other user, administrators included, can see or use them — and the model never chooses
+the signature; without a form (evaluation) the place stays blank ([src/signatures.py](src/signatures.py)).
+
 ### Ports
 
 | Port (127.0.0.1) | Service | Variable |

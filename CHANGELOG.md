@@ -32,6 +32,11 @@ UI changes, plus one agent fix in the document generator (below).
   templates globally and edit the built-in ones (history, restore). Each user's chats see built-in + global + own
   templates; a template named in the request is used even if a built-in keyword matches. New fill filters
   `|lista`, `|tabela:N`, `|linie`, `|akapity`; form fields honour `multiline`. Evaluation runs use only `templates/`.
+- Signatures: the document form offers „Podpis” — a blank place for a handwritten signature (default) or the
+  user's own scan (uploaded in the panel, „✍️ Mój podpis”; private, PNG/JPEG ≤ 2 MB). Built-in templates and the
+  builder's signature block have a fixed-size signature place (`{{PODPIS_SLOT}}`), so the layout is the same either
+  way; in evaluation runs it is always blank (the letter's gap above the line is 1.2 cm instead of 1.6 cm, the
+  report's and protocol's signature rows a few millimetres taller). The choice is kept for regeneration.
 - `tracing.event` also passes events to an optional run `observer` (no effect on traces).
 - New dependency `pypdfium2==5.14.0` (Apache-2.0/BSD-3): PDF page rendering and character positions.
 

@@ -156,6 +156,11 @@ and the user's own (`var/custom_templates/<owner>/<id>/`); the run config carrie
 `agent_tools._load_templates_metadata()` returns that catalog, so the document node, the form and regeneration all
 see the same list. Without a user (evaluation, no login) the catalog is exactly `templates/`.
 
+Signatures ([src/signatures.py](../src/signatures.py)): `tool_generate_pdf_from_template(..., signature=)` replaces
+`{{PODPIS_SLOT}}` with a fixed-size box, blank or holding the user's scan (copied into the chat's workspace for the
+sandbox). The choice comes only from the document form (`_signature`); a key of that name in model output is
+dropped, and the scan is looked up by the run's `user`, so nobody can sign with another user's scan.
+
 ## Sandbox
 
 [src/sandbox.py](../src/sandbox.py): every code run or LaTeX compilation is a new container from
