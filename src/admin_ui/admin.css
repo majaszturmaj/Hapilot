@@ -406,4 +406,14 @@ pre.latex-log { width: 100%; font: 11.5px/1.5 var(--mono); white-space: pre-wrap
   .history-pane { border-left: 0; border-top: 1px solid var(--border); }
   .form-grid { grid-template-columns: 1fr; }
   .legend { display: none; }
+  .tpl-layout { grid-template-columns: 1fr; overflow-y: auto; }
+  .tpl-list-pane { max-height: 38vh; border-right: 0; border-bottom: 1px solid var(--border); }
+  .tpl-editor { overflow: visible; }
+  .tpl-editor-inner { padding: 16px; }
+  .tpl-preview { max-height: none; }
+  .fields-table, .fields-table tbody, .fields-table tr, .fields-table td { display: block; width: 100%; }
+  .fields-table thead { display: none; }
+  .fields-table tr { border-bottom: 1px solid var(--border); padding: 6px 0; }
+  .fields-table td { border: 0; padding: 4px 10px; }
+  .fields-table td.center { display: inline-block; width: auto; }
 }

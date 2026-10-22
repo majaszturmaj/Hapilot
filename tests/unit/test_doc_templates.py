@@ -53,6 +53,17 @@ def test_multiline_values_keep_lines_and_paragraphs():
     assert filled == "Firma \\\\\nul. 1 \\\\\n00-001|Raz \\\\\ndwa\n\nTrzy \\& co"
 
 
+def test_latex_lists_in_values_get_no_line_breaks_around_them():
+    """Seen with Gemma (2026-10-22): a body with an itemize list failed with "There's no line here to end"."""
+    from src.agent_tools import _fill_template
+
+    body = ("Warunki:\n\n\\begin{itemize}\n\\item Cena: 60 zł\n\\item Termin: 5 dni\n\\end{itemize}\n\n"
+            "Pozdrawiam\nAnna")
+    filled = _fill_template("{{B|akapity}}", {"B": body})
+    assert filled == ("Warunki:\n\n\\begin{itemize}\n\\item Cena: 60 zł\n\\item Termin: 5 dni\n\\end{itemize}\n\n"
+                      "Pozdrawiam \\\\\nAnna")
+
+
 def test_escape_literal_cannot_inject_latex():
     assert dt.escape_literal("\\input{/etc/passwd} {{A}}") == "\\textbackslash{}input\\{/etc/passwd\\} {{A}}"
 

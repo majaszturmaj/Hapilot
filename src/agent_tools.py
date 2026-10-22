@@ -208,6 +208,22 @@ def _sanitize_latex_value(value: str) -> str:
     return result
 
 
+_STRUCTURE = re.compile(r"^\\(begin|end|item)\b|\\(begin|end)\{[^}]*\}\s*$")
+
+
+def _join_lines(lines: list[str]) -> str:
+    """Escaped lines with a LaTeX line break between two text lines; none next to \\begin, \\end or \\item
+    (a model may put a LaTeX list in a value: "\\begin{itemize} \\\\" would not compile)."""
+    lines = [line.strip() for line in lines if line.strip()]
+    out = []
+    for i, line in enumerate(lines):
+        out.append(_sanitize_latex_value(line))
+        if i + 1 < len(lines):
+            plain = not _STRUCTURE.search(line) and not _STRUCTURE.search(lines[i + 1])
+            out.append(" \\\\\n" if plain else "\n")
+    return "".join(out)
+
+
 def _fill_template(template_content: str, parameters: dict) -> str:
     """Replace ``{{PARAM}}`` placeholders with sanitised values (missing optional ones become empty).
 
@@ -225,11 +241,10 @@ def _fill_template(template_content: str, parameters: dict) -> str:
             items = [i for i in items if i]
             return "\n".join("\\item " + _sanitize_latex_value(i) for i in items) or "\\item[] ~"
         if kind == "linie":
-            return " \\\\\n".join(_sanitize_latex_value(line.strip()) for line in value.strip().splitlines() if line.strip())
+            return _join_lines(value.strip().splitlines())
         if kind == "akapity":
             parts = [p for p in re.split(r"\n\s*\n", value.strip()) if p.strip()]
-            return "\n\n".join(" \\\\\n".join(_sanitize_latex_value(line.strip()) for line in part.splitlines() if line.strip())
-                                for part in parts)
+            return "\n\n".join(_join_lines(part.splitlines()) for part in parts)
         if kind == "tabela":
             n = max(1, int(width or 1))
             rows = []
