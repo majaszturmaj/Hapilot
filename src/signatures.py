@@ -137,11 +137,11 @@ def form_field(user: Optional[str], latex: str, chosen: Optional[str] = None) ->
     """
     if SLOT not in (latex or ""):
         return None
-    options = [{"value": BLANK_LABEL, "title": "Podpiszę odręcznie", "hint": "puste miejsce nad linią — do podpisu po wydruku",
+    options = [{"value": BLANK_LABEL, "title": "Podpiszę odręcznie", "hint": "puste miejsce — do podpisu po wydruku",
                 "image": None}]
     scan = info(user) if path(user) else None
     if scan:
-        options.append({"value": SCAN_LABEL, "title": "Mój skan", "hint": "Twój podpis wstawiony nad linią", "image": scan["src"]})
+        options.append({"value": SCAN_LABEL, "title": "Mój skan", "hint": "Twój podpis wstawiony w dokument", "image": scan["src"]})
     value = SCAN_LABEL if chosen == "scan" and scan else BLANK_LABEL
     return {"id": "_signature", "label": "Podpis", "type": "signature", "value": value, "options": options, "required": True,
             "add_url": ADD_URL, "has_scan": bool(scan)}

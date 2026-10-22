@@ -42,7 +42,8 @@ def test_blocks_become_latex_with_the_builtin_fonts_and_field_filters():
     assert "Oferta dla {{KLIENT|linie}}" in latex  # address-like blocks keep a value's line breaks
     assert "100\\% satysfakcji \\& {{KLIENT|akapity}}" in latex  # literal text escaped; paragraphs keep paragraphs
     assert "{{POZYCJE|tabela:3}}" in latex and "\\textbf{Usługa}" in latex and "{|X|X|X|}" in latex
-    assert "\\begin{enumerate}\n{{WARUNKI|lista}}" in latex and "\\rule{6cm}" in latex
+    assert "\\begin{enumerate}\n{{WARUNKI|lista}}" in latex
+    assert "Anna Przykładowa\\\\\n{{PODPIS_SLOT}}" in latex and "\\rule{6cm}" not in latex  # closing, then the signature place
     assert dt.used_fields(latex) == ["KLIENT", "POZYCJE", "WARUNKI"]
 
 

@@ -311,6 +311,8 @@ def tool_generate_pdf_from_template(template_id: str, parameters: dict, signatur
         return f"BŁĄD: Plik szablonu nie istnieje: {template_file.name}"
 
     parameters = normalize_template_params(template_id, parameters or {})
+    if template_id == "letter" and parameters.get("RECIPIENT_NAME"):
+        parameters["RECIPIENT_NAME"] = strip_honorific(str(parameters["RECIPIENT_NAME"]))
     missing = [f"{name} ({p['description']})" for name, p in info.get("parameters", {}).items()
                if p.get("required", True) and not str(parameters.get(name, "")).strip()]
     if missing:
@@ -618,7 +620,6 @@ def _param_alias_map(template_id: str, param_definitions: dict) -> dict:
             _normalize_key("adresat"): "RECIPIENT_NAME",
             _normalize_key("recipient_company"): "RECIPIENT_COMPANY",
             _normalize_key("recipient_address"): "RECIPIENT_ADDRESS",
-            _normalize_key("recipient_title"): "RECIPIENT_TITLE",
             _normalize_key("date"): "CITY_DATE",
             _normalize_key("data"): "CITY_DATE",
             _normalize_key("city_date"): "CITY_DATE",
@@ -729,6 +730,17 @@ def normalize_template_params(template_id: str, parameters: dict) -> dict:
         if canonical and canonical not in normalized:
             normalized[canonical] = value
     return normalized
+
+
+_HONORIFIC = re.compile(r"^\s*(?:(?:szanown[ayi]|wielce\s+szanown[ayi])\s+)?(?:pan(?:i|ie|stwo|owie)?|państwo)\s+",
+                        re.IGNORECASE)
+
+
+def strip_honorific(name: str) -> str:
+    """"Szanowny Pan Adam Nowak" → "Adam Nowak": in a Polish letter the address block has no honorific (only the
+    greeting does). Names that are only a honorific are left as they are."""
+    stripped = _HONORIFIC.sub("", name, count=1).strip()
+    return stripped or name.strip()
 
 
 def build_document_hitl_form(template_id: str, parameters: dict, templates_metadata: dict,

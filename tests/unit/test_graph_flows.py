@@ -128,7 +128,7 @@ def test_planner_failure_falls_back_to_chat(graph, invoke, llm):
 
 LETTER = json.dumps({"template_id": "letter", "parameters": {
     "SENDER_NAME": "Jan Kowalski", "CITY_DATE": "Wrocław, 5 marca 2026 r.", "SENDER_COMPANY": "Przykładowa Sp. z o.o.",
-    "SENDER_ADDRESS": "ul. Zmyślona 7, 50-001 Wrocław", "RECIPIENT_TITLE": "Pani", "RECIPIENT_NAME": "Anna Nowak",
+    "SENDER_ADDRESS": "ul. Zmyślona 7, 50-001 Wrocław", "RECIPIENT_NAME": "Anna Nowak",
     "RECIPIENT_COMPANY": "Dział Kadr", "RECIPIENT_ADDRESS": "ul. Zmyślona 7, 50-001 Wrocław",
     "DOCUMENT_TITLE": "Wniosek o urlop", "GREETING": "Szanowna Pani,", "BODY": "Proszę o urlop.", "CLOSING": "Z poważaniem"}})
 

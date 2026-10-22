@@ -10,7 +10,7 @@ from src.agent_tools import tool_generate_pdf_from_template, tool_modify_documen
 LONG_BODY = " ".join(f"Akapit {i}: treść merytoryczna." for i in range(400)) + " KONIEC-DOKUMENTU"
 
 PARAMS = {"SENDER_NAME": "Jan Kowalski", "CITY_DATE": "Wrocław, 5 marca 2026 r.", "SENDER_COMPANY": "Przykładowa Sp. z o.o.",
-          "SENDER_ADDRESS": "ul. Zmyślona 7, 50-001 Wrocław", "RECIPIENT_TITLE": "Pani", "RECIPIENT_NAME": "Anna Nowak",
+          "SENDER_ADDRESS": "ul. Zmyślona 7, 50-001 Wrocław", "RECIPIENT_NAME": "Anna Nowak",
           "RECIPIENT_COMPANY": "Dział Kadr", "RECIPIENT_ADDRESS": "ul. Zmyślona 7, 50-001 Wrocław",
           "DOCUMENT_TITLE": "Wniosek", "GREETING": "Szanowna Pani,", "BODY": LONG_BODY, "CLOSING": "Z poważaniem"}
 
@@ -84,8 +84,30 @@ def test_templates_use_polish_glyph_fonts_and_signature_lines():
         tex = (TEMPLATES_DIR / f"{name}.tex").read_text(encoding="utf-8")
         assert "\\usepackage[T1]{fontenc}" in tex and "\\usepackage{tgtermes}" in tex and "\\pdfgentounicode=1" in tex, name
         assert "utf8x" not in tex and "{times}" not in tex, name
-    assert "\\rule{6cm}{0.4pt}" in (TEMPLATES_DIR / "letter.tex").read_text(encoding="utf-8")
-    assert (TEMPLATES_DIR / "report.tex").read_text(encoding="utf-8").count("\\dotfill") == 2
+    letter = (TEMPLATES_DIR / "letter.tex").read_text(encoding="utf-8")
+    # Polish letter: the signature place follows the closing; no line and no repeated sender name under it
+    assert "{{CLOSING}}\\\\\n" in letter and "\\rule{6cm}" not in letter
+    assert letter.split("{{PODPIS_SLOT}}")[1].count("{{SENDER_NAME}}") == 0
+    # the address block has no honorific: no RECIPIENT_TITLE anywhere
+    assert "RECIPIENT_TITLE" not in letter and "RECIPIENT_TITLE" not in (TEMPLATES_DIR / "templates.json").read_text(encoding="utf-8")
+    assert (TEMPLATES_DIR / "report.tex").read_text(encoding="utf-8").count("\\dotfill") == 2  # two signers: names stay
+
+
+@pytest.mark.parametrize("given, shown", [("Szanowny Pan Adam Nowak", "Adam Nowak"), ("Pani Anna Nowak", "Anna Nowak"),
+                                          ("Wielce Szanowna Pani Ewa Kot", "Ewa Kot"), ("Adam Nowak", "Adam Nowak"),
+                                          ("Panek Jan", "Panek Jan"), ("Szanowni Państwo", "Szanowni Państwo")])
+def test_recipient_honorifics_are_dropped(given, shown):
+    from src.agent_tools import strip_honorific
+
+    assert strip_honorific(given) == shown
+
+
+def test_letter_address_block_has_only_the_name(docker, session):
+    from src import run_context
+
+    tool_generate_pdf_from_template("letter", {**PARAMS, "RECIPIENT_NAME": "Szanowna Pani Anna Nowak", "RECIPIENT_TITLE": "Pani"})
+    tex = sorted(run_context.workspace_dir().glob("letter_*.tex"))[-1].read_text(encoding="utf-8")
+    assert "Anna Nowak\\\\" in tex and "Pani Anna" not in tex and "Szanowna Pani Anna" not in tex
 
 
 REPORT = {"INSTITUTION": "Przykładowa Sp. z o.o.", "REPORT_TITLE": "Raport z przeglądu drukarek", "AUTHOR_NAME": "Anna Nowak",

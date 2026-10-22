@@ -17,7 +17,7 @@ import {
 // props.title: string
 // props.template_id: string
 
-// One signature option as a picture: the scan (or an empty place) above the signature line.
+// One signature option as a picture: the scan, or the empty place for a handwritten signature.
 function SignatureCard({ option, selected, onSelect }) {
   const border = selected ? "2px solid hsl(var(--primary))" : "1px solid hsl(var(--border))";
   return (
@@ -30,9 +30,8 @@ function SignatureCard({ option, selected, onSelect }) {
         <div style={{ height: 56, width: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
           {option.image
             ? <img src={option.image} alt={option.title} style={{ maxHeight: 54, maxWidth: "100%", objectFit: "contain" }} />
-            : <span style={{ color: "#9aa", fontSize: 11, marginBottom: 6 }}>miejsce na podpis</span>}
+            : <span style={{ color: "#9aa", fontSize: 11, marginBottom: 6, border: "1px dashed #ccd", borderRadius: 6, padding: "14px 22px" }}>miejsce na podpis odręczny</span>}
         </div>
-        <div style={{ width: "85%", borderTop: "1px solid #333" }} />
       </div>
       <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ width: 16, height: 16, borderRadius: "50%", flex: "none",
@@ -65,7 +64,7 @@ export default function HitlForm() {
           if (f.type !== "signature") return f;
           const others = (f.options || []).filter((o) => o.image === null);
           const options = sig.present
-            ? [...others, { value: "Skan mojego podpisu", title: "Mój skan", hint: "Twój podpis wstawiony nad linią", image: sig.src }]
+            ? [...others, { value: "Skan mojego podpisu", title: "Mój skan", hint: "Twój podpis wstawiony w dokument", image: sig.src }]
             : others;
           const value = options.some((o) => o.value === f.value) ? f.value : others[0].value;
           return { ...f, options, value, has_scan: Boolean(sig.present) };

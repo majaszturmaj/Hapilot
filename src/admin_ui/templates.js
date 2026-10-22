@@ -16,7 +16,7 @@
     place_date: { icon: "📅", hint: "Miejscowość i data, do prawej", text: 1 },
     list: { icon: "☰", hint: "Lista z pola: każda linia wartości to jeden punkt" },
     table: { icon: "▦", hint: "Tabela z pola: wiersz w linii, komórki rozdzielone | lub ;" },
-    signature: { icon: "✍️", hint: "Linia do podpisu i opis pod nią", text: 2 },
+    signature: { icon: "✍️", hint: "Formuła pożegnalna (np. „Z poważaniem”) i miejsce na podpis — puste albo skan", text: 1 },
     spacer: { icon: "↕️", hint: "Pionowy odstęp" },
     page_break: { icon: "📃", hint: "Dalsza treść od nowej strony" },
     footer: { icon: "⎯", hint: "Drobny tekst u dołu strony", text: 2 },
@@ -24,18 +24,19 @@
   const STARTER = {
     mode: "blocks",
     parameters: {
+      NADAWCA: { description: "Nadawca (imię i nazwisko, firma, adres)", example: "Anna Przykładowa\nPrzykładowa Sp. z o.o.\nul. Zmyślona 7, 50-001 Wrocław", required: true, multiline: true },
       MIEJSCE_DATA: { description: "Miejscowość i data", example: "Wrocław, 22 października 2026 r.", required: true, multiline: false },
       ADRESAT: { description: "Adresat (kilka linii)", example: "Firma Testowa Sp. z o.o.\nul. Przykładowa 1\n00-001 Warszawa", required: true, multiline: true },
       TYTUL: { description: "Tytuł dokumentu", example: "Oferta współpracy", required: true, multiline: false },
       TRESC: { description: "Treść dokumentu", example: "Szanowni Państwo,\n\nz przyjemnością przedstawiamy naszą ofertę.", required: true, multiline: true },
-      PODPIS: { description: "Podpis (imię, nazwisko, stanowisko)", example: "Anna Przykładowa\nKierownik działu", required: true, multiline: true },
     },
     blocks: [
+      { type: "sender", text: "{{NADAWCA}}" },
       { type: "place_date", text: "{{MIEJSCE_DATA}}" },
       { type: "recipient", text: "{{ADRESAT}}" },
       { type: "title", text: "{{TYTUL}}" },
       { type: "paragraph", text: "{{TRESC}}", align: "justify" },
-      { type: "signature", text: "{{PODPIS}}" },
+      { type: "signature", text: "Z poważaniem" },
     ],
   };
   const st = { list: [], blockTypes: {}, cur: null, original: "", dirty: false, loaded: false, timer: null, seq: 0, latex: "",
@@ -485,7 +486,7 @@
     for (const type of ["dragleave", "drop"]) drop.addEventListener(type, () => drop.classList.remove("over"));
     drop.addEventListener("drop", (ev) => { ev.preventDefault(); upload(ev.dataTransfer.files[0]); });
     const current = sig.present ? h("div", { class: "sig-current" },
-      h("div", { class: "sig-paper" }, h("img", { src: sig.src, alt: "Twój podpis" }), h("div", { class: "sig-line" }), h("div", { class: "sig-name" }, "tak podpis wypadnie nad linią")),
+      h("div", { class: "sig-paper" }, h("div", { class: "sig-name" }, "Z poważaniem"), h("img", { src: sig.src, alt: "Twój podpis" }), h("div", { class: "sig-name" }, "tak podpis wypadnie w dokumencie")),
       h("div", { class: "sig-meta" }, h("span", {}, `${String(sig.format).toUpperCase()} · ${sig.width}×${sig.height} px`),
         h("span", { class: "muted" }, "wgrano " + fmtDate(sig.uploaded_at)),
         h("button", { class: "btn danger-ghost small", onclick: async () => {
@@ -500,7 +501,7 @@
       h("div", { class: "modal-body" }, errors, current, drop, input,
         h("ul", { class: "sig-tips" },
           h("li", {}, "Najlepiej PNG z przezroczystym albo białym tłem."),
-          h("li", {}, "Przytnij obraz tuż przy podpisie — Hapilot dopasuje go do ok. 5,6 × 1,5 cm nad linią."),
+          h("li", {}, "Przytnij obraz tuż przy podpisie — Hapilot dopasuje go do ok. 5,6 × 1,5 cm pod formułą pożegnalną."),
           h("li", {}, "Ciemny tusz (czarny, granatowy) wygląda najlepiej po wydruku."))),
       h("div", { class: "modal-foot" }, h("button", { class: "btn", onclick: A.closeModal }, "Zamknij"))));
   }

@@ -26,9 +26,11 @@ ZASADY KLUCZY:
 - Używaj WYŁĄCZNIE dokładnych nazw parametrów z wybranego szablonu.
 - ZABRANIA SIĘ używania aliasów typu "sender", "recipient", "date" itd.
 - Wszystkie wymagane parametry muszą być obecne; brakujące dane uzupełnij sensownymi wartościami zastępczymi.
+- Polska konwencja listu: w danych adresata (RECIPIENT_NAME) samo imię i nazwisko — bez „Pan”, „Pani”, „Szanowny”;
+  zwrot grzecznościowy („Szanowny Panie,”) należy tylko do GREETING. Nie powtarzaj imienia i nazwiska nadawcy po podpisie.
 
 PARAMETRY DLA SZABLONÓW:
-- "letter" -> SENDER_NAME, CITY_DATE, SENDER_COMPANY, SENDER_ADDRESS, SENDER_EMAIL (opcjonalnie), RECIPIENT_TITLE, RECIPIENT_NAME, RECIPIENT_COMPANY, RECIPIENT_ADDRESS, DOCUMENT_TITLE, GREETING, BODY, CLOSING
+- "letter" -> SENDER_NAME, CITY_DATE, SENDER_COMPANY, SENDER_ADDRESS, SENDER_EMAIL (opcjonalnie), RECIPIENT_NAME, RECIPIENT_COMPANY, RECIPIENT_ADDRESS, DOCUMENT_TITLE, GREETING, BODY, CLOSING
 - "report" -> INSTITUTION, REPORT_TITLE, REPORT_SUBTITLE (opcjonalnie), AUTHOR_NAME, AUTHOR_POSITION, DEPARTMENT, REPORT_DATE, REPORT_NUMBER, SECTION_INTRODUCTION, SECTION_SCOPE, SECTION_ANALYSIS, SECTION_RESULTS, SECTION_CONCLUSIONS, APPROVER_NAME
 - "protocol" -> INSTITUTION, MEETING_TITLE, MEETING_DATE, MEETING_TIME, MEETING_PLACE, SECRETARY_NAME, CHAIRPERSON_NAME, PROTOCOL_NUMBER, ATTENDEES_LIST, AGENDA, MEETING_MINUTES, DECISIONS, ACTION_ITEMS
 </execution_format>
@@ -45,7 +47,6 @@ TEMPLATE_FILLER:
     "SENDER_COMPANY": "Przykładowa Sp. z o.o.",
     "SENDER_ADDRESS": "ul. Zmyślona 7, 50-001 Wrocław",
     "SENDER_EMAIL": "jan.kowalski@example.com",
-    "RECIPIENT_TITLE": "Pan",
     "RECIPIENT_NAME": "Adam Nowak",
     "RECIPIENT_COMPANY": "Dział Kadr",
     "RECIPIENT_ADDRESS": "ul. Zmyślona 7, 50-001 Wrocław",

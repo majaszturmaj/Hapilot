@@ -171,9 +171,12 @@ def render_block(block: dict) -> str:
         # every filled row ends with its own \\hline (src/agent_tools.py, filter "tabela")
         return (f"\\par\\smallskip\n\\begin{{tabularx}}{{\\linewidth}}{{{spec}}}\n\\hline\n{head} \\\\\n\\hline\n"
                 f"{{{{{field}|tabela:{n}}}}}\n\\end{{tabularx}}\n\\par\\smallskip")
-    if kind == "signature":  # {{PODPIS_SLOT}}: blank place or the user's scan, chosen in the form (src/signatures.py)
-        return ("\\vspace{4mm}\n\\begin{flushright}\n\\begin{tabular}{c}\n{{PODPIS_SLOT}}\\\\[-3mm]\n\\rule{6cm}{0.4pt}\\\\\n"
-                + _lines(text) + "\n\\end{tabular}\n\\end{flushright}")
+    if kind == "signature":
+        # closing formula (optional) and the signature place — blank or the user's scan, chosen in the form
+        # (src/signatures.py); no line and no name under it (Polish letter convention: the name is in the letterhead)
+        closing = (_lines(text) + "\\\\\n") if text.strip() else ""
+        return ("\\vspace{6mm}\n\\begin{flushright}\n\\begin{tabular}{c}\n" + closing + "{{PODPIS_SLOT}}\n"
+                "\\end{tabular}\n\\end{flushright}")
     if kind == "spacer":
         return "\\vspace{" + {"small": "4mm", "large": "20mm"}.get(block.get("size", ""), "10mm") + "}"
     if kind == "page_break":

@@ -96,7 +96,7 @@ def test_builtin_templates_and_builder_have_the_signature_place():
 
 
 LETTER = {"SENDER_NAME": "Anna Przykładowa", "CITY_DATE": "Wrocław, 22 października 2026 r.", "SENDER_COMPANY": "Przykładowa Sp. z o.o.",
-          "SENDER_ADDRESS": "ul. Zmyślona 7, 50-001 Wrocław", "RECIPIENT_TITLE": "Pan", "RECIPIENT_NAME": "Jan Testowy",
+          "SENDER_ADDRESS": "ul. Zmyślona 7, 50-001 Wrocław", "RECIPIENT_NAME": "Jan Testowy",
           "RECIPIENT_COMPANY": "Firma Testowa", "RECIPIENT_ADDRESS": "ul. Testowa 1, 00-001 Warszawa",
           "DOCUMENT_TITLE": "Informacja", "GREETING": "Szanowny Panie,", "BODY": "Treść.", "CLOSING": "Z poważaniem,"}
 
