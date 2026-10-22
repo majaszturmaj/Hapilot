@@ -18,6 +18,9 @@ UI only; the agent's behaviour and the evaluation path are unchanged.
   continues with its earlier messages, files and side panel. Users see only their own chats. Deleting a chat
   also deletes its workspace files and attachment index. Workspaces and
   attachment collections are now keyed by the chat id instead of the browser session.
+- Generated documents: a button **✏️ Edytuj dane i wygeneruj ponownie** under every answer with a template PDF
+  opens the same form with the values that PDF was made from; submitting compiles a new version directly (no
+  model call, no plan replay) and keeps the previous file. Buttons come back when a chat is resumed.
 - `tracing.event` also passes events to an optional run `observer` (no effect on traces).
 - New dependency `pypdfium2==5.14.0` (Apache-2.0/BSD-3): PDF page rendering and character positions.
 
