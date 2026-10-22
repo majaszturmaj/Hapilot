@@ -143,3 +143,23 @@ def test_panel_tokens_can_be_restored_for_a_resumed_chat(tmp_path):
     ui_panel.import_tokens("chat-1", saved)
     assert ui_panel._tokens[url.rsplit("/", 1)[1]]["path"] == f
     ui_panel.forget_session("chat-1")
+
+
+def test_deleting_a_chat_removes_its_workspace_only():
+    from src import run_context
+    from src.chat_store import delete_chat_files
+
+    with run_context.use_context(session_id="chat-a"):
+        (run_context.workspace_dir() / "raport.pdf").write_bytes(b"%PDF")
+        a = run_context.workspace_dir()
+    with run_context.use_context(session_id="chat-b"):
+        (run_context.workspace_dir() / "inny.txt").write_text("zostaje")
+        b = run_context.workspace_dir()
+    assert delete_chat_files("chat-a") == [str(a.resolve())]
+    assert not a.exists() and (b / "inny.txt").read_text() == "zostaje"
+    assert delete_chat_files("chat-a") == []           # already gone
+    with run_context.use_context(session_id="default"):
+        default = run_context.workspace_dir()
+    for bad in ("..", ".", "a/b", ""):                  # rewritten ids never select a workspace
+        assert delete_chat_files(bad) == []
+    assert default.is_dir() and b.is_dir()

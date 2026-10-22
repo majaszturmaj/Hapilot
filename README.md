@@ -148,7 +148,7 @@ set `HAPILOT_UI_USERS_FILE` in `.env`. With login on, chats are kept per user in
 `var/chat_history.sqlite` (`HAPILOT_CHAT_DB`): past chats are listed in the left sidebar, each user sees
 only their own, and a reopened chat continues with its earlier messages, workspace files and side panel
 ([src/chat_store.py](src/chat_store.py), [src/ui_history.py](src/ui_history.py)). Deleting a chat removes
-it from the history; its workspace files stay under `var/workspace/<chat id>/`.
+it from the history together with its workspace files (`var/workspace/<chat id>/`) and its attachment index.
 
 ### Ports
 

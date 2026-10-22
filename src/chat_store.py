@@ -8,6 +8,8 @@ The agent's own state of a chat — the LangChain message history and the side p
 in ``agent_state`` rather than in Chainlit's thread metadata: that metadata is dropped as a whole once
 it exceeds 1 MB, and long attachments or panel turns with full documents would reach that.
 
+Deleting a chat also deletes its workspace files and attachment collection (``delete_chat_files``).
+
 Every user sees only their own chats: ``list_threads`` filters by user, and Chainlit refuses to open a
 thread whose ``get_thread_author`` is not the logged-in user.
 """
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import functools
 import json
+import shutil
 import sqlite3
 import threading
 import uuid
@@ -240,6 +243,36 @@ class ChatStore:
     def load_state(self, thread_id: str) -> dict:
         return {r["key"]: json.loads(r["data"]) for r in
                 self._q("SELECT key, data FROM agent_state WHERE thread_id = ?", (thread_id,))}
+
+
+def delete_chat_files(chat_id: str) -> list[str]:
+    """Remove a deleted chat's workspace and its attachment collection; returns what was removed."""
+    from src import attachments, knowledge_base, run_context
+    from src.config import get_settings
+
+    settings = get_settings()
+    removed = []
+    with run_context.use_context(session_id=chat_id):
+        sid = run_context.session_id()
+    if sid != chat_id:  # an id that had to be rewritten (e.g. "..", which becomes "default") is not a chat's
+        return removed
+    root = settings.workspace_root.resolve()
+    workspace = (root / sid).resolve()
+    if workspace.parent == root and workspace.is_dir():  # never anything outside the workspace root
+        shutil.rmtree(workspace)
+        removed.append(str(workspace))
+    index = settings.data_dir / "attachments_index"
+    if index.is_dir():
+        name = attachments.collection_name(sid)
+        try:
+            client = knowledge_base.chroma_client(index)
+            if name in [getattr(c, "name", c) for c in client.list_collections()]:
+                client.delete_collection(name)
+                knowledge_base.reset_cache()
+                removed.append(f"{index}:{name}")
+        except Exception as exc:  # the chat is gone either way; say what could not be cleaned
+            print(f"⚠️ [HISTORY] attachment collection {name}: {exc}")
+    return removed
 
 
 def _user(row: sqlite3.Row) -> dict:

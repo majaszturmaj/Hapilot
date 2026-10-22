@@ -22,7 +22,7 @@ from chainlit.types import Feedback, PageInfo, PaginatedResponse, Pagination, Th
 from chainlit.user import PersistedUser, User
 
 from src import ui_panel
-from src.chat_store import ChatStore
+from src.chat_store import ChatStore, delete_chat_files
 from src.config import get_settings
 
 
@@ -95,6 +95,8 @@ class HistoryDataLayer(BaseDataLayer):
 
     async def delete_thread(self, thread_id: str):
         await self._run(self.store.delete_thread, thread_id)
+        ui_panel.forget_session(thread_id)
+        await self._run(delete_chat_files, thread_id)
 
     async def list_threads(self, pagination: Pagination, filters: ThreadFilter) -> PaginatedResponse[ThreadDict]:
         threads, has_next = await self._run(self.store.list_threads, filters.userId, pagination.first,
