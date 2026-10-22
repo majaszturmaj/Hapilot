@@ -10,7 +10,10 @@
   const ACTIONS = {
     node_created: ["✨", "Dodano węzeł"], node_deleted: ["🗑️", "Usunięto węzeł"],
     prompt_saved: ["✏️", "Zmieniono prompt"], prompt_restored: ["↩️", "Przywrócono prompt"],
+    node_updated: ["🛠️", "Zmieniono węzeł"], node_shared: ["🌐", "Udostępniono wszystkim"], node_unshared: ["🔒", "Wycofano udostępnienie"],
   };
+  const isAdmin = () => Boolean(state.graph && state.graph.admin);
+  const customClass = (n) => (n.kind === "custom" ? (n.global ? " global" : " private") : "");
   const PROMPT_TEMPLATE = "Jesteś wyspecjalizowanym asystentem firmy. Twoje zadanie: …\n\nZasady:\n- Odpowiadaj po polsku, rzeczowo i zwięźle.\n- Korzystaj z wyników wcześniejszych kroków, jeśli są podane.\n- Jeśli brakuje danych, napisz wprost, czego brakuje.\n";
 
   const state = { graph: null, layout: null, selected: null, prompts: [], promptsLoaded: false, role: null,
@@ -100,27 +103,38 @@
   }
 
   // ------------------------------------------------------------------ graph layout
+  // Org-chart layout: planner and router on the axis; tool nodes in one row, or two staggered rows when there
+  // are many (row 2 sits half a step to the right, so every vertical connector runs through a gap between cards).
+  // Router → nodes and nodes → "next step" use shared horizontal buses with rounded right-angle connectors.
   function computeLayout(data) {
     const byId = Object.fromEntries(data.nodes.map((n) => [n.id, n]));
     const workers = data.nodes.filter((n) => !["task_planner", "router"].includes(n.id));
     const rank = (n) => (n.kind === "custom" ? 2 : n.id === "hitl_confirm" ? 1 : 0);
     workers.sort((a, b) => rank(a) - rank(b));  // stable: server order within a group
-    const rowW = workers.length * CARD.w + (workers.length - 1) * CARD.gap;
+    const pitch = CARD.w + CARD.gap;
+    let perRow = workers.length > 7 ? Math.ceil(workers.length / 2) : workers.length;
+    // never split a node from the node it always continues with (e.g. coder → execute) across the rows
+    if (perRow < workers.length && workers[perRow - 1].then === workers[perRow].id) perRow += 1;
+    const rows = [workers.slice(0, perRow), workers.slice(perRow)].filter((r) => r.length);
+    const rowY = [560, 560 + CARD.h + 78];
+    const rowW = Math.max(...rows.map((r, i) => r.length * pitch - CARD.gap + (i ? pitch / 2 : 0)));
     const cx = rowW / 2;
     const pos = {};
     const box = (id, x, y, w, h, extra = {}) => { pos[id] = { id, x, y, w, h, ...extra }; };
     box("__start__", cx - 64, 0, 128, 42, { terminal: "start", label: "▶ Start" });
     box("task_planner", cx - CARD.w / 2, 112, CARD.w, CARD.h);
     box("router", cx - CARD.w / 2, 300, CARD.w, CARD.h);
-    workers.forEach((n, i) => box(n.id, i * (CARD.w + CARD.gap), 540, CARD.w, CARD.h));
-    box("__next__", cx - 128, 780, 256, 46, { terminal: "hub", label: "⤳ następny krok planu" });
-    box("__end__", cx - 64, 920, 128, 42, { terminal: "end", label: "■ Koniec" });
+    rows.forEach((row, r) => row.forEach((n, i) => box(n.id, i * pitch + (r ? pitch / 2 : 0), rowY[r], CARD.w, CARD.h, { row: r })));
+    const lastRowBottom = rowY[rows.length - 1] + CARD.h;
+    const busTop = rowY[0] - 54, busBottom = lastRowBottom + 52;
+    box("__next__", cx - 128, busBottom + 58, 256, 46, { terminal: "hub", label: "⤳ następny krok planu" });
+    box("__end__", cx - 64, busBottom + 200, 128, 42, { terminal: "end", label: "■ Koniec" });
     const lanes = [
       { title: "Planowanie i rozdział kroków", y: 84, h: 340 },
-      { title: "Węzły narzędzi", y: 498, h: 182 },
-      { title: "Po kroku", y: 748, h: 236 },
+      { title: "Węzły narzędzi", y: busTop - 30, h: lastRowBottom - busTop + 58 },
+      { title: "Po kroku", y: busBottom + 36, h: 236 },
     ];
-    return { pos, byId, workers, rowW, cx, lanes, minX: -90, maxX: rowW + 90 };
+    return { pos, byId, workers, rowW, cx, lanes, busTop, busBottom, minX: -90, maxX: rowW + 90, height: busBottom + 260 };
   }
 
   const top = (p, f = 0.5) => ({ x: p.x + p.w * f, y: p.y });
@@ -129,37 +143,57 @@
   const right = (p) => ({ x: p.x + p.w, y: p.y + p.h / 2 });
   const vcurve = (a, b) => { const my = (a.y + b.y) / 2; return `M${a.x},${a.y} C${a.x},${my} ${b.x},${my} ${b.x},${b.y}`; };
 
-  function edgePath(e, L, index) {
+  // A polyline with rounded corners (radius r) through the given points.
+  function rounded(points, r = 14) {
+    let d = `M${points[0].x},${points[0].y}`;
+    for (let i = 1; i < points.length - 1; i++) {
+      const p = points[i - 1], c = points[i], n = points[i + 1];
+      const d1 = Math.hypot(c.x - p.x, c.y - p.y), d2 = Math.hypot(n.x - c.x, n.y - c.y);
+      const k = Math.min(r, d1 / 2, d2 / 2);
+      if (k < 0.5) { d += ` L${c.x},${c.y}`; continue; }
+      const a = { x: c.x - ((c.x - p.x) / d1) * k, y: c.y - ((c.y - p.y) / d1) * k };
+      const b = { x: c.x + ((n.x - c.x) / d2) * k, y: c.y + ((n.y - c.y) / d2) * k };
+      d += ` L${a.x},${a.y} Q${c.x},${c.y} ${b.x},${b.y}`;
+    }
+    const last = points[points.length - 1];
+    return d + ` L${last.x},${last.y}`;
+  }
+
+  function edgePath(e, L) {
     const a = L.pos[e.source], b = L.pos[e.target];
     if (!a || !b) return null;
     switch (e.kind) {
       case "stop": {
         const p = left(a), q = left(b), x = L.minX - 30;
-        return `M${p.x},${p.y} C${x},${p.y} ${x},${q.y} ${q.x},${q.y}`;
+        return rounded([p, { x, y: p.y }, { x, y: q.y }, q], 40);
       }
       case "loop": {
         const p = right(a), q = right(b), x = L.maxX + 40;
-        return `M${p.x},${p.y} C${x},${p.y} ${x},${q.y} ${q.x},${q.y}`;
+        return rounded([p, { x, y: p.y }, { x, y: q.y }, q], 40);
+      }
+      case "route": {
+        const p = bottom(a), q = top(b);
+        return rounded([p, { x: p.x, y: L.busTop }, { x: q.x, y: L.busTop }, q]);
+      }
+      case "next": {
+        const p = bottom(a), q = top(b);
+        return rounded([p, { x: p.x, y: L.busBottom }, { x: q.x, y: L.busBottom }, q]);
       }
       case "then": {
         if (Math.abs(a.y - b.y) < 2 && b.x > a.x && b.x - (a.x + a.w) < CARD.gap + 4) {
           const p = right(a), q = left(b);
           return `M${p.x},${p.y - 14} L${q.x},${q.y - 14}`;
         }
-        const p = top(a), q = top(b), y = a.y - 60;
-        return `M${p.x},${p.y} C${p.x},${y} ${q.x},${y} ${q.x},${q.y}`;
+        const p = top(a, 0.7), q = top(b, 0.3), y = Math.min(a.y, b.y) - 26;
+        return rounded([p, { x: p.x, y }, { x: q.x, y }, q], 10);
       }
       case "retry": {
         if (Math.abs(a.y - b.y) < 2 && Math.abs(b.x - a.x) < CARD.w + CARD.gap + 4) {
           const p = left(a), q = right(b);
-          return `M${p.x},${p.y + 18} L${q.x},${q.y + 18}`;
+          return `M${p.x},${p.y + 16} L${q.x},${q.y + 16}`;
         }
-        const p = bottom(a, 0.25), q = bottom(b, 0.75), y = a.y + a.h + 64;
-        return `M${p.x},${p.y} C${p.x},${y} ${q.x},${y} ${q.x},${q.y}`;
-      }
-      case "next": {
-        const n = L.workers.length;
-        return vcurve(bottom(a), top(b, 0.2 + 0.6 * (index + 1) / (n + 1)));
+        const p = bottom(a, 0.3), q = bottom(b, 0.7), y = Math.max(a.y + a.h, b.y + b.h) + 24;
+        return rounded([p, { x: p.x, y }, { x: q.x, y }, q], 10);
       }
       default:
         return vcurve(bottom(a), top(b));
@@ -172,10 +206,11 @@
   function nodeCard(n, extraClass = "") {
     const [icon, title] = splitLabel(n.label, n.kind === "custom" ? "🟣" : "🔹");
     const changed = overriddenRoles();
-    const chips = [h("span", { class: "chip kind" }, KIND[n.kind] || n.kind)];
-    for (const t of (n.tools || []).slice(0, 2)) chips.push(h("span", { class: "chip" }, "🛠 " + t.name));
+    const chips = [h("span", { class: "chip kind" }, n.kind === "custom" ? (n.global ? "🌐 Globalny" : "🔒 Prywatny") : (KIND[n.kind] || n.kind))];
+    if (n.kind === "custom" && n.owner && !n.mine) chips.push(h("span", { class: "chip" }, "👤 " + n.owner));
+    for (const t of (n.tools || []).slice(0, n.kind === "custom" ? 1 : 2)) chips.push(h("span", { class: "chip" }, "🛠 " + t.name));
     if ((n.prompts || []).some((r) => changed.has(r))) chips.push(h("span", { class: "chip mod", title: "Prompt zmieniony przez administratora" }, "✏️ prompt"));
-    return h("div", { class: `node ${n.kind} ${extraClass}`, dataset: { id: n.id }, title: n.description || "" },
+    return h("div", { class: `node ${n.kind}${customClass(n)} ${extraClass}`, dataset: { id: n.id }, title: n.description || "" },
       h("div", { class: "node-head" }, h("div", { class: "node-icon" }, icon),
         h("div", { class: "node-title" }, h("b", {}, title), h("code", {}, n.id))),
       h("div", { class: "node-foot" }, chips));
@@ -197,20 +232,19 @@
         s("text", { x: L.minX - 18, y: lane.y + 26 }, lane.title)));
     }
 
-    const nextIndex = {};
-    L.workers.forEach((n, i) => { nextIndex[n.id] = i; });
     for (const e of data.edges) {
-      const d = edgePath(e, L, nextIndex[e.source] || 0);
+      const d = edgePath(e, L);
       if (!d) continue;
       const custom = (L.byId[e.source] || {}).kind === "custom" || (L.byId[e.target] || {}).kind === "custom";
       const cls = `edge ${e.kind}${custom && ["route", "next"].includes(e.kind) ? (L.byId[e.source]?.kind === "custom" ? " custom-out" : " custom-in") : ""}`;
       const marker = custom && ["route", "next"].includes(e.kind) ? "custom" : e.kind;
-      const path = s("path", { d, class: cls, "marker-end": `url(#arrow-${marker})`, "data-s": e.source, "data-t": e.target });
+      const path = s("path", { d, class: cls, "marker-end": `url(#arrow-${marker})`, "data-s": e.source, "data-t": e.target },
+        s("title", {}, `${nodeName(e.source)} → ${nodeName(e.target)}${e.label ? " — " + e.label : ""}`));
       edges.append(path);
-      if (e.label && e.kind !== "route" && e.kind !== "next") {
+      const tight = (e.kind === "then" || e.kind === "retry") && d.indexOf("Q") < 0;  // between adjacent cards: no room
+      if (e.label && e.kind !== "route" && e.kind !== "next" && !tight) {
         const total = path.getTotalLength ? path.getTotalLength() : 0;
-        const at = e.kind === "stop" || e.kind === "loop" ? 0.5 : 0.5;
-        const pt = total ? path.getPointAtLength(total * at) : { x: 0, y: 0 };
+        const pt = total ? path.getPointAtLength(total / 2) : { x: 0, y: 0 };
         const text = s("text", { x: pt.x, y: pt.y + 4, "text-anchor": "middle" }, e.label);
         const group = s("g", { class: `edge-label ${e.kind}`, "data-s": e.source, "data-t": e.target }, s("rect", {}), text);
         labels.append(group);
@@ -252,12 +286,14 @@
   function renderStats() {
     const nodes = state.graph.nodes;
     const workers = nodes.filter((n) => !["task_planner", "router"].includes(n.id));
-    const custom = nodes.filter((n) => n.kind === "custom").length;
+    const mine = nodes.filter((n) => n.kind === "custom" && n.mine).length;
+    const shared = nodes.filter((n) => n.kind === "custom" && n.global).length;
     const tools = nodes.reduce((sum, n) => sum + (n.tools || []).length, 0);
     const changed = state.prompts.filter((p) => p.overridden).length;
     $("#stats").replaceChildren(
       h("span", { class: "stat" }, h("b", {}, workers.length), " węzłów narzędzi"),
-      h("span", { class: "stat" }, h("b", {}, custom), " własnych"),
+      h("span", { class: "stat" }, h("b", {}, mine), " moich"),
+      h("span", { class: "stat" }, h("b", {}, shared), " globalnych"),
       h("span", { class: "stat" }, h("b", {}, tools), " narzędzi planera"),
       h("span", { class: "stat" }, h("b", {}, changed), " zmienionych promptów"));
   }
@@ -273,7 +309,7 @@
     if (!L) return;
     const svg = $("#graph").getBoundingClientRect();
     const inspector = $("#inspector").classList.contains("open") ? 0 : 0;
-    const bw = L.maxX - L.minX + 160, bh = 1010;
+    const bw = L.maxX - L.minX + 160, bh = L.height + 20;
     const k = Math.max(0.25, Math.min(1.25, Math.min((svg.width - inspector - 40) / bw, (svg.height - 90) / bh)));
     const target = { k, x: (svg.width - inspector - bw * k) / 2 - (L.minX - 80) * k, y: 70 + ((svg.height - 90) - bh * k) / 2 };
     if (!animate) { state.view = target; applyView(); return; }
@@ -347,10 +383,11 @@
     const body = $("#inspector-body");
     const changed = overriddenRoles();
     const sections = [];
-    sections.push(h("div", { class: `insp-head ${n.kind}` },
+    sections.push(h("div", { class: `insp-head ${n.kind}${customClass(n)}` },
       h("div", { class: "insp-icon" }, icon), h("h3", {}, title), h("code", {}, n.id),
-      h("div", { class: "chips" }, h("span", { class: `chip kind`, style: { color: `var(--${n.kind === "extension" ? "ext" : n.kind})` } }, KIND[n.kind]),
-        h("span", { class: "chip" }, "📦 " + n.extension_name))));
+      h("div", { class: "chips" },
+        h("span", { class: "chip kind" }, n.kind === "custom" ? (n.global ? "🌐 Globalny — dla wszystkich" : "🔒 Prywatny — tylko Twoje rozmowy") : KIND[n.kind]),
+        n.kind === "custom" ? h("span", { class: "chip" }, "👤 " + (n.mine ? "Twój węzeł" : n.owner)) : h("span", { class: "chip" }, "📦 " + n.extension_name))));
     if (n.description) sections.push(h("div", { class: "insp-section" }, h("h4", {}, "Opis"), h("p", {}, n.description)));
     if (n.kind === "custom") {
       const cfg = n.config || {};
@@ -359,7 +396,15 @@
           h("dt", {}, "Model"), h("dd", {}, (state.graph.model_roles || {})[cfg.model_role] || cfg.model_role || "—"),
           h("dt", {}, "Temperatura"), h("dd", {}, cfg.temperature ?? "—"),
           h("dt", {}, "Utworzył(a)"), h("dd", {}, cfg.created_by || "—"),
-          h("dt", {}, "Kiedy"), h("dd", {}, cfg.created_at ? fmtDate(cfg.created_at) : "—"))));
+          h("dt", {}, "Kiedy"), h("dd", {}, cfg.created_at ? fmtDate(cfg.created_at) : "—"),
+          cfg.updated_at ? [h("dt", {}, "Zmienił(a)"), h("dd", {}, `${cfg.updated_by}, ${fmtDate(cfg.updated_at)}`)] : null)));
+      const actions = [];
+      if (n.editable) actions.push(h("button", { class: "btn violet small", onclick: () => openNodeForm(n) }, "✏️ Edytuj węzeł"));
+      if (n.can_share) {
+        const toggle = h("input", { type: "checkbox", class: "switch", checked: n.global, onchange: () => shareNode(n, toggle.checked, toggle) });
+        actions.push(h("label", { class: "share-toggle" }, toggle, h("span", {}, "🌐 Globalny — dostępny dla wszystkich użytkowników")));
+      }
+      if (actions.length) sections.push(h("div", { class: "insp-section node-actions" }, actions));
     }
     if ((n.tools || []).length) {
       sections.push(h("div", { class: "insp-section" }, h("h4", {}, "Narzędzia planera"),
@@ -376,27 +421,42 @@
       inc.map((e) => flow(e, "in")), out.map((e) => flow(e, "out")),
       out.some((e) => e.target === "__next__") ? h("p", { class: "muted", style: { fontSize: "12.5px" } },
         "Po tym węźle agent przechodzi do następnego kroku planu (dowolny węzeł narzędzia) albo kończy.") : null));
-    if ((n.prompts || []).length) {
+    if (n.kind === "custom") {
+      sections.push(h("div", { class: "insp-section" }, h("h4", {}, "Prompt systemowy"),
+        h("div", { class: "prompt-card" }, h("div", { class: "preview full" }, n.prompt || ""),
+          n.editable ? h("button", { class: "btn small", onclick: () => openNodeForm(n) }, "✏️ Zmień prompt i ustawienia") : null)));
+    } else if ((n.prompts || []).length) {
       const cards = n.prompts.map((role) => {
         const preview = h("div", { class: "preview" }, "…");
         api(`/prompts/${encodeURIComponent(role)}`).then((p) => { preview.textContent = (p.current || "").slice(0, 400); }).catch(() => {});
         return h("div", { class: "prompt-card" },
           h("div", { style: { display: "flex", alignItems: "center", gap: "8px" } }, h("code", {}, role),
             changed.has(role) ? h("span", { class: "badge mod" }, "zmieniony") : h("span", { class: "badge def" }, "domyślny")),
-          preview, h("button", { class: "btn small", onclick: () => openPrompt(role) }, "✏️ Edytuj prompt"));
+          preview, h("button", { class: "btn small", onclick: () => openPrompt(role) }, isAdmin() ? "✏️ Edytuj prompt" : "👁 Zobacz prompt"));
       });
       sections.push(h("div", { class: "insp-section" }, h("h4", {}, "Prompty"), cards));
     } else {
       sections.push(h("div", { class: "insp-section" }, h("h4", {}, "Prompty"),
         h("p", { class: "muted" }, "Ten węzeł działa według kodu, bez własnego promptu systemowego.")));
     }
-    if (n.kind === "custom") {
+    if (n.kind === "custom" && n.editable) {
       sections.push(h("div", { class: "danger-zone" },
-        h("p", {}, "Usunięcie węzła usuwa go z grafu i z katalogu narzędzi planera. Historia promptu tego węzła też zostanie usunięta."),
+        h("p", {}, n.global ? "Usunięcie węzła globalnego usuwa go z rozmów wszystkich użytkowników." : "Usunięcie węzła usuwa go z Twojego grafu i z katalogu narzędzi planera."),
         h("button", { class: "btn danger", onclick: () => deleteNode(n) }, "🗑️ Usuń węzeł")));
+    } else if (n.kind === "custom") {
+      sections.push(h("div", { class: "insp-section" }, h("p", { class: "muted" }, "Węzeł globalny udostępniony przez administratora — możesz go używać, ale zmieniać go może tylko administrator.")));
     }
     body.replaceChildren(...sections);
     body.scrollTop = 0;
+  }
+
+  async function shareNode(n, value, toggle) {
+    try {
+      await api(`/nodes/${encodeURIComponent(n.id)}/global`, { method: "PUT", body: { global: value } });
+      toast(value ? `Węzeł ${n.id} jest teraz globalny — dostępny w rozmowach wszystkich użytkowników.` : `Węzeł ${n.id} jest znowu prywatny.`, "violet");
+      await loadGraph(true);
+      selectNode(n.id);
+    } catch (err) { toggle.checked = !value; toast(err.message, "error"); }
   }
 
   async function deleteNode(n) {
@@ -412,69 +472,85 @@
     } catch (err) { toast(err.message, "error"); }
   }
 
-  // ------------------------------------------------------------------ add node
-  function openAddNode() {
+  // ------------------------------------------------------------------ add / edit a custom node
+  function openNodeForm(existing = null) {
+    const editing = Boolean(existing);
+    const tool = editing ? (existing.tools || [])[0] || {} : {};
+    const cfg = editing ? existing.config || {} : {};
     const f = {};
     const field = (key, label, input, hint, full = false) => {
       f[key] = input;
       return h("div", { class: `field${full ? " full" : ""}` }, h("label", { for: `f-${key}` }, label), input, hint ? h("div", { class: "hint" }, hint) : null);
     };
+    const area = (key, attrs, value) => { const t = h("textarea", { id: `f-${key}`, ...attrs }); t.value = value || ""; return t; };
     const preview = h("div", {});
     const errors = h("div", { class: "errors", hidden: true });
-    let nameTouched = false;
-    const label = h("input", { id: "f-label", maxlength: 60, placeholder: "🧾 Streszczacz umów" });
-    const name = h("input", { id: "f-name", class: "mono", maxlength: 41, placeholder: "streszczacz_umow" });
-    const temp = h("input", { id: "f-temperature", type: "range", min: 0, max: 1.5, step: 0.05, value: 0.3 });
-    const tempOut = h("output", {}, "0.30");
+    let nameTouched = editing;
+    const label = h("input", { id: "f-label", maxlength: 60, placeholder: "🧾 Streszczacz umów", value: editing ? existing.label : "" });
+    const name = h("input", { id: "f-name", class: "mono", maxlength: 41, placeholder: "streszczacz_umow", value: editing ? existing.id : "", disabled: editing });
+    const temp = h("input", { id: "f-temperature", type: "range", min: 0, max: 1.5, step: 0.05, value: editing ? cfg.temperature ?? 0.3 : 0.3 });
+    const tempOut = h("output", {}, "");
     const model = h("select", { id: "f-model_role" },
-      Object.entries(state.graph.model_roles || { default: "Model ogólny" }).map(([v, t]) => h("option", { value: v }, t)));
+      Object.entries(state.graph.model_roles || { default: "Model ogólny" }).map(([v, t]) => h("option", { value: v, selected: editing && cfg.model_role === v }, t)));
+    const shareBox = isAdmin() && !editing ? h("input", { type: "checkbox", class: "switch", id: "f-global" }) : null;
     const refresh = () => {
       if (!nameTouched) name.value = slugify(label.value);
       tempOut.textContent = Number(temp.value).toFixed(2);
-      preview.replaceChildren(nodeCard({ id: name.value || "nazwa_wezla", label: label.value || "🟣 Nowy węzeł", kind: "custom",
+      const global = editing ? existing.global : Boolean(shareBox && shareBox.checked);
+      preview.replaceChildren(nodeCard({ id: name.value || "nazwa_wezla", label: label.value || "🟣 Nowy węzeł", kind: "custom", global, mine: true,
         tools: [{ name: name.value || "narzędzie" }], prompts: [] }));
     };
     label.addEventListener("input", refresh);
     name.addEventListener("input", () => { nameTouched = true; refresh(); });
     temp.addEventListener("input", refresh);
-    const submit = h("button", { class: "btn violet" }, "✨ Utwórz węzeł");
+    if (shareBox) shareBox.addEventListener("change", refresh);
+    const submitLabel = editing ? "💾 Zapisz zmiany" : "✨ Utwórz węzeł";
+    const submit = h("button", { class: "btn violet" }, submitLabel);
+    const scope = editing
+      ? (existing.global ? "Węzeł globalny — zmiana obejmie rozmowy wszystkich użytkowników." : "Węzeł prywatny — działa tylko w Twoich rozmowach.")
+      : (isAdmin() ? "Węzeł będzie prywatny, chyba że zaznaczysz „globalny” — wtedy trafi do rozmów wszystkich użytkowników."
+                   : "Węzeł będzie prywatny: planer użyje go tylko w Twoich rozmowach.");
     const form = h("form", { onsubmit: async (ev) => {
       ev.preventDefault();
-      submit.disabled = true; submit.textContent = "Tworzę węzeł…";
+      submit.disabled = true; submit.textContent = editing ? "Zapisuję…" : "Tworzę węzeł…";
       const body = { name: name.value.trim(), label: label.value.trim(), description: f.description.value, when_to_use: f.when_to_use.value,
                      when_not_to_use: f.when_not_to_use.value, example: f.example.value, prompt: f.prompt.value,
                      model_role: model.value, temperature: Number(temp.value) };
+      if (shareBox) body.global = shareBox.checked;
       try {
-        await api("/nodes", { method: "POST", body });
+        await api(editing ? `/nodes/${encodeURIComponent(existing.id)}` : "/nodes", { method: editing ? "PUT" : "POST", body });
         closeModal();
-        toast(`Dodano węzeł ${body.name}. Planer może go używać od następnej prośby.`, "violet");
-        state.fresh = body.name;
+        toast(editing ? `Zapisano zmiany węzła ${body.name}.` : `Dodano węzeł ${body.name}. Planer może go używać od następnej prośby.`, "violet");
+        if (!editing) state.fresh = body.name;
         await loadGraph(true);
         selectNode(body.name);
       } catch (err) {
         errors.hidden = false; errors.textContent = err.message;
         errors.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      } finally { submit.disabled = false; submit.textContent = "✨ Utwórz węzeł"; }
+      } finally { submit.disabled = false; submit.textContent = submitLabel; }
     } },
-      h("div", { class: "modal-head" }, h("div", { class: "insp-icon" }, "✨"),
-        h("div", {}, h("h3", {}, "Nowy węzeł własny"), h("p", {}, "Węzeł oparty na prompcie: jedno wywołanie modelu z Twoim promptem systemowym, bez kodu i bez narzędzi."))),
+      h("div", { class: "modal-head" }, h("div", { class: "insp-icon" }, editing ? "✏️" : "✨"),
+        h("div", {}, h("h3", {}, editing ? `Edycja węzła ${existing.id}` : "Nowy węzeł własny"),
+          h("p", {}, "Węzeł oparty na prompcie: jedno wywołanie modelu z Twoim promptem systemowym, bez kodu i bez narzędzi."))),
       h("div", { class: "modal-body" },
-        h("div", { class: "preview-strip" }, preview, h("p", {}, "Tak węzeł będzie wyglądał w grafie. Planer zobaczy go jako narzędzie o tej samej nazwie i opisie — dobry opis decyduje, kiedy zostanie wybrany.")),
+        h("div", { class: "preview-strip" }, preview, h("p", {}, scope, " Planer widzi węzeł jako narzędzie o tej samej nazwie — dobry opis decyduje, kiedy zostanie wybrany.")),
         errors,
         h("div", { class: "form-grid" },
           field("label", "Etykieta", label, "Krótko, z emoji na początku, np. „🧾 Streszczacz umów”."),
-          field("name", "Nazwa techniczna", name, "Małe litery, cyfry i _; to też nazwa narzędzia i promptu."),
-          field("description", "Opis dla planera", h("textarea", { id: "f-description", maxlength: 600, required: true,
-            placeholder: "Co robi węzeł, np. „Streszczenie umowy lub regulaminu w pięciu punktach”" }), null, true),
-          field("when_to_use", "Kiedy używać", h("textarea", { id: "f-when_to_use", maxlength: 600, placeholder: "Gdy użytkownik prosi o…" })),
-          field("when_not_to_use", "Kiedy nie używać", h("textarea", { id: "f-when_not_to_use", maxlength: 600, placeholder: "Gdy chce pliku PDF (template_pdf)…" })),
-          field("example", "Przykład (opcjonalnie)", h("input", { id: "f-example", maxlength: 600, placeholder: "„Streść tę umowę” → streszczacz_umow" }), null, true),
-          field("prompt", "Prompt systemowy", h("textarea", { id: "f-prompt", class: "mono" }, PROMPT_TEMPLATE),
+          field("name", "Nazwa techniczna", name, editing ? "Nazwy nie można zmienić." : "Małe litery, cyfry i _; to też nazwa narzędzia. Unikalna w całym Hapilocie."),
+          field("description", "Opis dla planera", area("description", { maxlength: 600, required: true,
+            placeholder: "Co robi węzeł, np. „Streszczenie umowy lub regulaminu w pięciu punktach”" }, editing ? tool.description || existing.description : ""), null, true),
+          field("when_to_use", "Kiedy używać", area("when_to_use", { maxlength: 600, placeholder: "Gdy użytkownik prosi o…" }, tool.when_to_use)),
+          field("when_not_to_use", "Kiedy nie używać", area("when_not_to_use", { maxlength: 600, placeholder: "Gdy chce pliku PDF (template_pdf)…" }, tool.when_not_to_use)),
+          field("example", "Przykład (opcjonalnie)", h("input", { id: "f-example", maxlength: 600, placeholder: "„Streść tę umowę” → streszczacz_umow", value: tool.example || "" }), null, true),
+          field("prompt", "Prompt systemowy", area("prompt", { class: "mono" }, editing ? existing.prompt : PROMPT_TEMPLATE),
             "Instrukcja dla modelu. Węzeł dostaje też prośbę użytkownika, zadanie kroku i wyniki wcześniejszych kroków.", true),
           field("model_role", "Model", model, "Który model aktywnego profilu odpowiada."),
           h("div", { class: "field" }, h("label", { for: "f-temperature" }, "Temperatura"), h("div", { class: "range-row" }, temp, tempOut),
-            h("div", { class: "hint" }, "0 = przewidywalnie, wyżej = bardziej swobodnie.")))),
-      h("div", { class: "modal-foot" }, h("span", { class: "left" }, "Zapis: ", h("code", {}, state.graph.custom_dir || "")),
+            h("div", { class: "hint" }, "0 = przewidywalnie, wyżej = bardziej swobodnie.")),
+          shareBox ? h("label", { class: "share-toggle full" }, shareBox,
+            h("span", {}, h("b", {}, "🌐 Globalny"), " — węzeł trafi do rozmów wszystkich użytkowników (możesz to później wyłączyć)")) : null)),
+      h("div", { class: "modal-foot" }, h("span", { class: "left" }, editing ? "" : (isAdmin() ? "" : "🔒 Tylko dla Ciebie")),
         h("button", { class: "btn", type: "button", onclick: closeModal }, "Anuluj"), submit));
     refresh();
     openModal(form);
@@ -545,15 +621,18 @@
     const text = h("textarea", { class: "prompt-text", spellcheck: "false" });
     text.value = state.original;
     const status = h("div", { class: "editor-status" });
+    const canEdit = isAdmin();
+    if (!canEdit) text.readOnly = true;
     const save = h("button", { class: "btn primary", disabled: true, onclick: () => savePrompt(text.value) }, "💾 Zapisz nową wersję");
     const restore = h("button", { class: "btn danger-ghost", disabled: !info.overridden, onclick: restorePrompt }, "↩️ Przywróć domyślny");
+    const actions = canEdit ? [restore, save] : [h("span", { class: "badge def" }, "👁 tylko do odczytu — zmienia administrator")];
     const updateStatus = () => {
       state.dirty = text.value !== state.original;
       save.disabled = !state.dirty;
       const lines = text.value.split("\n").length;
       status.replaceChildren(h("span", {}, plural(text.value.length, "znak", "znaki", "znaków")), h("span", {}, plural(lines, "linia", "linie", "linii")),
-        state.dirty ? h("span", { class: "dirty" }, "● niezapisane zmiany") : h("span", {}, "✓ zapisane"),
-        h("span", { style: { marginLeft: "auto" } }, "Ctrl+S — zapisz"));
+        !canEdit ? null : state.dirty ? h("span", { class: "dirty" }, "● niezapisane zmiany") : h("span", {}, "✓ zapisane"),
+        canEdit ? h("span", { style: { marginLeft: "auto" } }, "Ctrl+S — zapisz") : null);
     };
     text.addEventListener("input", updateStatus);
     text.addEventListener("keydown", (ev) => {
@@ -579,14 +658,14 @@
     const history = info.history.length ? info.history.map((v, i) => h("div", { class: `history-item${i === 0 ? " current" : ""}` },
       h("div", { class: "when" }, fmtDate(v.ts), i === 0 ? h("span", { class: "badge now", style: { marginLeft: "6px" } }, "obecna") : null),
       h("div", { class: "who" }, "👤 ", v.user, " · ", v.restored ? "przywrócono domyślny" : plural(v.chars, "znak", "znaki", "znaków")),
-      v.text ? h("button", { class: "btn small", onclick: () => { text.value = v.text; showMode("edit"); updateStatus(); text.focus(); } }, "Wczytaj do edytora") : null))
+      v.text && canEdit ? h("button", { class: "btn small", onclick: () => { text.value = v.text; showMode("edit"); updateStatus(); text.focus(); } }, "Wczytaj do edytora") : null))
       : [h("p", { class: "muted", style: { fontSize: "13px" } }, "Ten prompt nie był jeszcze zmieniany — obowiązuje treść z rozszerzenia.")];
     pane.replaceChildren(
       h("div", { class: "editor-head" },
         h("div", { class: "title" }, h("code", {}, info.role),
           h("div", { class: "meta" }, info.overridden ? h("span", { class: "badge mod" }, "zmieniony przez administratora") : h("span", { class: "badge def" }, "domyślny"),
             h("span", {}, "źródło: 📦 " + info.source), owner.length ? h("span", {}, "używa:") : null, owner)),
-        h("div", { class: "actions" }, restore, save)),
+        h("div", { class: "actions" }, actions)),
       h("div", { class: "editor-body" },
         h("div", { class: "editor-main" }, switcher, area, status),
         h("div", { class: "history-pane" }, h("h4", {}, "Historia wersji"), history)));
@@ -668,7 +747,7 @@
     setupTheme();
     setupPanZoom();
     for (const b of document.querySelectorAll(".tab")) b.addEventListener("click", () => switchTab(b.dataset.tab));
-    $("#add-node-btn").onclick = openAddNode;
+    $("#add-node-btn").onclick = () => openNodeForm();
     $("#reload-btn").onclick = () => loadGraph(true).then(() => toast("Odświeżono graf."));
     $("#inspector-close").onclick = () => selectNode(null);
     $("#prompt-search").addEventListener("input", renderPromptList);
@@ -680,7 +759,8 @@
     window.addEventListener("beforeunload", (ev) => { if (state.dirty) { ev.preventDefault(); ev.returnValue = ""; } });
     try {
       const me = await api("/me");
-      $("#user-chip").replaceChildren(h("span", { class: "avatar" }, (me.identifier || "?")[0].toUpperCase()), h("span", {}, me.identifier));
+      $("#user-chip").replaceChildren(h("span", { class: "avatar" }, (me.identifier || "?")[0].toUpperCase()), h("span", {}, me.identifier),
+        h("span", { class: `role-badge${me.admin ? " admin" : ""}` }, me.admin ? "administrator" : "użytkownik"));
     } catch (e) { /* shown by the API calls below */ }
     try { await loadGraph(); } catch (err) { $("#graph-loading").textContent = "Nie udało się wczytać grafu: " + err.message; }
     const tab = (location.hash || "#graph").slice(1);

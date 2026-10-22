@@ -7,8 +7,9 @@ settings panel from the profiles defined by the operator in config/profiles.yaml
 With login on (``HAPILOT_UI_USERS_FILE``) chats are kept per user (src/ui_history.py): past chats
 are listed in the left sidebar and can be continued — the agent gets the earlier messages back, and
 the chat's workspace and side panel are the same as before. Workspaces are keyed by the chat
-(thread) id, so they survive a reconnect. Administrators (``HAPILOT_UI_ADMINS``) also get the admin
-panel at ``/hapilot/admin`` (src/ui_admin.py).
+(thread) id, so they survive a reconnect. Every logged-in user also gets the agent panel at
+``/hapilot/admin`` (src/ui_admin.py) and runs on their own agent: built-in nodes, global custom nodes
+and their own private ones (src/admin.py).
 """
 
 import json
@@ -48,13 +49,14 @@ _CORE_NODE_DESCRIPTIONS = {
 }
 
 
-def _node_display_config():
+def _node_display_config(manager=None):
     labels, descriptions = dict(_CORE_NODE_LABELS), dict(_CORE_NODE_DESCRIPTIONS)
     try:
         from src.core.extension_manager import extension_manager
 
-        labels.update(extension_manager.get_node_labels())
-        descriptions.update(extension_manager.get_node_descriptions())
+        manager = manager or extension_manager
+        labels.update(manager.get_node_labels())
+        descriptions.update(manager.get_node_descriptions())
     except Exception:
         pass
     return labels, descriptions
@@ -96,7 +98,7 @@ if users_file():
 
     _STORE = ChatStore(db_path())
 
-    # admin panel (/hapilot/admin): custom nodes and prompt overrides apply to the UI only (src/admin.py)
+    # agent panel (/hapilot/admin): custom nodes and prompt overrides apply to the UI only (src/admin.py)
     from src import admin as _admin
     from src.ui_admin import install_routes as _install_admin_routes
 
@@ -224,11 +226,21 @@ async def end():
     ui_panel.forget_session(_chat())
 
 
-def _run_config() -> dict:
+def _agent():
+    """(compiled graph, extension manager) for this chat: with login, the user's own agent (built-in nodes plus
+    the custom nodes they may use, src/admin.py); without login, the shared graph."""
+    user = getattr(cl.context.session, "user", None)
+    if _STORE is not None and user is not None:
+        manager, app = _admin.agent_for(user.identifier)
+        return app, manager
+    return get_app(), None
+
+
+def _run_config(manager=None) -> dict:
     pending = cl.user_session.get("panel_pending")
     return run_context.make_config(_chat(), profile=cl.user_session.get("profile"),
                                    extra_collections=cl.user_session.get("extra_collections") or None,
-                                   observer=pending.observer if pending else None)
+                                   observer=pending.observer if pending else None, extension_manager=manager)
 
 
 def _inputs(history: list, hitl_response=None) -> dict:
@@ -241,7 +253,8 @@ def _inputs(history: list, hitl_response=None) -> dict:
 # --------------------------------------------------------------------------- running the graph
 
 async def _run(inputs: dict, user_content: str):
-    labels, descriptions = _node_display_config()
+    app, manager = await cl.make_async(_agent)()
+    labels, descriptions = _node_display_config(manager)
     async with cl.Step(name="kroki zadania", type="run") as main_step:  # shown as "Wykonuję / Wykonano kroki zadania"
         main_step.input = user_content
 
@@ -250,7 +263,7 @@ async def _run(inputs: dict, user_content: str):
                 sub.input = descriptions.get(node_name, "")
                 sub.output = _summarize_node_output(node_name, output)
 
-        run = await run_graph_streaming(get_app(), inputs, _run_config(), on_event=on_event)
+        run = await run_graph_streaming(app, inputs, _run_config(manager), on_event=on_event)
         path = " → ".join(labels.get(name, name) for name, _ in run.events)
         main_step.output = f"**Przeszedłem przez:** {path}" + (f"\n\n❌ {run.error}" if run.error else "")
     return run

@@ -1,10 +1,10 @@
-"""Admin panel routes (``/hapilot/admin``): the page, its assets and a small JSON API over src/admin.py.
+"""Agent panel routes (``/hapilot/admin``): the page, its assets and a small JSON API over src/admin.py.
 
-Who may use it: a user logged in to the Chainlit UI (its ``access_token`` cookie, checked with
-Chainlit's own JWT decoder) whose login is in ``HAPILOT_UI_ADMINS``. Every API call checks this; a
-non-admin gets 403. Requests that change something must also come from the panel's own origin (the
-``Origin`` header, when sent, must match the host) and carry the ``X-Hapilot-Admin`` header, which a
-cross-site form cannot set.
+Who may use it: any user logged in to the Chainlit UI (its ``access_token`` cookie, checked with Chainlit's
+own JWT decoder). What each user may do is decided in src/admin.py (own private nodes for everyone; global
+nodes and built-in prompts for administrators). Requests that change something must also come from the
+panel's own origin (the ``Origin`` header, when sent, must match the host) and carry the ``X-Hapilot-Admin``
+header, which a cross-site form cannot set.
 """
 
 from __future__ import annotations
@@ -52,13 +52,13 @@ def _same_origin(request) -> bool:
     return request.headers.get("x-hapilot-admin") == "1"
 
 
-async def _guard(request, write: bool = False):
-    """(identifier, None) for an admin, else (None, error response)."""
+async def _guard(request, write: bool = False, admin_only: bool = False):
+    """(identifier, None) for an allowed user, else (None, error response)."""
     user = _identifier(request)
     if user is None:
         return None, _json({"error": "Zaloguj się ponownie."}, 401)
-    if not admin.is_admin(user):
-        return None, _json({"error": "Ta strona jest tylko dla administratorów."}, 403)
+    if admin_only and not admin.is_admin(user):
+        return None, _json({"error": "Tylko administrator może to zrobić."}, 403)
     if write and not _same_origin(request):
         return None, _json({"error": "Żądanie spoza panelu administratora zostało odrzucone."}, 403)
     return user, None
@@ -76,14 +76,8 @@ async def _call(fn, *args):
 async def page(request):
     from starlette.responses import HTMLResponse, RedirectResponse
 
-    user = _identifier(request)
-    if user is None:
+    if _identifier(request) is None:
         return RedirectResponse("/login", status_code=302)
-    if not admin.is_admin(user):
-        return HTMLResponse("<!doctype html><meta charset=utf-8><title>Brak dostępu</title>"
-                            "<body style='font-family:system-ui;padding:3rem'><h1>Brak dostępu</h1>"
-                            "<p>Panel administratora jest dostępny tylko dla administratorów.</p>"
-                            "<p><a href='/'>← Wróć do czatu</a></p>", status_code=403, headers=NO_STORE)
     return HTMLResponse((ASSETS / "index.html").read_text(encoding="utf-8"), headers=NO_STORE)
 
 
@@ -108,7 +102,7 @@ async def me(request):
 
 async def graph(request):
     user, error = await _guard(request)
-    return error or await _call(admin.graph_data)
+    return error or await _call(admin.graph_data, user)
 
 
 async def prompts(request):
@@ -121,7 +115,7 @@ async def prompt(request):
     if request.method == "GET":
         user, error = await _guard(request)
         return error or await _call(admin.prompt_info, role)
-    user, error = await _guard(request, write=True)
+    user, error = await _guard(request, write=True, admin_only=True)
     if error:
         return error
     if request.method == "DELETE":
@@ -142,17 +136,29 @@ async def node(request):
     user, error = await _guard(request, write=True)
     if error:
         return error
+    name = request.path_params["name"]
+    if request.method == "PUT":
+        body = await request.json()
+        return await _call(admin.update_custom_node, name, body if isinstance(body, dict) else {}, user)
 
     def delete(name: str, who: str) -> dict:
         admin.delete_custom_node(name, who)
         return {"deleted": name}
 
-    return await _call(delete, request.path_params["name"], user)
+    return await _call(delete, name, user)
+
+
+async def share(request):
+    user, error = await _guard(request, write=True, admin_only=True)
+    if error:
+        return error
+    body = await request.json()
+    return await _call(admin.set_global, request.path_params["name"], bool((body or {}).get("global")), user)
 
 
 async def audit(request):
     user, error = await _guard(request)
-    return error or await _call(admin.audit_log)
+    return error or await _call(admin.audit_log, user)
 
 
 ROUTES = [
@@ -163,7 +169,8 @@ ROUTES = [
     ("/api/prompts", prompts, ["GET"]),
     ("/api/prompts/{role}", prompt, ["GET", "PUT", "DELETE"]),
     ("/api/nodes", nodes, ["POST"]),
-    ("/api/nodes/{name}", node, ["DELETE"]),
+    ("/api/nodes/{name}", node, ["PUT", "DELETE"]),
+    ("/api/nodes/{name}/global", share, ["PUT"]),
     ("/api/audit", audit, ["GET"]),
 ]
 _installed = False

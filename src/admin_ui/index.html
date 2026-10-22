@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Hapilot · Panel administratora</title>
+  <title>Hapilot · Panel agenta</title>
   <link rel="icon" href="/favicon">
   <link rel="stylesheet" href="/hapilot/admin/assets/admin.css">
   <script>
@@ -14,7 +14,7 @@
   <header class="topbar">
     <a class="brand" href="/" title="Wróć do czatu">
       <span class="brand-mark">H</span>
-      <span class="brand-text"><b>Hapilot</b><span>Panel administratora</span></span>
+      <span class="brand-text"><b>Hapilot</b><span>Panel agenta</span></span>
     </a>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="graph" class="tab active">🕸️ Graf agenta</button>
@@ -55,7 +55,8 @@
           <div class="legend-title">Legenda</div>
           <div class="legend-row"><span class="swatch core"></span>Rdzeń (planer, router, potwierdzenie)</div>
           <div class="legend-row"><span class="swatch extension"></span>Węzeł rozszerzenia</div>
-          <div class="legend-row"><span class="swatch custom"></span>Węzeł własny administratora</div>
+          <div class="legend-row"><span class="swatch custom"></span>Węzeł własny — 🌐 globalny (wszyscy)</div>
+          <div class="legend-row"><span class="swatch private"></span>Węzeł własny — 🔒 prywatny (tylko Ty)</div>
           <div class="legend-sep"></div>
           <div class="legend-row"><svg width="34" height="10"><line x1="2" y1="5" x2="32" y2="5" class="lg route"/></svg>krok planu → węzeł narzędzia</div>
           <div class="legend-row"><svg width="34" height="10"><line x1="2" y1="5" x2="32" y2="5" class="lg then"/></svg>zawsze dalej</div>
@@ -91,7 +92,7 @@
     <section class="view" data-view="audit">
       <div class="audit-wrap">
         <h2>Dziennik zmian</h2>
-        <p class="muted">Kto i kiedy zmienił agenta. Zmiany dotyczą tylko interfejsu czatu — przebiegi ewaluacyjne korzystają wyłącznie z repozytorium.</p>
+        <p class="muted">Kto i kiedy zmienił agenta (użytkownik widzi własne wpisy, administrator — wszystkie). Zmiany dotyczą tylko interfejsu czatu — przebiegi ewaluacyjne korzystają wyłącznie z repozytorium.</p>
         <div id="audit-table"></div>
       </div>
     </section>

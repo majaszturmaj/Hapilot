@@ -73,37 +73,39 @@
   else document.addEventListener("DOMContentLoaded", start);
 })();
 
-// Link to the admin panel (/hapilot/admin, src/ui_admin.py) for administrators: placed in the header,
-// next to the "O Hapilocie" link; shown only when the server says the logged-in user is an admin.
+// Link to the agent panel (/hapilot/admin, src/ui_admin.py) for logged-in users: placed in Chainlit's
+// #header, before the "O Hapilocie" button (#readme-button); administrators see it labelled as such.
 (function () {
-  let isAdmin = null;
+  let canOpen = null;
   const link = document.createElement("a");
   link.id = "hapilot-admin-link";
   link.href = "/hapilot/admin";
-  link.textContent = "⚙️ Panel administratora";
+  link.textContent = "🕸️ Panel agenta";
   Object.assign(link.style, {
     fontSize: "13px", fontWeight: "600", padding: "6px 12px", borderRadius: "9px", textDecoration: "none",
     border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))", marginRight: "6px", whiteSpace: "nowrap",
   });
 
   function place() {
-    if (!isAdmin || document.getElementById("hapilot-admin-link")) return;
-    const about = [...document.querySelectorAll("header a, header button")].find((el) => el.textContent.trim() === "O Hapilocie");
+    if (!canOpen || document.getElementById("hapilot-admin-link")) return;
+    const about = document.getElementById("readme-button");  // Chainlit's "O Hapilocie" button in #header
     if (about && about.parentElement) about.parentElement.insertBefore(link, about);
   }
 
   async function check() {
     try {
       const res = await fetch("/hapilot/admin/api/me", { credentials: "same-origin" });
-      isAdmin = res.ok && (await res.json()).admin === true;
-    } catch (e) { isAdmin = false; }
-    if (!isAdmin) { const old = document.getElementById("hapilot-admin-link"); if (old) old.remove(); }
+      const me = res.ok ? await res.json() : null;
+      canOpen = Boolean(me);  // any logged-in user may open the panel
+      if (me) link.textContent = me.admin ? "⚙️ Panel agenta (administrator)" : "🕸️ Panel agenta";
+    } catch (e) { canOpen = false; }
+    if (!canOpen) { const old = document.getElementById("hapilot-admin-link"); if (old) old.remove(); }
     place();
   }
 
   function start() {
     check();
-    new MutationObserver(() => { if (isAdmin) place(); }).observe(document.body, { childList: true, subtree: true });
+    new MutationObserver(() => { if (canOpen) place(); }).observe(document.body, { childList: true, subtree: true });
     window.addEventListener("focus", check);
   }
 

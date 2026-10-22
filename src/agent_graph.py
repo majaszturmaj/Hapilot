@@ -459,7 +459,7 @@ def _instrument(name: str, func):
     return node
 
 
-def build_dynamic_graph(ext_manager=None):
+def build_dynamic_graph(ext_manager=None, activate: bool = True):
     """Compile the LangGraph StateGraph from the loaded extensions.
 
     Every node continues according to its manifest: ``then`` (always that node), ``after.policy``
@@ -472,7 +472,8 @@ def build_dynamic_graph(ext_manager=None):
     ext_manager = ext_manager or extension_manager
     if not ext_manager.is_loaded():
         ext_manager.discover_and_load()
-    set_active(ext_manager)
+    if activate:  # a per-user graph (src/admin.py) runs with its manager in the run config instead
+        set_active(ext_manager)
 
     specs = ext_manager.get_node_specs()
     if "chat" not in specs:
@@ -565,24 +566,6 @@ def get_app():
 def reset_app() -> None:
     global _app
     _app = None
-
-
-def rebuild_app():
-    """Load the extensions again into a new manager and compile a new graph, then swap both in.
-
-    Used by the admin panel after a custom node is added or deleted. A request that is already running
-    keeps its compiled graph; its nodes then read the new manager (a superset or subset of the old one).
-    Returns the new manager.
-    """
-    global _app
-    import src.core.extension_manager as em
-
-    manager = em.ExtensionManager()
-    manager.discover_and_load()
-    app = build_dynamic_graph(manager)  # also makes ``manager`` the active one
-    em.extension_manager = manager
-    _app = app
-    return manager
 
 
 def __getattr__(name: str):  # lazy module attribute ``app`` (backwards compatible)

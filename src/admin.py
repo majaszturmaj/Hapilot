@@ -1,17 +1,25 @@
-"""Administration of the agent from the UI: custom nodes, prompt overrides, the agent graph, an audit log.
+"""The agent panel behind /hapilot/admin (src/ui_admin.py): the agent graph, custom nodes, prompts, an audit log.
 
-Used by the admin panel (src/ui_admin.py); no Chainlit here. Everything an administrator changes lives
-under the data directory and applies to the UI only:
+No Chainlit here. Who may do what:
 
-- custom nodes: ordinary extensions in ``custom_extensions/<node>/`` (manifest, prompt, a one-line
-  ``nodes.py`` calling src/core/custom_node.py). They are prompt-only: one model call, no code, no tools;
-- prompt overrides: ``prompt_overrides/<role>.json`` with the full version history (the last entry is
-  in force; an entry with ``"text": null`` restores the default);
-- audit log: ``admin_audit.jsonl`` (who, when, what).
+- every logged-in user sees the agent graph: the built-in nodes, all **global** custom nodes and their own
+  **private** ones (never other users' private nodes), and can add, edit and delete their own custom nodes.
+  A user's nodes are private: they take part only in that user's chats;
+- administrators (``HAPILOT_UI_ADMINS``, default ``admin``) can also switch their nodes to global (on/off):
+  a global node takes part in every user's chats, and only an administrator can edit or delete it.
+  Administrators also edit the prompts of the built-in nodes (with version history and restore);
+  everyone else can read them.
 
-The UI calls ``enable_for_ui()`` at start-up, which adds the custom extensions folder to the extension
-search path and applies the prompt overrides. Evaluation runs (src/eval) never call it, so benchmark
-results depend only on the repository.
+Storage (under the data directory; the UI only — evaluation runs never load any of it):
+
+- custom nodes: ``custom_extensions/<owner>/<node>/`` — an ordinary extension (manifest, prompt, a one-line
+  ``nodes.py`` calling src/core/custom_node.py). Prompt-only: one model call, no code, no tools. Node names are
+  unique across all users (a node may become global, and names are also planner tool names);
+- prompt overrides of built-in nodes: ``prompt_overrides/<role>.json`` with the full history;
+- audit log: ``admin_audit.jsonl``.
+
+Each user's chats run on their own compiled graph (``agent_for``): the built-in extensions plus the custom nodes
+that user may use. It is cached and rebuilt when one of those nodes changes on disk.
 """
 
 from __future__ import annotations
@@ -31,6 +39,7 @@ from src.core.prompt_registry import prompt_registry
 
 NAME = re.compile(r"^[a-z][a-z0-9_]{2,40}$")
 ROLE = re.compile(r"^[a-z][a-z0-9_]{1,60}$")
+MANIFEST = "hapilot_extension.json"
 MODEL_ROLES = {"default": "Model ogólny profilu", "coder": "Model do kodu (profil: rola coder)"}
 CORE_NODES = {
     "task_planner": ("📋 Planer zadań", "Rozkłada prośbę użytkownika na kroki i dobiera narzędzia", ["task_planner"]),
@@ -38,10 +47,11 @@ CORE_NODES = {
     "hitl_confirm": ("🤝 Potwierdzenie", "Zatrzymuje plan i pyta użytkownika o zgodę", []),
 }
 _lock = threading.RLock()
+_agents: dict[str, tuple] = {}   # user -> (signature, manager, compiled graph)
 
 
 class AdminError(ValueError):
-    """A request the panel must refuse; the message is shown to the administrator (Polish)."""
+    """A request the panel must refuse; the message is shown to the user (Polish)."""
 
 
 def now() -> str:
@@ -74,12 +84,13 @@ def is_admin(identifier: Optional[str]) -> bool:
     return bool(identifier) and identifier in admins()
 
 
+def owner_folder(user: str) -> str:
+    """A file-system-safe folder name for a login (the real login is kept in the manifest)."""
+    return re.sub(r"[^a-z0-9_-]", "_", (user or "").lower())[:40] or "_"
+
+
 def enable_for_ui() -> None:
-    """Custom nodes and prompt overrides for the UI process (call before the graph is built)."""
-    folder = str(custom_dir())
-    parts = [p for p in os.environ.get("HAPILOT_EXTENSIONS_DIRS", "").split(os.pathsep) if p.strip()]
-    if folder not in parts:
-        os.environ["HAPILOT_EXTENSIONS_DIRS"] = os.pathsep.join(parts + [folder])
+    """Apply the prompt overrides of the built-in nodes (the UI process only)."""
     custom_dir().mkdir(parents=True, exist_ok=True)
     load_prompt_overrides()
 
@@ -94,15 +105,32 @@ def audit(user: str, action: str, target: str, detail: str = "") -> None:
                             ensure_ascii=False) + "\n")
 
 
-def audit_log(limit: int = 200) -> list[dict]:
+def audit_log(user: Optional[str] = None, limit: int = 200) -> list[dict]:
+    """Newest first; administrators (or ``user=None``) see everything, other users their own entries."""
     path = audit_path()
     if not path.is_file():
         return []
-    lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
-    return [json.loads(ln) for ln in reversed(lines[-limit:])]
+    entries = [json.loads(ln) for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    if user is not None and not is_admin(user):
+        entries = [e for e in entries if e.get("user") == user]
+    return entries[-limit:][::-1]
 
 
-# --------------------------------------------------------------------------- prompts
+# --------------------------------------------------------------------------- built-in prompts
+
+def _builtin():
+    """The shared extension manager (built-in extensions only), loaded."""
+    from src.agent_graph import get_app
+    from src.core.extension_manager import extension_manager
+
+    get_app()
+    return extension_manager
+
+
+def _builtin_role(role: str) -> bool:
+    """A prompt of a built-in node (custom nodes' prompts are edited with the node)."""
+    return prompt_registry.default(role) is not None and not _custom_index().get(role)
+
 
 def _override_file(role: str) -> Path:
     if not ROLE.match(role or ""):
@@ -140,12 +168,19 @@ def _append_version(role: str, user: str, text: Optional[str]) -> None:
 
 def _known_role(role: str) -> None:
     _override_file(role)
-    if prompt_registry.default(role) is None:
-        raise AdminError(f"Nie ma promptu o nazwie {role!r}.")
+    _builtin()
+    if not _builtin_role(role):
+        raise AdminError(f"Nie ma wbudowanego promptu o nazwie {role!r}.")
+
+
+def _require_admin(user: str) -> None:
+    if not is_admin(user):
+        raise AdminError("Tylko administrator może to zrobić.")
 
 
 def save_prompt(role: str, text: str, user: str) -> dict:
     with _lock:
+        _require_admin(user)
         _known_role(role)
         text = (text or "").replace("\r\n", "\n")
         if len(text.strip()) < 10:
@@ -162,6 +197,7 @@ def save_prompt(role: str, text: str, user: str) -> dict:
 
 def restore_prompt(role: str, user: str) -> dict:
     with _lock:
+        _require_admin(user)
         _known_role(role)
         if prompt_registry.overridden(role):
             _append_version(role, user, None)
@@ -172,7 +208,7 @@ def restore_prompt(role: str, user: str) -> dict:
 
 def _prompt_users() -> dict[str, list[str]]:
     users: dict[str, list[str]] = {}
-    for node in graph_nodes():
+    for node in _builtin_nodes(_builtin()):
         for role in node["prompts"]:
             users.setdefault(role, []).append(node["id"])
     return users
@@ -190,11 +226,12 @@ def prompt_info(role: str) -> dict:
 
 
 def list_prompts() -> list[dict]:
+    """Prompts of the built-in nodes."""
+    _builtin()
     users = _prompt_users()
     result = []
     for role in prompt_registry.list_roles():
-        default = prompt_registry.default(role)
-        if default is None:
+        if not _builtin_role(role):
             continue
         current = prompt_registry.get(role) or ""
         result.append({"role": role, "source": prompt_registry.get_source(role), "overridden": prompt_registry.overridden(role),
@@ -202,7 +239,83 @@ def list_prompts() -> list[dict]:
     return result
 
 
-# --------------------------------------------------------------------------- custom nodes
+# --------------------------------------------------------------------------- custom nodes: storage
+
+def _custom_index() -> dict[str, tuple[Path, dict]]:
+    """Every custom node on disk: name -> (folder, manifest)."""
+    index = {}
+    root = custom_dir()
+    for manifest in sorted(root.glob(f"*/*/{MANIFEST}")) if root.is_dir() else []:
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if data.get("config", {}).get("custom") and data.get("id") == manifest.parent.name:
+            index[data["id"]] = (manifest.parent, data)
+    return index
+
+
+def _owner(data: dict) -> str:
+    return data.get("config", {}).get("owner", "")
+
+
+def _is_global(data: dict) -> bool:
+    return bool(data.get("config", {}).get("global"))
+
+
+def can_use(user: str, data: dict) -> bool:
+    return _is_global(data) or _owner(data) == user
+
+
+def can_edit(user: str, data: dict) -> bool:
+    """Owners edit their private nodes; a global node only an administrator."""
+    return is_admin(user) if _is_global(data) else _owner(data) == user
+
+
+def _node(name: str, user: str) -> tuple[Path, dict]:
+    found = _custom_index().get(name)
+    if found is None or not can_use(user, found[1]):
+        raise AdminError("Nie ma takiego węzła własnego.")
+    return found
+
+
+# --------------------------------------------------------------------------- custom nodes: per-user agents
+
+def _signature(folders: list[Path]) -> tuple:
+    sig = []
+    for folder in folders:
+        for path in sorted([folder / MANIFEST, *(folder / "prompts").glob("*.txt")]):
+            try:
+                sig.append((str(path), path.stat().st_mtime_ns))
+            except OSError:
+                pass
+    return tuple(sig)
+
+
+def agent_for(user: str):
+    """(extension manager, compiled graph) for a user: built-in extensions + the custom nodes they may use."""
+    from src.agent_graph import build_dynamic_graph
+    from src.core.extension_manager import ExtensionManager
+
+    folders = [folder for folder, data in _custom_index().values() if can_use(user, data)]
+    signature = _signature(folders)
+    with _lock:
+        cached = _agents.get(user)
+        if cached and cached[0] == signature:
+            return cached[1], cached[2]
+        manager = ExtensionManager(extra=folders)
+        manager.discover_and_load()
+        app = build_dynamic_graph(manager, activate=False)
+        _agents[user] = (signature, manager, app)
+        return manager, app
+
+
+def forget_agents() -> None:
+    with _lock:
+        _agents.clear()
+
+
+# --------------------------------------------------------------------------- custom nodes: create, edit, share, delete
 
 @dataclass
 class NodeDraft:
@@ -230,22 +343,18 @@ class NodeDraft:
 
 
 def _taken_names() -> set[str]:
-    from src.core.extension_manager import get_active
-
-    manager = get_active()
+    manager = _builtin()
     names = set(CORE_NODES) | set(manager.get_node_specs()) | {t.name for t in manager.get_tools()}
-    names |= {m.id for m in manager.get_all_manifests()} | set(prompt_registry.list_roles())
-    names |= {a for t in manager.get_tools() for a in t.aliases}
-    if custom_dir().is_dir():
-        names |= {p.name for p in custom_dir().iterdir()}
+    names |= {m.id for m in manager.get_all_manifests()} | {a for t in manager.get_tools() for a in t.aliases}
+    names |= {r for r in prompt_registry.list_roles() if _builtin_role(r)} | set(_custom_index())
     return names | {"start", "end", "default", "coder"}
 
 
-def validate_draft(draft: NodeDraft) -> list[str]:
+def validate_draft(draft: NodeDraft, new: bool = True) -> list[str]:
     problems = []
     if not NAME.match(draft.name):
         problems.append("Nazwa techniczna: 3–41 znaków, małe litery bez polskich znaków, cyfry i _, zaczyna się literą.")
-    elif draft.name in _taken_names():
+    elif new and draft.name in _taken_names():
         problems.append(f"Nazwa {draft.name!r} jest już zajęta przez inny węzeł, narzędzie lub prompt.")
     if not draft.label or len(draft.label) > 60:
         problems.append("Etykieta: od 1 do 60 znaków.")
@@ -263,20 +372,19 @@ def validate_draft(draft: NodeDraft) -> list[str]:
     return problems
 
 
-def _manifest(draft: NodeDraft, user: str) -> dict:
+def _manifest(draft: NodeDraft, config: dict) -> dict:
     tool = {"name": draft.name, "description": draft.description}
     for key in ("when_to_use", "when_not_to_use", "example"):
         if getattr(draft, key):
             tool[key] = getattr(draft, key)
     return {"manifest_version": 1, "id": draft.name, "name": draft.label, "version": "1.0.0",
-            "description": draft.description, "author": user, "license": "MIT", "enabled": True,
+            "description": draft.description, "author": config["owner"], "license": "MIT", "enabled": True,
             "nodes": [{"name": draft.name, "entry_point": "nodes:run", "label": draft.label, "description": draft.description}],
             "tools": [tool], "prompts": {draft.name: f"prompts/{draft.name}.txt"},
-            "config": {"custom": True, "model_role": draft.model_role, "temperature": draft.temperature,
-                       "created_by": user, "created_at": now()}}
+            "config": {**config, "custom": True, "model_role": draft.model_role, "temperature": draft.temperature}}
 
 
-NODE_MODULE = '''"""Custom node created in the admin panel; behaviour: src/core/custom_node.py."""
+NODE_MODULE = '''"""Custom node created in the agent panel; behaviour: src/core/custom_node.py."""
 
 from src.core.custom_node import run_custom_node
 
@@ -286,106 +394,160 @@ def run(state):
 '''
 
 
+def _write(folder: Path, draft: NodeDraft, manifest: dict) -> None:
+    (folder / "prompts").mkdir(parents=True, exist_ok=True)
+    (folder / "prompts" / f"{draft.name}.txt").write_text(draft.prompt, encoding="utf-8")
+    (folder / "nodes.py").write_text(NODE_MODULE.format(name=draft.name), encoding="utf-8")
+    tmp = folder / (MANIFEST + ".tmp")
+    tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(folder / MANIFEST)
+
+
+def _check_loads(name: str, user: str) -> None:
+    manager, _app = agent_for(user)
+    if name not in manager.get_node_specs():
+        raise AdminError("Hapilot nie przyjął węzła: " + ("; ".join(e for e in manager.errors if name in e) or "nieznany błąd"))
+
+
 def create_custom_node(data: dict, user: str) -> dict:
-    """Write the extension, rebuild the graph and check the node is in it; nothing is left behind on failure."""
+    """A new node of ``user`` (private; an administrator may create it global). Nothing is left behind on failure."""
     from src.core.extension_manager import validate_manifest
 
     with _lock:
         draft = NodeDraft.from_dict(data)
+        make_global = bool(data.get("global"))
+        if make_global and not is_admin(user):
+            raise AdminError("Tylko administrator może udostępnić węzeł wszystkim użytkownikom.")
         problems = validate_draft(draft)
-        manifest = _manifest(draft, user)
+        manifest = _manifest(draft, {"owner": user, "global": make_global, "created_by": user, "created_at": now()})
         problems += [f"Manifest: {p}" for p in validate_manifest(manifest)]
         if problems:
             raise AdminError("\n".join(problems))
-        folder = custom_dir() / draft.name
-        (folder / "prompts").mkdir(parents=True)
+        folder = custom_dir() / owner_folder(user) / draft.name
+        folder.mkdir(parents=True)
         try:
-            (folder / "prompts" / f"{draft.name}.txt").write_text(draft.prompt, encoding="utf-8")
-            (folder / "nodes.py").write_text(NODE_MODULE.format(name=draft.name), encoding="utf-8")
-            (folder / "hapilot_extension.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-            manager = rebuild()
-            if draft.name not in manager.get_node_specs():
-                raise AdminError("Hapilot nie przyjął węzła: " + "; ".join(e for e in manager.errors if draft.name in e))
+            _write(folder, draft, manifest)
+            _check_loads(draft.name, user)
         except Exception:
             shutil.rmtree(folder, ignore_errors=True)
             prompt_registry.unregister(draft.name)
-            rebuild()
             raise
-        audit(user, "node_created", draft.name, f"{draft.label}; model {draft.model_role}, temp. {draft.temperature}")
-        return asdict(draft)
+        audit(user, "node_created", draft.name, f"{draft.label}; {'globalny' if make_global else 'prywatny'}; "
+                                               f"model {draft.model_role}, temp. {draft.temperature}")
+        return {**asdict(draft), "global": make_global}
 
 
-def is_custom(name: str) -> bool:
-    manifest = custom_dir() / name / "hapilot_extension.json"
-    if not NAME.match(name or "") or not manifest.is_file():
-        return False
-    try:
-        return bool(json.loads(manifest.read_text(encoding="utf-8")).get("config", {}).get("custom"))
-    except (OSError, ValueError):
-        return False
+def update_custom_node(name: str, data: dict, user: str) -> dict:
+    """Change a node's label, descriptions, prompt, model or temperature (the name stays)."""
+    from src.core.extension_manager import validate_manifest
+
+    with _lock:
+        folder, old = _node(name, user)
+        if not can_edit(user, old):
+            raise AdminError("Ten węzeł może zmienić tylko jego autor (węzeł globalny — administrator).")
+        draft = NodeDraft.from_dict({**data, "name": name})
+        problems = validate_draft(draft, new=False)
+        config = {k: v for k, v in old.get("config", {}).items() if k not in ("model_role", "temperature")}
+        manifest = _manifest(draft, {**config, "updated_by": user, "updated_at": now()})
+        problems += [f"Manifest: {p}" for p in validate_manifest(manifest)]
+        if problems:
+            raise AdminError("\n".join(problems))
+        backup = {p.name: p.read_bytes() for p in (folder / MANIFEST, folder / "prompts" / f"{name}.txt") if p.is_file()}
+        try:
+            _write(folder, draft, manifest)
+            _check_loads(name, user)
+        except Exception:
+            (folder / MANIFEST).write_bytes(backup[MANIFEST])
+            (folder / "prompts" / f"{name}.txt").write_bytes(backup[f"{name}.txt"])
+            raise
+        prompt_registry.register(name, draft.prompt, source=name)
+        audit(user, "node_updated", name, f"{draft.label}; model {draft.model_role}, temp. {draft.temperature}")
+        return {**asdict(draft), "global": _is_global(manifest)}
+
+
+def set_global(name: str, value: bool, user: str) -> dict:
+    """An administrator shares their node with everyone (or takes it back)."""
+    with _lock:
+        _require_admin(user)
+        folder, data = _node(name, user)
+        if not (_owner(data) == user or _is_global(data)):
+            raise AdminError("Udostępnić można tylko własny węzeł.")
+        data["config"]["global"] = bool(value)
+        tmp = folder / (MANIFEST + ".tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(folder / MANIFEST)
+        audit(user, "node_shared" if value else "node_unshared", name,
+              "dostępny dla wszystkich" if value else "tylko dla autora")
+        return {"name": name, "global": bool(value)}
 
 
 def delete_custom_node(name: str, user: str) -> None:
     with _lock:
-        if not is_custom(name):
+        if not NAME.match(name or ""):
             raise AdminError("Można usuwać tylko węzły własne utworzone w panelu.")
-        folder = (custom_dir() / name).resolve()
-        if folder.parent != custom_dir().resolve():
+        folder, data = _node(name, user)
+        if not can_edit(user, data):
+            raise AdminError("Ten węzeł może usunąć tylko jego autor (węzeł globalny — administrator).")
+        folder = folder.resolve()
+        if folder.parent.parent != custom_dir().resolve():
             raise AdminError("Niepoprawna ścieżka węzła.")
         shutil.rmtree(folder)
         prompt_registry.unregister(name)
-        override = overrides_dir() / f"{name}.json"
-        if override.is_file():
-            override.unlink()
-        rebuild()
         audit(user, "node_deleted", name)
-
-
-def rebuild():
-    from src.agent_graph import rebuild_app
-
-    return rebuild_app()
 
 
 # --------------------------------------------------------------------------- graph
 
-def graph_nodes() -> list[dict]:
-    from src.agent_graph import get_app
-    from src.core.extension_manager import get_active
+def _builtin_nodes(manager) -> list[dict]:
+    """Core and extension nodes (no custom ones) of a manager, with their prompts and tools."""
+    return [n for n in _nodes(manager, None) if n["kind"] != "custom"]
 
-    get_app()
-    manager = get_active()
+
+def _nodes(manager, user: Optional[str]) -> list[dict]:
     manifests = {m.id: m for m in manager.get_all_manifests()}
+    custom = _custom_index()
     tools_by_node: dict[str, list[dict]] = {}
     for t in manager.get_tools():
-        tools_by_node.setdefault(t.node, []).append({"name": t.name, "description": t.description,
+        tools_by_node.setdefault(t.node, []).append({"name": t.name, "description": t.description, "example": t.example,
                                                      "when_to_use": t.when_to_use, "when_not_to_use": t.when_not_to_use})
     nodes = [{"id": nid, "label": label, "description": desc, "kind": "core", "extension": "core",
               "extension_name": "Rdzeń Hapilota", "prompts": prompts, "tools": tools_by_node.get(nid, []),
-              "policy": None, "then": None, "custom": False, "config": {}}
+              "policy": None, "then": None, "config": {}}
              for nid, (label, desc, prompts) in CORE_NODES.items()]
     for name, spec in manager.get_node_specs().items():
         m = manifests.get(spec.extension_id)
-        roles = list((m.raw.get("prompts") or {}) if m else {})
-        ext_nodes = [n["name"] for n in (m.raw.get("nodes") or [])] if m else [name]
-        if len(ext_nodes) > 1:  # several nodes share an extension: give each the prompts named after it
-            mine = [r for r in roles if r == name or r.startswith(name + "_")]
-            roles = mine or (roles if name == ext_nodes[0] else [])
-        config = manager.get_config(spec.extension_id)
-        custom = bool(config.get("custom"))
-        nodes.append({"id": name, "label": spec.label or name, "description": spec.description, "kind": "custom" if custom else "extension",
-                      "extension": spec.extension_id, "extension_name": m.name if m else spec.extension_id,
-                      "prompts": roles, "tools": tools_by_node.get(name, []), "then": spec.then,
-                      "policy": None if spec.then else dict(spec.after), "custom": custom,
-                      "config": {k: config[k] for k in ("model_role", "temperature", "created_by", "created_at") if k in config}})
+        node = {"id": name, "label": spec.label or name, "description": spec.description, "kind": "extension",
+                "extension": spec.extension_id, "extension_name": m.name if m else spec.extension_id,
+                "tools": tools_by_node.get(name, []), "then": spec.then,
+                "policy": None if spec.then else dict(spec.after), "config": {}}
+        if name in custom:
+            folder, data = custom[name]
+            cfg = data.get("config", {})
+            node.update(kind="custom", prompts=[], prompt=(folder / "prompts" / f"{name}.txt").read_text(encoding="utf-8"),
+                        owner=cfg.get("owner"), global_=bool(cfg.get("global")), mine=cfg.get("owner") == user,
+                        editable=user is not None and can_edit(user, data), can_share=is_admin(user) and (cfg.get("owner") == user or cfg.get("global")),
+                        config={k: cfg[k] for k in ("model_role", "temperature", "created_by", "created_at", "updated_by", "updated_at") if k in cfg})
+            node["global"] = node.pop("global_")
+        else:
+            roles = list((m.raw.get("prompts") or {}) if m else {})
+            ext_nodes = [n["name"] for n in (m.raw.get("nodes") or [])] if m else [name]
+            if len(ext_nodes) > 1:  # several nodes share an extension: give each the prompts named after it
+                mine = [r for r in roles if r == name or r.startswith(name + "_")]
+                roles = mine or (roles if name == ext_nodes[0] else [])
+            node["prompts"] = roles
+        nodes.append(node)
     return nodes
 
 
-def graph_data() -> dict:
-    """Nodes and edges for the admin panel, plus the edges of the compiled LangGraph graph (to check against)."""
-    from src.agent_graph import get_app
+def graph_nodes(user: str) -> list[dict]:
+    manager, _app = agent_for(user)
+    return _nodes(manager, user)
 
-    nodes = graph_nodes()
+
+def graph_data(user: str) -> dict:
+    """Nodes and edges of the user's agent, plus the edges of its compiled LangGraph graph (to check against)."""
+    manager, app = agent_for(user)
+    nodes = _nodes(manager, user)
     workers = [n for n in nodes if n["id"] not in ("task_planner", "router")]
     edges = [{"source": "__start__", "target": "task_planner", "kind": "always", "label": ""},
              {"source": "task_planner", "target": "router", "kind": "always", "label": "plan gotowy"},
@@ -405,7 +567,6 @@ def graph_data() -> dict:
                       "label": "po sukcesie" if policy in ("on_success", "retry") else ""})
     edges += [{"source": "__next__", "target": "router", "kind": "loop", "label": "kolejny krok planu"},
               {"source": "__next__", "target": "__end__", "kind": "always", "label": "koniec planu"}]
-    graph = get_app().get_graph()
-    compiled = sorted({(e.source, e.target) for e in graph.edges})
+    compiled = sorted({(e.source, e.target) for e in app.get_graph().edges})
     return {"nodes": nodes, "edges": edges, "compiled_edges": [list(e) for e in compiled],
-            "custom_dir": str(custom_dir()), "model_roles": MODEL_ROLES}
+            "user": user, "admin": is_admin(user), "model_roles": MODEL_ROLES}

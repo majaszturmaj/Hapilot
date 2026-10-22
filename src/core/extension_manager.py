@@ -108,8 +108,11 @@ def validate_manifest(data: Any) -> list[str]:
 
 
 class ExtensionManager:
-    def __init__(self, dirs: Optional[list[Path]] = None):
+    def __init__(self, dirs: Optional[list[Path]] = None, extra: Optional[list[Path]] = None):
+        """``dirs``: folders that contain extension folders (default: extensions/ + HAPILOT_EXTENSIONS_DIRS);
+        ``extra``: individual extension folders loaded as well (a user's custom nodes, src/admin.py)."""
         self.dirs = [Path(d) for d in dirs] if dirs is not None else None
+        self.extra = [Path(d) for d in (extra or [])]
         self.reset()
 
     # ------------------------------------------------------------------ loading
@@ -140,6 +143,10 @@ class ExtensionManager:
                     candidates.append(manifest)
                 elif manifest is not None:
                     print(f"   ⏸️  [{manifest.id}] disabled — skipping")
+        for ext_dir in self.extra:
+            manifest = self._read_manifest(ext_dir) if (ext_dir / MANIFEST).is_file() else None
+            if manifest is not None and manifest.enabled:
+                candidates.append(manifest)
         staged = [s for s in (self._stage(m) for m in candidates) if s is not None]
         for item in self._check_links(staged):
             self._commit(*item)
@@ -351,6 +358,16 @@ def set_active(manager: ExtensionManager) -> None:
 
 
 def get_active() -> ExtensionManager:
+    """The manager of the current run (``configurable["extension_manager"]``: a user's own agent in the UI),
+    else the one the shared graph was built with."""
+    try:
+        from src import run_context
+
+        manager = run_context.current("extension_manager")
+        if isinstance(manager, ExtensionManager):
+            return manager
+    except Exception:
+        pass
     return _active
 
 
