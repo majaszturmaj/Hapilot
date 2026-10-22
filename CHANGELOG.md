@@ -13,6 +13,10 @@ UI only; the agent's behaviour and the evaluation path are unchanged.
     diff for text files and download.
   - A permanent tab on the right edge (`public/panel_tab.js`, Chainlit `custom_js`) minimises the panel and
     opens it again on the answer viewed last (Chainlit's own ← button drops the panel).
+- Chat history (with login on): chats are stored per user in SQLite (`src/chat_store.py`, stdlib `sqlite3`;
+  Chainlit data layer in `src/ui_history.py`). Past chats appear in the left sidebar; a reopened chat
+  continues with its earlier messages, files and side panel. Users see only their own chats. Workspaces and
+  attachment collections are now keyed by the chat id instead of the browser session.
 - `tracing.event` also passes events to an optional run `observer` (no effect on traces).
 - New dependency `pypdfium2==5.14.0` (Apache-2.0/BSD-3): PDF page rendering and character positions.
 
