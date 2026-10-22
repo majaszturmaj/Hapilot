@@ -51,14 +51,17 @@ def test_scans_are_per_user(scans):
 def test_form_field_offers_the_scan_only_to_its_owner(scans):
     latex = "a {{PODPIS_SLOT}} b"
     assert signatures.form_field("uzytkownik", "no slot here") is None
+    values = lambda f: [o["value"] for o in f["options"]]  # noqa: E731
     field = signatures.form_field("uzytkownik", latex)
-    assert field["options"] == [signatures.BLANK_LABEL] and field["value"] == signatures.BLANK_LABEL
+    assert values(field) == [signatures.BLANK_LABEL] and field["value"] == signatures.BLANK_LABEL
+    assert field["type"] == "signature" and not field["has_scan"] and field["add_url"] == "/hapilot/admin#signature"
     signatures.save("uzytkownik", tiny_png())
     field = signatures.form_field("uzytkownik", latex)
-    assert field["options"] == [signatures.BLANK_LABEL, signatures.SCAN_LABEL]
+    assert values(field) == [signatures.BLANK_LABEL, signatures.SCAN_LABEL] and field["has_scan"]
+    assert field["options"][0]["image"] is None and field["options"][1]["image"].startswith("data:image/png;base64,")
     assert field["value"] == signatures.BLANK_LABEL  # never pre-selected
     assert signatures.form_field("uzytkownik", latex, chosen="scan")["value"] == signatures.SCAN_LABEL  # earlier choice
-    assert signatures.form_field("anna", latex)["options"] == [signatures.BLANK_LABEL]
+    assert values(signatures.form_field("anna", latex)) == [signatures.BLANK_LABEL]
     assert signatures.mode_from_form(signatures.SCAN_LABEL) == "scan" and signatures.mode_from_form("cokolwiek") == "blank"
 
 
@@ -133,7 +136,7 @@ def test_form_choice_reaches_the_pdf_through_the_document_node(scans, docker, ll
     with run_context.use_context(session_id="sig-3", user="uzytkownik"):
         form = build_document_hitl_form("letter", LETTER, _load_templates_metadata())
         field = next(f for f in form["fields"] if f["id"] == "_signature")
-        assert field["value"] == signatures.BLANK_LABEL and signatures.SCAN_LABEL in field["options"]
+        assert field["value"] == signatures.BLANK_LABEL and signatures.SCAN_LABEL in [o["value"] for o in field["options"]]
         state = {"messages": [HumanMessage(content="List do Jana")], "task_plan": {}, "current_step": None,
                  "hitl_response": {"continuation_type": "generate_pdf", "template_id": "letter",
                                    "parameters": {**LETTER, "_signature": signatures.SCAN_LABEL}}}

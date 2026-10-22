@@ -86,10 +86,19 @@
     border: "1px solid hsl(var(--border))", color: "hsl(var(--foreground))", marginRight: "6px", whiteSpace: "nowrap",
   });
 
+  const signature = link.cloneNode();
+  signature.id = "hapilot-signature-link";
+  signature.href = "/hapilot/admin#signature";
+  signature.textContent = "✍️ Mój podpis";
+  signature.title = "Skan Twojego podpisu do dokumentów PDF";
+
   function place() {
     if (!canOpen || document.getElementById("hapilot-admin-link")) return;
     const about = document.getElementById("readme-button");  // Chainlit's "O Hapilocie" button in #header
-    if (about && about.parentElement) about.parentElement.insertBefore(link, about);
+    if (about && about.parentElement) {
+      about.parentElement.insertBefore(signature, about);
+      about.parentElement.insertBefore(link, signature);
+    }
   }
 
   async function check() {
@@ -99,7 +108,7 @@
       canOpen = Boolean(me);  // any logged-in user may open the panel
       if (me) link.textContent = me.admin ? "⚙️ Panel agenta (administrator)" : "🕸️ Panel agenta";
     } catch (e) { canOpen = false; }
-    if (!canOpen) { const old = document.getElementById("hapilot-admin-link"); if (old) old.remove(); }
+    if (!canOpen) for (const id of ["hapilot-admin-link", "hapilot-signature-link"]) { const old = document.getElementById(id); if (old) old.remove(); }
     place();
   }
 

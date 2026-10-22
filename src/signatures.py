@@ -126,13 +126,25 @@ def delete(user: str) -> dict:
 
 # --------------------------------------------------------------------------- documents
 
+ADD_URL = "/hapilot/admin#signature"  # the agent panel opens the "Mój podpis" dialog
+
+
 def form_field(user: Optional[str], latex: str, chosen: Optional[str] = None) -> Optional[dict]:
-    """The "Podpis" field of the document form, when the template has a signature place."""
+    """The "Podpis" field of the document form, when the template has a signature place.
+
+    Type "signature": the form shows each option as a picture (public/elements/hitl_form.jsx) — the blank place,
+    and the user's scan itself — and links to the upload dialog. The submitted value is the option's label.
+    """
     if SLOT not in (latex or ""):
         return None
-    options = [BLANK_LABEL] + ([SCAN_LABEL] if path(user) else [])
-    value = SCAN_LABEL if chosen == "scan" and SCAN_LABEL in options else BLANK_LABEL
-    return {"id": "_signature", "label": "Podpis", "type": "select", "value": value, "options": options, "required": True}
+    options = [{"value": BLANK_LABEL, "title": "Podpiszę odręcznie", "hint": "puste miejsce nad linią — do podpisu po wydruku",
+                "image": None}]
+    scan = info(user) if path(user) else None
+    if scan:
+        options.append({"value": SCAN_LABEL, "title": "Mój skan", "hint": "Twój podpis wstawiony nad linią", "image": scan["src"]})
+    value = SCAN_LABEL if chosen == "scan" and scan else BLANK_LABEL
+    return {"id": "_signature", "label": "Podpis", "type": "signature", "value": value, "options": options, "required": True,
+            "add_url": ADD_URL, "has_scan": bool(scan)}
 
 
 def mode_from_form(value: Optional[str]) -> str:

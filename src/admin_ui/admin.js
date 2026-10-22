@@ -806,8 +806,12 @@
         h("span", { class: `role-badge${me.admin ? " admin" : ""}` }, me.admin ? "administrator" : "użytkownik"));
     } catch (e) { /* shown by the API calls below */ }
     try { await loadGraph(); } catch (err) { $("#graph-loading").textContent = "Nie udało się wczytać grafu: " + err.message; }
+    $("#top-signature").onclick = () => window.HapilotTemplates.signature();
     const tab = (location.hash || "#graph").slice(1);
-    if (["graph", "prompts", "templates", "audit"].includes(tab)) switchTab(tab);
+    if (tab === "signature") {  // link from the chat header and the document form
+      switchTab("templates");
+      window.HapilotTemplates.signature();
+    } else if (["graph", "prompts", "templates", "audit"].includes(tab)) switchTab(tab);
   }
 
   // helpers for the template editor (templates.js)

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,8 +13,36 @@ import {
 } from "@/components/ui/select";
 
 // props.fields: [{id, label, type, value, options?, required?}]
+//   type "signature" (src/signatures.py): options [{value, title, hint, image}] shown as picture cards; add_url, has_scan
 // props.title: string
 // props.template_id: string
+
+// One signature option as a picture: the scan (or an empty place) above the signature line.
+function SignatureCard({ option, selected, onSelect }) {
+  const border = selected ? "2px solid hsl(var(--primary))" : "1px solid hsl(var(--border))";
+  return (
+    <button type="button" onClick={onSelect} aria-pressed={selected}
+      style={{ flex: "1 1 220px", maxWidth: 320, textAlign: "left", border, borderRadius: 12, padding: 10, cursor: "pointer",
+               background: selected ? "hsl(var(--primary) / 0.08)" : "transparent", color: "inherit",
+               boxShadow: selected ? "0 0 0 3px hsl(var(--primary) / 0.18)" : "none" }}>
+      <div style={{ background: "#fff", borderRadius: 6, padding: "12px 16px 8px", display: "flex", flexDirection: "column",
+                    alignItems: "center", boxShadow: "0 1px 4px rgba(0,0,0,.15)" }}>
+        <div style={{ height: 56, width: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          {option.image
+            ? <img src={option.image} alt={option.title} style={{ maxHeight: 54, maxWidth: "100%", objectFit: "contain" }} />
+            : <span style={{ color: "#9aa", fontSize: 11, marginBottom: 6 }}>miejsce na podpis</span>}
+        </div>
+        <div style={{ width: "85%", borderTop: "1px solid #333" }} />
+      </div>
+      <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ width: 16, height: 16, borderRadius: "50%", flex: "none",
+                       border: selected ? "5px solid hsl(var(--primary))" : "2px solid hsl(var(--muted-foreground))" }} />
+        <span style={{ fontWeight: 600, fontSize: 13 }}>{option.title}</span>
+      </div>
+      <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2, marginLeft: 24 }}>{option.hint}</div>
+    </button>
+  );
+}
 
 export default function HitlForm() {
   const initialFields = useMemo(
@@ -24,6 +52,29 @@ export default function HitlForm() {
 
   const [fields, setFields] = useState(initialFields);
   const [submitted, setSubmitted] = useState(false);
+
+  // A scan added in another tab (✍️ Mój podpis) appears here when the user comes back to the form.
+  useEffect(() => {
+    if (!initialFields.some((f) => f.type === "signature")) return undefined;
+    const refresh = async () => {
+      try {
+        const res = await fetch("/hapilot/admin/api/signature", { credentials: "same-origin" });
+        if (!res.ok) return;
+        const sig = await res.json();
+        setFields((prev) => prev.map((f) => {
+          if (f.type !== "signature") return f;
+          const others = (f.options || []).filter((o) => o.image === null);
+          const options = sig.present
+            ? [...others, { value: "Skan mojego podpisu", title: "Mój skan", hint: "Twój podpis wstawiony nad linią", image: sig.src }]
+            : others;
+          const value = options.some((o) => o.value === f.value) ? f.value : others[0].value;
+          return { ...f, options, value, has_scan: Boolean(sig.present) };
+        }));
+      } catch (e) { /* keep the options the form came with */ }
+    };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
 
   const updateField = (index, newValue) => {
     setFields((prev) => {
@@ -72,7 +123,21 @@ export default function HitlForm() {
               {field.required && <span className="text-red-400 ml-1">*</span>}
             </Label>
 
-            {field.type === "select" ? (
+            {field.type === "signature" ? (
+              <div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                  {(field.options || []).map((opt) => (
+                    <SignatureCard key={opt.value} option={opt} selected={field.value === opt.value}
+                      onSelect={() => updateField(idx, opt.value)} />
+                  ))}
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
+                  {field.has_scan ? "Skan zmienisz w " : "Nie masz jeszcze skanu podpisu — dodasz go w "}
+                  <a href={field.add_url} target="_blank" rel="noopener" style={{ textDecoration: "underline" }}>✍️ Mój podpis</a>
+                  {field.has_scan ? "." : " (nowa karta) — po powrocie Twój skan pojawi się tutaj."}
+                </div>
+              </div>
+            ) : field.type === "select" ? (
               <Select
                 value={field.value || ""}
                 onValueChange={(val) => updateField(idx, val)}

@@ -513,6 +513,7 @@
 
   window.HapilotTemplates = {
     open: () => { if (!st.loaded) loadList().catch((err) => toast(err.message, "error")); },
+    signature: openSignature,
     dirty: () => st.dirty,
   };
 })();
