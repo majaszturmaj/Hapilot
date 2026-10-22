@@ -10,9 +10,11 @@ the chat's workspace and side panel are the same as before. Workspaces are keyed
 (thread) id, so they survive a reconnect.
 """
 
+import json
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 sys.path.insert(0, ROOT_DIR)
@@ -23,7 +25,7 @@ apply_offline_env()
 
 import chainlit as cl  # noqa: E402
 from chainlit.input_widget import Select  # noqa: E402
-from langchain_core.messages import HumanMessage, messages_from_dict, messages_to_dict  # noqa: E402
+from langchain_core.messages import AIMessage, HumanMessage, messages_from_dict, messages_to_dict  # noqa: E402
 
 from src import attachments, run_context, ui_panel  # noqa: E402
 from src.agent_graph import get_app  # noqa: E402
@@ -111,6 +113,7 @@ class _ChatState:
     def __init__(self) -> None:
         self.messages: list = []
         self.panel_turns: list = []
+        self.edit_buttons: list = []   # [{"message_id", "file"}]: "edit and generate again" under PDF answers
 
 
 def _chat() -> str:
@@ -133,6 +136,7 @@ def _save_chat() -> None:
     _STORE.save_state(chat, "messages", messages_to_dict(state.messages))
     _STORE.save_state(chat, "panel_turns", state.panel_turns)
     _STORE.save_state(chat, "panel_tokens", ui_panel.export_tokens(chat))
+    _STORE.save_state(chat, "edit_buttons", state.edit_buttons)
     _STORE.save_state(chat, "last_generated_file", cl.user_session.get("last_generated_file") or "")
 
 
@@ -193,6 +197,7 @@ async def resume(thread: dict):
     state = _ChatState()
     state.messages = messages_from_dict(saved.get("messages") or [])
     state.panel_turns = saved.get("panel_turns") or []
+    state.edit_buttons = saved.get("edit_buttons") or []
     cl.user_session.set("chat_state", state)
     cl.user_session.set("last_generated_file", saved.get("last_generated_file") or "")
     ui_panel.import_tokens(_chat(), saved.get("panel_tokens") or {})
@@ -202,6 +207,8 @@ async def resume(thread: dict):
     for turn in state.panel_turns:  # buttons are not stored with the messages; put them back
         if turn.get("message_id"):
             await _panel_action(turn["id"]).send(for_id=turn["message_id"])
+    for button in state.edit_buttons:
+        await _edit_action(button["file"]).send(for_id=button["message_id"])
 
 
 @cl.on_chat_end
@@ -255,7 +262,11 @@ async def _finish(history: list, run) -> None:
     if hitl:
         await _handle_hitl_request(hitl)
         return
-    text = final_text(run)
+    await _send_answer(final_text(run))
+
+
+async def _send_answer(text: str) -> None:
+    """Send an answer: downloads for the files it announces, the side panel, and the buttons."""
     elements, missing = [], []
     for name in generated_file_names(text):
         with run_context.use_context(session_id=_chat()):
@@ -273,12 +284,16 @@ async def _finish(history: list, run) -> None:
         text += "\n\n⬇️ **Plik do pobrania poniżej.**" if len(elements) == 1 else "\n\n⬇️ **Pliki do pobrania poniżej.**"
     if missing:
         text += f"\n\n⚠️ *Nie znalazłem pliku {', '.join(missing)} w tej rozmowie. Spróbujmy jeszcze raz.*"
-    actions = [_panel_action(panel["id"])] if panel else []
+    editable = [e.name for e in elements if await cl.make_async(_document_params)(e.name)]
+    actions = ([_panel_action(panel["id"])] if panel else []) + [_edit_action(name) for name in editable]
     message = cl.Message(content=text, elements=elements, actions=actions, author="Hapilot")
     await message.send()
     if panel:
-        panel["message_id"] = message.id  # a resumed chat puts the button back under this message
+        panel["message_id"] = message.id  # a resumed chat puts the buttons back under this message
+    _state().edit_buttons += [{"message_id": message.id, "file": name} for name in editable]
+    if panel or editable:
         await cl.make_async(_save_chat)()
+    if panel:
         await ui_panel.show(_state().panel_turns, panel["id"])
 
 
@@ -370,14 +385,12 @@ async def _handle_hitl_request(hitl_request: dict):
         await cl.Message(content=hitl_request.get("content", "Kontynuować?"), author="Hapilot", actions=actions).send()
 
 
-async def _handle_hitl_form(hitl_request: dict, continuation: dict):
-    fields = hitl_request.get("fields", [])
-    element = cl.CustomElement(name="hitl_form", display="inline", props={
-        "title": form_title(hitl_request.get("content") or ""), "fields": fields,
-        "template_id": continuation.get("template_id", "")})
-    ask = cl.AskElementMessage(
-        content="📋 Przygotowałem wstępne dane dokumentu. Sprawdź je i popraw co trzeba, a potem kliknij **Generuj PDF**:",
-        element=element, author="Hapilot", timeout=600)
+async def _ask_document_form(fields: list, title: str, template_id: str, intro: str,
+                             parameters: Optional[dict] = None) -> Optional[dict]:
+    """Show the document form; returns {"template_id", "parameters"} when submitted, else None (and says so)."""
+    element = cl.CustomElement(name="hitl_form", display="inline",
+                               props={"title": title, "fields": fields, "template_id": template_id})
+    ask = cl.AskElementMessage(content=intro, element=element, author="Hapilot", timeout=600)
     res = await ask.send()
     # Chainlit replaces the question with an English status ("Thanks for submitting"); say it in Polish
     ask.content = ("📋 Dane dokumentu zatwierdzone." if res and res.get("submitted") else
@@ -385,18 +398,94 @@ async def _handle_hitl_form(hitl_request: dict, continuation: dict):
     await ask.update()
     if res is None or not res.get("submitted"):
         await cl.Message(content="Rozumiem — anulowałem operację. Daj znać, jeśli zmienisz zdanie! 😊", author="Hapilot").send()
-        return
-    response = {**continuation, "continuation_type": continuation.get("type", "generate_pdf"),
-                "parameters": dict(continuation.get("parameters", {}))}
+        return None
+    answer = {"template_id": template_id, "parameters": dict(parameters or {})}
     for f in fields:
         fid = f.get("id", "")
         value = res.get(fid) if fid in res else f.get("value", "")
         if fid == "_template_id":
-            response["template_id"] = value
+            answer["template_id"] = value
         elif fid:
-            response["parameters"][fid] = value
+            answer["parameters"][fid] = value
+    return answer
+
+
+async def _handle_hitl_form(hitl_request: dict, continuation: dict):
+    answer = await _ask_document_form(
+        hitl_request.get("fields", []), form_title(hitl_request.get("content") or ""), continuation.get("template_id", ""),
+        "📋 Przygotowałem wstępne dane dokumentu. Sprawdź je i popraw co trzeba, a potem kliknij **Generuj PDF**:",
+        continuation.get("parameters"))
+    if answer is None:
+        return
+    response = {**continuation, "continuation_type": continuation.get("type", "generate_pdf"), **answer}
     await cl.Message(content="✅ Dane zatwierdzone — tworzę dokument, to potrwa chwilę...", author="Hapilot").send()
     await _continue_after_hitl(response)
+
+
+# --------------------------------------------------------------------------- edit a generated document again
+
+EDIT_LABEL = "✏️ Edytuj dane i wygeneruj ponownie"
+
+
+def _edit_action(pdf_name: str) -> cl.Action:
+    return cl.Action(name="edit_document", label=EDIT_LABEL, payload={"file": pdf_name})
+
+
+def _document_params(pdf_name: str) -> Optional[dict]:
+    """The template and parameters a PDF of this chat was generated from (saved next to it), if any."""
+    if not str(pdf_name).lower().endswith(".pdf"):
+        return None
+    with run_context.use_context(session_id=_chat()):
+        try:
+            path = run_context.workspace_file(Path(pdf_name).stem + ".params.json")
+        except ValueError:
+            return None
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+    except (OSError, ValueError):
+        return None
+    return saved if isinstance(saved, dict) and saved.get("template_id") else None
+
+
+def _compile_document(template_id: str, parameters: dict) -> str:
+    from src.agent_tools import tool_generate_pdf_from_template
+
+    with run_context.use_context(session_id=_chat(), profile=cl.user_session.get("profile")):
+        return tool_generate_pdf_from_template(template_id, parameters)
+
+
+@cl.action_callback("edit_document")
+async def on_edit_document(action: cl.Action):
+    """Open the form again with the values of an existing PDF; a submit compiles a new version (no model call)."""
+    from src.agent_tools import _load_templates_metadata, build_document_hitl_form
+
+    name = (action.payload or {}).get("file", "")
+    saved = await cl.make_async(_document_params)(name)
+    if saved is None:
+        await cl.Message(content=f"⚠️ Nie mogę już edytować **{name}** — brak zapisanych danych tego dokumentu.",
+                         author="Hapilot").send()
+        return
+    form = build_document_hitl_form(saved["template_id"], saved.get("parameters") or {}, _load_templates_metadata())
+    answer = await _ask_document_form(
+        form["fields"], f"Edycja dokumentu {name}", saved["template_id"],
+        f"✏️ Popraw dane dokumentu **{name}** i kliknij **Generuj PDF**. Powstanie nowa wersja pliku; "
+        "poprzednia zostaje w rozmowie.", saved.get("parameters"))
+    if answer is None:
+        return
+    cl.user_session.set("panel_pending", await cl.make_async(ui_panel.start_turn)(_chat(), f"Nowa wersja: {name}"))
+    async with cl.Step(name="📄 Generuję nową wersję dokumentu", type="tool") as step:
+        step.input = f"{name} → szablon {answer['template_id']}"
+        result = await cl.make_async(_compile_document)(answer["template_id"], answer["parameters"])
+        step.output = display_text(result)
+    state = _state()
+    state.messages = state.messages + [
+        HumanMessage(content=f"Poprawiłem dane dokumentu {name} w formularzu i poprosiłem o nową wersję."),
+        AIMessage(content=result)]
+    new_pdf = generated_file_names(result)
+    if new_pdf:
+        cl.user_session.set("last_generated_file", Path(new_pdf[0]).with_suffix(".tex").name)
+    await cl.make_async(_save_chat)()
+    await _send_answer(result)
 
 
 async def _clear_actions(clicked: cl.Action) -> None:
