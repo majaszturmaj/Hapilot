@@ -107,6 +107,10 @@ main { flex: 1; position: relative; min-height: 0; }
 .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 5px 12px; font-size: 12.5px; color: var(--muted); box-shadow: var(--shadow); }
 .stat b { color: var(--text); }
 .legend { position: absolute; left: 16px; bottom: 16px; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(6px); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; font-size: 12.5px; box-shadow: var(--shadow); z-index: 2; }
+.legend-title { cursor: pointer; user-select: none; display: flex; justify-content: space-between; gap: 12px; }
+.legend-title::after { content: "▾"; }
+.legend.collapsed .legend-title::after { content: "▸"; }
+.legend.collapsed > :not(.legend-title) { display: none; }
 .legend-title { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 4px; }
 .legend-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
 .legend-sep { height: 1px; background: var(--border); margin: 6px 0; }
@@ -164,7 +168,7 @@ svg.focus .edge-label.hl { opacity: 1; }
 .node-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .node-icon { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-size: 18px; background: color-mix(in srgb, var(--accent) 16%, var(--surface)); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
 .node-title { min-width: 0; }
-.node-title b { display: block; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-title b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 13.5px; line-height: 1.25; overflow: hidden; }
 .node-title code { font: 11px var(--mono); color: var(--muted); }
 .node-foot { display: flex; gap: 5px; flex-wrap: nowrap; overflow: hidden; }
 .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }

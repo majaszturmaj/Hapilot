@@ -142,6 +142,14 @@ the chunks marked — and the files that the request created or changed (workspa
 after; unified diff for text files). Page images and downloads are served at `/hapilot/panel/{token}`; a
 token is random, bound to one session and one file, and forgotten when the chat ends.
 
+The agent panel ([src/admin.py](../src/admin.py), routes in [src/ui_admin.py](../src/ui_admin.py)) adds
+custom nodes per user: ordinary extensions under `var/custom_extensions/<owner>/<node>/` whose node calls
+[src/core/custom_node.py](../src/core/custom_node.py) (one model call with the node's prompt). Each logged-in
+user's requests run on their own compiled graph (`admin.agent_for`: built-in extensions + global custom nodes +
+the user's private ones; cached, rebuilt when those files change), and the run config carries that graph's
+extension manager, which `get_active()` returns inside the run. Administrator prompt overrides of built-in nodes
+sit on top of the prompt registry (`set_override`). None of this is loaded by evaluation runs.
+
 ## Sandbox
 
 [src/sandbox.py](../src/sandbox.py): every code run or LaTeX compilation is a new container from

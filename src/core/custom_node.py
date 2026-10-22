@@ -1,4 +1,4 @@
-"""Custom nodes created by an administrator in the UI (src/admin.py): one model call with the node's own prompt.
+"""Custom nodes created by users in the agent panel (src/admin.py): one model call with the node's own prompt.
 
 A custom node is an ordinary extension in the custom extensions folder. Its ``nodes.py`` only calls
 ``run_custom_node(state, "<node>")``; everything else comes from the manifest: the planner tool that
@@ -63,7 +63,7 @@ def run_custom_node(state: dict, node_name: str) -> dict:
     from src.llm_config import get_llm
 
     config = _config(node_name)
-    print(f"   --> 🟣 [NODE: {node_name}] węzeł własny administratora")
+    print(f"   --> 🟣 [NODE: {node_name}] węzeł własny")
     llm, system_prompt = get_llm(node_name, model_role=config.get("model_role") or "default",
                                  temperature=config.get("temperature"))
     answer = invoke_llm_and_normalize(llm, [SystemMessage(content=system_prompt),

@@ -150,6 +150,15 @@ only their own, and a reopened chat continues with its earlier messages, workspa
 ([src/chat_store.py](src/chat_store.py), [src/ui_history.py](src/ui_history.py)). Deleting a chat removes
 it from the history together with its workspace files (`var/workspace/<chat id>/`) and its attachment index.
 
+With login on, every user also gets the **agent panel** (`/hapilot/admin`, link in the chat header): the agent
+graph drawn from the loaded extensions, and **custom nodes** — prompt-only nodes (one model call with their own
+system prompt, model role and temperature; no code, no tools) that the planner can choose like any tool. A user's
+custom nodes are private: they take part only in that user's chats. Administrators (`HAPILOT_UI_ADMINS`, default
+`admin`) can switch their nodes to global (used in everyone's chats; only administrators edit or delete them) and
+edit the prompts of the built-in nodes, with version history and restore; other users can read those prompts.
+Changes are recorded in `var/admin_audit.jsonl` and apply to the UI only — evaluation runs use the repository's
+extensions and prompts ([src/admin.py](src/admin.py), [src/ui_admin.py](src/ui_admin.py)).
+
 ### Ports
 
 | Port (127.0.0.1) | Service | Variable |

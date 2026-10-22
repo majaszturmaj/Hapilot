@@ -5,7 +5,7 @@
 
   const API = "/hapilot/admin/api";
   const SVG = "http://www.w3.org/2000/svg";
-  const CARD = { w: 228, h: 98, gap: 34 };
+  const CARD = { w: 228, h: 112, gap: 34 };
   const KIND = { core: "Rdzeń", extension: "Rozszerzenie", custom: "Własny" };
   const ACTIONS = {
     node_created: ["✨", "Dodano węzeł"], node_deleted: ["🗑️", "Usunięto węzeł"],
@@ -369,6 +369,33 @@
     renderInspector(state.layout.byId[id]);
     $("#inspector").classList.add("open");
     $("#inspector").setAttribute("aria-hidden", "false");
+    revealNode(id);
+  }
+
+  // Pan (animated) so a node is fully visible in the canvas next to the inspector.
+  function revealNode(id) {
+    const card = document.querySelector(`.node[data-id="${CSS.escape(id)}"]`);
+    if (!card) return;
+    // the visible area once the inspector has slid in (its final width, not the width mid-animation)
+    const view = $('.view[data-view="graph"]').getBoundingClientRect();
+    const docked = window.innerWidth > 900 && $("#inspector").classList.contains("open");
+    const area = { left: view.left, top: view.top, right: view.right - (docked ? 420 : 0), bottom: view.bottom };
+    const box = card.getBoundingClientRect(), pad = 48;
+    let dx = 0, dy = 0;
+    if (box.right > area.right - pad) dx = area.right - pad - box.right;
+    if (box.left + dx < area.left + pad) dx = area.left + pad - box.left;
+    if (box.bottom > area.bottom - pad) dy = area.bottom - pad - box.bottom;
+    if (box.top + dy < area.top + pad) dy = area.top + pad - box.top;
+    if (!dx && !dy) return;
+    if (document.hidden) { state.view = { ...state.view, x: state.view.x + dx, y: state.view.y + dy }; applyView(); return; }
+    const from = { ...state.view }, t0 = performance.now();
+    const step = (t) => {
+      const f = Math.min(1, (t - t0) / 260), e = 1 - Math.pow(1 - f, 3);
+      state.view = { ...from, x: from.x + dx * e, y: from.y + dy * e };
+      applyView();
+      if (f < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
   }
 
   function nodeName(id) {
@@ -630,9 +657,9 @@
       state.dirty = text.value !== state.original;
       save.disabled = !state.dirty;
       const lines = text.value.split("\n").length;
-      status.replaceChildren(h("span", {}, plural(text.value.length, "znak", "znaki", "znaków")), h("span", {}, plural(lines, "linia", "linie", "linii")),
+      status.replaceChildren(...[h("span", {}, plural(text.value.length, "znak", "znaki", "znaków")), h("span", {}, plural(lines, "linia", "linie", "linii")),
         !canEdit ? null : state.dirty ? h("span", { class: "dirty" }, "● niezapisane zmiany") : h("span", {}, "✓ zapisane"),
-        canEdit ? h("span", { style: { marginLeft: "auto" } }, "Ctrl+S — zapisz") : null);
+        canEdit ? h("span", { style: { marginLeft: "auto" } }, "Ctrl+S — zapisz") : null].filter(Boolean));
     };
     text.addEventListener("input", updateStatus);
     text.addEventListener("keydown", (ev) => {
@@ -748,6 +775,12 @@
     setupPanZoom();
     for (const b of document.querySelectorAll(".tab")) b.addEventListener("click", () => switchTab(b.dataset.tab));
     $("#add-node-btn").onclick = () => openNodeForm();
+    const legend = $("#legend");
+    try { if (localStorage.getItem("hapilot-admin-legend") === "closed") legend.classList.add("collapsed"); } catch (e) { /* private mode */ }
+    legend.querySelector(".legend-title").onclick = () => {
+      legend.classList.toggle("collapsed");
+      try { localStorage.setItem("hapilot-admin-legend", legend.classList.contains("collapsed") ? "closed" : "open"); } catch (e) { /* private mode */ }
+    };
     $("#reload-btn").onclick = () => loadGraph(true).then(() => toast("Odświeżono graf."));
     $("#inspector-close").onclick = () => selectNode(null);
     $("#prompt-search").addEventListener("input", renderPromptList);

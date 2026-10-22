@@ -21,6 +21,12 @@ UI changes, plus one agent fix in the document generator (below).
 - Generated documents: a button **✏️ Edytuj dane i wygeneruj ponownie** under every answer with a template PDF
   opens the same form with the values that PDF was made from; submitting compiles a new version directly (no
   model call, no plan replay) and keeps the previous file. Buttons come back when a chat is resumed.
+- Agent panel (`/hapilot/admin`, with login): the agent graph (drawn from the loaded extensions and checked
+  against the compiled LangGraph graph), custom prompt-only nodes and prompt editing. Every user adds, edits and
+  deletes their own **private** nodes (used only in their chats); administrators (`HAPILOT_UI_ADMINS`) switch their
+  nodes **global** (used in everyone's chats) and edit built-in prompts with version history and restore; others
+  read them. Each user's chats run on their own compiled graph; an audit log records every change. UI only:
+  evaluation runs never load custom nodes or prompt overrides.
 - `tracing.event` also passes events to an optional run `observer` (no effect on traces).
 - New dependency `pypdfium2==5.14.0` (Apache-2.0/BSD-3): PDF page rendering and character positions.
 
