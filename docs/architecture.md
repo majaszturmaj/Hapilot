@@ -133,7 +133,14 @@ characters) or indexed into a per-session collection. The message lists the atta
 wrapped at graph build time (`node_start`/`node_end`, deadline check), every model goes through
 `TracedModel` in `get_llm` (`llm_call`, full messages in `blobs/`), tool functions carry `@traced_tool`,
 and retrieval, sandbox runs, approvals and the plan emit their own events. Without a recorder (the UI)
-tracing does nothing.
+nothing is written. A run may also carry an `observer` callable that receives every event: the UI uses
+it for its side panel **📎 Źródła i pliki** ([src/ui_panel.py](../src/ui_panel.py),
+[src/source_view.py](../src/source_view.py)). The panel lists the documents whose chunks went into the
+prompts of a request (cited first: those the answer names by path or file name) and shows each one whole —
+PDF pages rendered by pypdfium2 with boxes over the chunk text, other formats as the extracted text with
+the chunks marked — and the files that the request created or changed (workspace snapshot before and
+after; unified diff for text files). Page images and downloads are served at `/hapilot/panel/{token}`; a
+token is random, bound to one session and one file, and forgotten when the chat ends.
 
 ## Sandbox
 

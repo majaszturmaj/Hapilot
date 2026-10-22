@@ -1,7 +1,9 @@
 """Execution traces for evaluation runs (``hapilot.trace/1``, see docs/EVALUATION_INTERFACE.md).
 
 A ``TraceRecorder`` is attached to a run through the run context (``configurable["trace"]``). Code
-anywhere in Hapilot calls ``tracing.event(...)``; without a recorder (the UI) that is a no-op.
+anywhere in Hapilot calls ``tracing.event(...)``; without a recorder (the UI) nothing is written. A run may
+also carry an ``observer`` callable (``configurable["observer"]``) that receives every event; the UI
+uses it for its side panel (src/source_view.py).
 Large payloads (prompts, responses, long tool arguments) are stored once in ``blobs/<sha256>.json``
 and referenced as ``"sha256:<hex>"``.
 
@@ -76,6 +78,7 @@ def current() -> Optional[TraceRecorder]:
 
 
 def event(type_: str, **fields: Any) -> None:
+    _notify_observer(type_, fields)
     rec = current()
     if rec is None:
         return
@@ -90,6 +93,19 @@ def event(type_: str, **fields: Any) -> None:
     if type_ == "plan":
         rec.plan_tools = [s.get("tool", "") for s in (fields.get("task_plan") or {}).get("steps", [])]
     rec.emit(type_, **fields)
+
+
+def _notify_observer(type_: str, fields: dict) -> None:
+    """Pass the event to the run's ``observer`` callable, if any (the UI's side panel, src/source_view.py)."""
+    from src import run_context
+
+    observer = run_context.current("observer")
+    if not callable(observer):
+        return
+    try:
+        observer(type_, fields)
+    except Exception as exc:  # the panel must never break a run
+        print(f"⚠️ [TRACE] observer failed on {type_}: {exc}")
 
 
 def blob(obj: Any) -> Optional[str]:

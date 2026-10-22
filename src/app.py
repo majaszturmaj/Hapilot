@@ -20,7 +20,7 @@ import chainlit as cl  # noqa: E402
 from chainlit.input_widget import Select  # noqa: E402
 from langchain_core.messages import HumanMessage  # noqa: E402
 
-from src import attachments, run_context  # noqa: E402
+from src import attachments, run_context, ui_panel  # noqa: E402
 from src.agent_graph import get_app  # noqa: E402
 from src.config import get_settings  # noqa: E402
 from src.graph_runner import (display_text, extract_hitl_request, final_text, generated_file_names,  # noqa: E402
@@ -76,6 +76,8 @@ def _summarize_node_output(node_name: str, output: dict) -> str:
     return "Gotowe"
 
 
+ui_panel.install_route()  # PDF pages and downloads for the right-hand panel
+
 # --------------------------------------------------------------------------- optional login
 
 if users_file():
@@ -109,6 +111,7 @@ async def start():
     cl.user_session.set("messages", [])
     cl.user_session.set("last_generated_file", "")
     cl.user_session.set("profile", settings.default_profile)
+    cl.user_session.set("panel_turns", [])
     await _send_settings()
     profile = settings.profile(settings.default_profile)
     await cl.Message(
@@ -135,9 +138,16 @@ async def settings_update(values: dict):
         await cl.Message(content=f"⚙️ Profil modeli dla tej rozmowy: **{name}**", author="Hapilot").send()
 
 
+@cl.on_chat_end
+async def end():
+    ui_panel.forget_session(cl.context.session.id)
+
+
 def _run_config() -> dict:
+    pending = cl.user_session.get("panel_pending")
     return run_context.make_config(cl.context.session.id, profile=cl.user_session.get("profile"),
-                                   extra_collections=cl.user_session.get("extra_collections") or None)
+                                   extra_collections=cl.user_session.get("extra_collections") or None,
+                                   observer=pending.observer if pending else None)
 
 
 def _inputs(history: list, hitl_response=None) -> dict:
@@ -190,12 +200,44 @@ async def _finish(history: list, run) -> None:
             elements.append(cl.File(name=name, path=str(path), display="inline"))
         else:
             missing.append(name)
+    panel = await _panel_turn(text)
     text = display_text(text)
     if elements:
         text += "\n\n⬇️ **Plik do pobrania poniżej.**" if len(elements) == 1 else "\n\n⬇️ **Pliki do pobrania poniżej.**"
     if missing:
         text += f"\n\n⚠️ *Nie znalazłem pliku {', '.join(missing)} w tej rozmowie. Spróbujmy jeszcze raz.*"
-    await cl.Message(content=text, elements=elements, author="Hapilot").send()
+    actions = [cl.Action(name="show_panel", label="📎 Źródła i pliki", payload={"turn": panel["id"]})] if panel else []
+    await cl.Message(content=text, elements=elements, actions=actions, author="Hapilot").send()
+    if panel:
+        await ui_panel.show(cl.user_session.get("panel_turns"), panel["id"])
+
+
+async def _panel_turn(answer: str):
+    """Close the request's panel turn; returns it when it has sources or changed files."""
+    pending = cl.user_session.get("panel_pending")
+    cl.user_session.set("panel_pending", None)
+    if pending is None:
+        return None
+    try:
+        turn = await cl.make_async(ui_panel.build_turn)(cl.context.session.id, pending, answer)
+    except Exception as exc:  # the answer matters more than the panel
+        print(f"⚠️ [PANEL] {type(exc).__name__}: {exc}")
+        return None
+    if turn is None:
+        return None
+    cl.user_session.set("panel_turns", ui_panel.add_turn(cl.user_session.get("panel_turns") or [], turn))
+    return turn
+
+
+@cl.action_callback("show_panel")
+async def on_show_panel(action: cl.Action):
+    turns = cl.user_session.get("panel_turns") or []
+    wanted = (action.payload or {}).get("turn")
+    if any(t["id"] == wanted for t in turns):
+        await ui_panel.show(turns, wanted)
+    else:
+        await cl.Message(content="Ta odpowiedź jest już za stara — panel pamięta ostatnie "
+                                 f"{ui_panel.MAX_TURNS} odpowiedzi ze źródłami lub plikami.", author="Hapilot").send()
 
 
 def _attach(message: cl.Message) -> str:
@@ -218,6 +260,7 @@ def _attach(message: cl.Message) -> str:
 async def main(message: cl.Message):
     history = cl.user_session.get("messages")
     block = await cl.make_async(_attach)(message)
+    cl.user_session.set("panel_pending", await cl.make_async(ui_panel.start_turn)(cl.context.session.id, message.content))
     history.append(HumanMessage(content=message.content + block))
     run = await _run(_inputs(history), message.content)
     await _finish(history, run)

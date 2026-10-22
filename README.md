@@ -62,7 +62,7 @@ knowledge       writer          chat     document_generator   modify_document   
 | Documents | LaTeX templates (letter, report, protocol) in [templates/](templates/), compiled to PDF in the sandbox; Polish text in the PDF can be copied and searched; short reports get a compact layout |
 | Uploaded files | .pdf, .docx, .eml, .xlsx, .txt, .md attached in the chat: short ones go into the message, long ones are indexed for the session. Tools: summary of the whole file, editing (Word files keep styles, lists and tables), adding to the company knowledge base after confirmation ([extensions/file_tools](extensions/file_tools)) |
 | Sandbox | Fresh Docker container per run: no network, non-root, read-only root filesystem, CPU/memory/process limits, timeout; the session's workspace is the only writable mount, company documents are readable at `/data` ([src/sandbox.py](src/sandbox.py)) |
-| UI | Chainlit, per-session workspace and model profile, optional password login |
+| UI | Chainlit, per-session workspace and model profile, optional password login; a right-hand panel **📎 Źródła i pliki** shows the company documents behind each answer (PDFs as original pages, other formats as full text) with the fragments that went into the prompt highlighted, and the files the request created or changed (preview, diff, download) ([src/source_view.py](src/source_view.py)) |
 
 Human in the loop: under the default `ask` policy Hapilot asks before running plans longer than two
 steps, shows document parameters in a form before generating a PDF, asks before adding a file to the shared
@@ -95,7 +95,8 @@ What Hapilot does to keep data on your machines:
 - Hugging Face, Chroma and LangChain telemetry and downloads are switched off at run time (`src/privacy.py`);
   the embedding model is downloaded once during setup;
 - the sandbox has no network; the UI, model proxy and optional n8n listen on 127.0.0.1 only;
-- each chat session has its own workspace; files are never served across sessions. A file a user adds to the
+- each chat session has its own workspace; files are never served across sessions (the side panel serves
+  pages and downloads only through random per-session links, forgotten when the chat ends). A file a user adds to the
   knowledge base becomes searchable in every session of that installation; Hapilot asks before adding it.
 
 The claim is tested, not only stated: `scripts/hapilotctl.py egress-test` runs the scenario suite with

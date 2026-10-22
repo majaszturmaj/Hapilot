@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+UI only; the agent's behaviour and the evaluation path are unchanged.
+
+- Right-hand panel **📎 Źródła i pliki** (Chainlit element sidebar, `public/elements/workspace_panel.jsx`). Opens
+  after an answer that used company documents or changed files; the button under the answer reopens it.
+  - *Źródła*: the documents whose chunks went into the prompts for the answer, cited ones first. PDFs are shown
+    as their original pages with the chunks highlighted on the page; .docx, .eml, .xlsx, .txt and .md as the
+    full extracted text (spreadsheets as tables) with the chunks marked; buttons jump to each chunk.
+  - *Pliki*: files created or modified by the request (workspace snapshot before/after), with preview,
+    diff for text files and download.
+- `tracing.event` also passes events to an optional run `observer` (no effect on traces).
+- New dependency `pypdfium2==5.14.0` (Apache-2.0/BSD-3): PDF page rendering and character positions.
+
 ## v0.3.1 — 2026-10-19 (stage 6: deployment and timing; fonts)
 
 The agent's behaviour is unchanged; generated PDFs look different (fonts).
