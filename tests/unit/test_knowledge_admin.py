@@ -363,7 +363,8 @@ def api(kb, monkeypatch):
 
     from src import ui_admin
 
-    monkeypatch.setattr(ui_admin, "_identifier", lambda request: request.headers.get("x-test-user"))
+    # the login (Chainlit's JWT cookie) stands in as a header; no user = None, as _identifier returns without a token
+    monkeypatch.setattr(ui_admin, "_identifier", lambda request: request.headers.get("x-test-user") or None)
     app = Starlette(routes=[Route(ui_admin.PREFIX + p, e, methods=m) for p, e, m in ui_admin.ROUTES])
     client = TestClient(app, base_url="https://hapilot.example.test")
     client.headers.update({"x-test-user": "admin", "x-hapilot-admin": "1"})
