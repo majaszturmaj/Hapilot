@@ -1,15 +1,17 @@
 """Chainlit front end.
 
-Run on the GPU host with ``scripts/hapilotctl.py ui up`` (binds to 127.0.0.1); open it through an
-SSH tunnel. Each chat has its own workspace and its own model profile (chosen in the ⚙️
-settings panel from the profiles defined by the operator in config/profiles.yaml).
+Run on the GPU host with ``scripts/hapilotctl.py ui up`` (binds to 127.0.0.1 unless ``HAPILOT_UI_HOST`` says
+otherwise); open it through an SSH tunnel, or from the local network (docs/deployment.md). Each chat has its own
+workspace and its own model profile (chosen in the ⚙️ settings panel from the profiles defined by the operator in
+config/profiles.yaml).
 
 With login on (``HAPILOT_UI_USERS_FILE``) chats are kept per user (src/ui_history.py): past chats
 are listed in the left sidebar and can be continued — the agent gets the earlier messages back, and
 the chat's workspace and side panel are the same as before. Workspaces are keyed by the chat
 (thread) id, so they survive a reconnect. Every logged-in user also gets the agent panel at
 ``/hapilot/admin`` (src/ui_admin.py) and runs on their own agent: built-in nodes, global custom nodes
-and their own private ones (src/admin.py).
+and their own private ones (src/admin.py). Handlers are counted while they run (src/ui_activity.py), so the
+updater never restarts the UI in the middle of an answer.
 """
 
 import json
@@ -29,7 +31,7 @@ import chainlit as cl  # noqa: E402
 from chainlit.input_widget import Select  # noqa: E402
 from langchain_core.messages import AIMessage, HumanMessage, messages_from_dict, messages_to_dict  # noqa: E402
 
-from src import attachments, run_context, ui_panel  # noqa: E402
+from src import attachments, run_context, ui_activity, ui_panel  # noqa: E402
 from src.agent_graph import get_app  # noqa: E402
 from src.config import get_settings  # noqa: E402
 from src.graph_runner import (display_text, extract_hitl_request, final_text, generated_file_names,  # noqa: E402
@@ -168,6 +170,7 @@ async def _send_settings() -> None:
 
 
 @cl.on_chat_start
+@ui_activity.tracked
 async def start():
     settings = get_settings()
     _state()
@@ -192,6 +195,7 @@ async def start():
 
 
 @cl.on_settings_update
+@ui_activity.tracked
 async def settings_update(values: dict):
     name = values.get("profile")
     if name and name in get_settings().profiles and name != cl.user_session.get("profile"):
@@ -200,6 +204,7 @@ async def settings_update(values: dict):
 
 
 @cl.on_chat_resume
+@ui_activity.tracked
 async def resume(thread: dict):
     """A past chat is opened again: restore the agent's messages, the side panel and the profile."""
     settings = get_settings()
@@ -349,6 +354,7 @@ async def _panel_turn(answer: str):
 
 
 @cl.action_callback("show_panel")
+@ui_activity.tracked
 async def on_show_panel(action: cl.Action):
     turns = _state().panel_turns
     wanted = (action.payload or {}).get("turn")
@@ -376,6 +382,7 @@ def _attach(message: cl.Message) -> str:
 
 
 @cl.on_message
+@ui_activity.tracked
 async def main(message: cl.Message):
     history = _state().messages
     block = await cl.make_async(_attach)(message)
@@ -483,6 +490,7 @@ def _compile_document(template_id: str, parameters: dict, signature: Optional[st
 
 
 @cl.action_callback("edit_document")
+@ui_activity.tracked
 async def on_edit_document(action: cl.Action):
     """Open the form again with the values of an existing PDF; a submit compiles a new version (no model call)."""
     from src.agent_tools import _load_templates_metadata, build_document_hitl_form
@@ -534,12 +542,14 @@ async def _clear_actions(clicked: cl.Action) -> None:
 
 
 @cl.action_callback("hitl_cancel")
+@ui_activity.tracked
 async def on_hitl_cancel(action: cl.Action):
     await _clear_actions(action)
     await cl.Message(content="Rozumiem — anulowałem. Jestem tu, gdybyś potrzebował czegoś innego! 😊", author="Hapilot").send()
 
 
 @cl.action_callback("hitl_yes")
+@ui_activity.tracked
 async def on_hitl_yes(action: cl.Action):
     continuation = cl.user_session.get("hitl_continuation") or {}
     await _clear_actions(action)
@@ -547,6 +557,7 @@ async def on_hitl_yes(action: cl.Action):
 
 
 @cl.action_callback("hitl_no")
+@ui_activity.tracked
 async def on_hitl_no(action: cl.Action):
     continuation = cl.user_session.get("hitl_continuation") or {}
     await _clear_actions(action)
@@ -557,6 +568,7 @@ async def on_hitl_no(action: cl.Action):
 
 
 @cl.action_callback("hitl_select")
+@ui_activity.tracked
 async def on_hitl_select(action: cl.Action):
     defs = cl.user_session.get("hitl_action_defs") or []
     continuation = cl.user_session.get("hitl_continuation") or {}

@@ -18,6 +18,7 @@ def pytest_configure(config):
     import tempfile
 
     data_dir = Path(tempfile.mkdtemp(prefix="hapilot-tests-"))
+    os.environ["HAPILOT_SKIP_DOTENV"] = "1"  # the host's .env (a running install's settings) never reaches the tests
     os.environ["HAPILOT_DATA_DIR"] = str(data_dir)
     os.environ["HAPILOT_APPROVAL_POLICY"] = "ask"
     os.environ.pop("HAPILOT_PROFILE", None)

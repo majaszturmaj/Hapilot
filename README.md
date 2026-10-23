@@ -94,7 +94,9 @@ What Hapilot does to keep data on your machines:
 - model endpoints are checked against a local/LAN allowlist (`src/config.py`); there is no cloud model path;
 - Hugging Face, Chroma and LangChain telemetry and downloads are switched off at run time (`src/privacy.py`);
   the embedding model is downloaded once during setup;
-- the sandbox has no network; the UI, model proxy and optional n8n listen on 127.0.0.1 only;
+- the sandbox has no network; the UI, model proxy and optional n8n listen on 127.0.0.1 only — the UI is opened to
+  the local network only when the operator sets `HAPILOT_UI_HOST` (with login and HTTPS,
+  [docs/deployment.md](docs/deployment.md)); model servers always stay on 127.0.0.1;
 - each chat session has its own workspace; files are never served across sessions (the side panel serves
   pages and downloads only through random per-session links, forgotten when the chat ends). A file a user adds to the
   knowledge base becomes searchable in every session of that installation; Hapilot asks before adding it.
@@ -108,7 +110,8 @@ and page load, indexing, agent runs; no outbound connection, no DNS lookup; ever
 session over the UI's websocket (the agent code it runs is the same as in the scenarios).
 
 The optional n8n extension (Outlook e-mail drafts and calendar) is outside this claim: n8n talks to
-Office 365 by design. It is disabled by default.
+Office 365 by design. It is disabled by default. So is the optional updater (`hapilotctl.py update`, for installs
+that follow a git branch): it fetches from git and, when requirements change, from PyPI — never from the UI process.
 
 ## Running on a GPU host
 
@@ -143,7 +146,9 @@ Everything binds to 127.0.0.1 on the GPU host. From your computer:
 ssh -N -L 8601:127.0.0.1:8601 <user>@<gpu-host>
 ```
 
-then open http://localhost:8601. For shared use, enable the login: `hapilotctl.py add-user NAME` and
+then open http://localhost:8601. To let colleagues open the UI in their browser on the local network — with
+HTTPS, and updates that follow a git branch (tested, switched, rolled back on failure) — see
+[docs/deployment.md](docs/deployment.md). For shared use, enable the login: `hapilotctl.py add-user NAME` and
 set `HAPILOT_UI_USERS_FILE` in `.env`. With login on, chats are kept per user in
 `var/chat_history.sqlite` (`HAPILOT_CHAT_DB`): past chats are listed in the left sidebar, each user sees
 only their own, and a reopened chat continues with its earlier messages, workspace files and side panel
@@ -176,7 +181,7 @@ the signature; without a form (evaluation) the place stays blank ([src/signature
 
 ### Ports
 
-| Port (127.0.0.1) | Service | Variable |
+| Port (127.0.0.1; the UI: `HAPILOT_UI_HOST`) | Service | Variable |
 |---|---|---|
 | 8601 | Chainlit UI | `HAPILOT_UI_PORT` |
 | 8611 | Model swap proxy (OpenAI-compatible) | `HAPILOT_MODELSWAP_PORT` |

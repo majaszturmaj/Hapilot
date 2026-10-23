@@ -174,6 +174,10 @@ class Settings:
     ui_port: int = 8601
     modelswap_port: int = 8611
     backend_port: int = 8612
+    ui_host: str = "127.0.0.1"
+    ui_ssl_cert: Optional[Path] = None
+    ui_ssl_key: Optional[Path] = None
+    update_branch: str = "main"
 
     def profile(self, name: Optional[str] = None) -> Profile:
         name = name or self.default_profile
@@ -185,7 +189,8 @@ class Settings:
 def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
     """Build Settings from an environment mapping (defaults to os.environ after loading .env)."""
     if env is None:
-        load_dotenv(PROJECT_ROOT / ".env")
+        if os.environ.get("HAPILOT_SKIP_DOTENV") != "1":  # unit tests set it: the host's .env must not reach them
+            load_dotenv(PROJECT_ROOT / ".env")
         env = os.environ
 
     def get(name: str, default: str) -> str:
@@ -219,6 +224,16 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
     n8n_base = get("HAPILOT_N8N_WEBHOOK_BASE", "http://127.0.0.1:8678/webhook").rstrip("/")
     assert_local_url(n8n_base)  # used only when the optional n8n_operations extension is enabled
 
+    ui_host = get("HAPILOT_UI_HOST", "127.0.0.1").strip()
+    try:
+        ipaddress.ip_address(ui_host)
+    except ValueError:
+        raise ConfigError("HAPILOT_UI_HOST must be an IP address of this machine: 127.0.0.1 (default), "
+                          "its LAN address or 0.0.0.0 (all interfaces)") from None
+    cert, key = get("HAPILOT_UI_SSL_CERT", "").strip(), get("HAPILOT_UI_SSL_KEY", "").strip()
+    if bool(cert) != bool(key):
+        raise ConfigError("HAPILOT_UI_SSL_CERT and HAPILOT_UI_SSL_KEY must be set together (HTTPS) or both left empty")
+
     return Settings(
         data_dir=data_dir,
         workspace_root=path("HAPILOT_WORKSPACE_DIR", data_dir / "workspace"),
@@ -245,6 +260,10 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         ui_port=port("HAPILOT_UI_PORT", 8601),
         modelswap_port=port("HAPILOT_MODELSWAP_PORT", 8611),
         backend_port=port("HAPILOT_BACKEND_PORT", 8612),
+        ui_host=ui_host,
+        ui_ssl_cert=path("HAPILOT_UI_SSL_CERT", Path()) if cert else None,
+        ui_ssl_key=path("HAPILOT_UI_SSL_KEY", Path()) if key else None,
+        update_branch=get("HAPILOT_UPDATE_BRANCH", "main").strip() or "main",
     )
 
 

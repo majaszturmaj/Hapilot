@@ -176,3 +176,7 @@ and the results of earlier plan steps. The image is never pulled at run time.
 starts `llama-server` for the requested model (from `config/models.local.yaml`), stopping the previous
 one; requests are handled one at a time. [scripts/hapilotctl.py](../scripts/hapilotctl.py) starts and
 stops the proxy and the UI, records their PIDs, and runs setup, indexing, smoke tests and the egress test.
+For installs used by a team it also binds the UI to the local network with HTTPS and follows a git branch
+(`update`: back up, test the new commit in a worktree, switch, restart, roll back on failure); the UI records
+running chat handlers in `run/ui_activity.json` ([src/ui_activity.py](../src/ui_activity.py)) so that a restart
+waits until nobody is mid-answer ([deployment.md](deployment.md)).

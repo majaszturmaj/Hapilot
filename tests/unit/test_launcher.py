@@ -41,6 +41,7 @@ def test_launcher_has_no_broad_kill_commands():
     text = (ROOT / "scripts" / "hapilotctl.py").read_text()
     code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
     code = re.sub(r'"""[\s\S]*?"""', "", code)
+    code = code.replace('git("worktree", "prune")', "")  # git's bookkeeping of the updater's own temporary checkout
     for forbidden in ("pkill", "killall", "docker rm", "prune", "remove-orphans", "down --"):
         assert forbidden not in code, forbidden
 

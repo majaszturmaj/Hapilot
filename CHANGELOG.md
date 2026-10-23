@@ -38,6 +38,15 @@ UI changes, plus one agent fix in the document generator (below).
   way; in evaluation runs it is always blank (the letter's gap above the line is 1.2 cm instead of 1.6 cm, the
   report's and protocol's signature rows a few millimetres taller). The choice is kept for regeneration.
 - `tracing.event` also passes events to an optional run `observer` (no effect on traces).
+- Team installs on a local network (`docs/deployment.md`): `HAPILOT_UI_HOST` binds the UI to a LAN address or
+  `0.0.0.0` (model servers stay on 127.0.0.1), `HAPILOT_UI_SSL_CERT`/`HAPILOT_UI_SSL_KEY` serve it over HTTPS,
+  `hapilotctl.py make-cert` creates a self-signed certificate. `hapilotctl.py update` follows a git branch
+  (`HAPILOT_UPDATE_BRANCH`, default `main`): waits until nobody has used the UI for 10 minutes, backs up chats,
+  accounts, nodes, templates and signatures, installs changed requirements, runs the unit tests of the new commit
+  in a worktree, switches, restarts the UI and checks it; on failure it goes back to the previous commit and does
+  not retry that commit. `ui ensure` / `update --keep-running` for cron; `ui down` keeps it off.
+- Unit tests no longer read the project's `.env` (`HAPILOT_SKIP_DOTENV`, set by `tests/conftest.py`): a running
+  install's settings could point tests at its data.
 - New dependency `pypdfium2==5.14.0` (Apache-2.0/BSD-3): PDF page rendering and character positions.
 
 Agent fix (document generator):
