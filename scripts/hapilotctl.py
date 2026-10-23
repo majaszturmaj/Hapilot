@@ -92,6 +92,8 @@ def owned(name: str) -> dict | None:
     if not record.is_file():
         return None
     info = json.loads(record.read_text())
+    if "pid" not in info:  # not a process record
+        return None
     if info.get("marker", "") in _cmdline(info["pid"]):
         return info
     record.unlink(missing_ok=True)  # stale record (process gone or PID reused)
@@ -201,10 +203,13 @@ def gpu_users() -> list[tuple[int, int]]:
     return users
 
 
+PROCESSES = ("modelswap", "ui")  # process records in var/run/; other files there (update.json, ui_activity.json) are not
+
+
 def our_pids() -> set[int]:
     pids = set()
-    for record in run_dir().glob("*.json"):
-        info = owned(record.stem)
+    for name in PROCESSES:
+        info = owned(name)
         if info:
             pids.add(info["pid"])
     backend = log_dir() / "backend.pid"

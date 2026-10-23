@@ -37,6 +37,20 @@ def test_stale_or_reused_pid_record_is_ignored(tmp_path, monkeypatch):
     assert not (tmp_path / "ui.json").exists()
 
 
+def test_status_files_in_the_run_folder_are_not_process_records(tmp_path, monkeypatch):
+    """update.json and ui_activity.json sit next to the process records; `status` (and the GPU check before starting
+    models) crashed with KeyError: 'pid' on them."""
+    import os
+
+    monkeypatch.setattr(hapilotctl, "run_dir", lambda: tmp_path)
+    monkeypatch.setattr(hapilotctl, "gpu_users", lambda: [])
+    (tmp_path / "update.json").write_text(json.dumps({"state": "current", "time": "t", "commit": "a" * 40, "message": "m"}))
+    (tmp_path / "ui_activity.json").write_text(json.dumps({"pid": os.getpid(), "active": 0, "updated": 0}))
+    assert hapilotctl.our_pids() == set()
+    hapilotctl.cmd_status(None)
+    assert (tmp_path / "update.json").is_file() and (tmp_path / "ui_activity.json").is_file()
+
+
 def test_launcher_has_no_broad_kill_commands():
     text = (ROOT / "scripts" / "hapilotctl.py").read_text()
     code = "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
