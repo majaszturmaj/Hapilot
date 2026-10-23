@@ -240,7 +240,7 @@
     else if (f.via === "czat") first = h("span", {}, "💬 ", h("b", {}, f.added_by || "użytkownik"), " (z czatu)");
     else first = h("span", { class: "muted" }, "📁 folder na serwerze");
     const when = f.added_at || f.modified;
-    return h("td", { class: "kb-who" }, first, h("div", { class: "muted small" }, fmtDate(when)),
+    return h("td", { class: "kb-who" }, first, when ? h("div", { class: "muted small" }, fmtDate(when)) : null,
       f.replaced_by ? h("div", { class: "muted small" }, `🔄 nowa wersja: ${f.replaced_by}, ${fmtDate(f.replaced_at)}`) : null);
   }
 
