@@ -31,7 +31,7 @@ import chainlit as cl  # noqa: E402
 from chainlit.input_widget import Select  # noqa: E402
 from langchain_core.messages import AIMessage, HumanMessage, messages_from_dict, messages_to_dict  # noqa: E402
 
-from src import attachments, run_context, ui_activity, ui_panel  # noqa: E402
+from src import attachments, branding, run_context, ui_activity, ui_panel  # noqa: E402
 from src.agent_graph import get_app  # noqa: E402
 from src.config import get_settings  # noqa: E402
 from src.graph_runner import (display_text, extract_hitl_request, final_text, generated_file_names,  # noqa: E402
@@ -106,6 +106,10 @@ if users_file():
 
     _admin.enable_for_ui()
     _install_admin_routes()
+    # company look (name, description, logo, colour) set by an administrator; UI only (src/branding.py)
+    from src.ui_branding import install as _install_branding
+
+    _install_branding()
 
     @cl.password_auth_callback
     def _auth(username: str, password: str):
@@ -126,6 +130,11 @@ class _ChatState:
         self.messages: list = []
         self.panel_turns: list = []
         self.edit_buttons: list = []   # [{"message_id", "file"}]: "edit and generate again" under PDF answers
+
+
+def _author() -> str:
+    """The assistant's name on messages: Hapilot, or the company's name set in the agent panel (src/branding.py)."""
+    return branding.name()
 
 
 def _chat() -> str:
@@ -180,7 +189,7 @@ async def start():
     profile = settings.profile(settings.default_profile)
     await cl.Message(
         content=(
-            "👋 **Cześć! Jestem Hapilot — Twój lokalny asystent AI.**\n\n"
+            f"👋 **Cześć! Jestem {_author()} — Twój lokalny asystent AI.**\n\n"
             "Oto co razem możemy zrobić:\n"
             "- 📄 **Tworzyć dokumenty** — listy, raporty i protokoły gotowe do druku\n"
             "- 🧠 **Znajdować odpowiedzi** w dokumentach firmy\n"
@@ -190,7 +199,7 @@ async def start():
             "- 💬 **Rozmawiać** — po prostu zapytaj\n\n"
             f"Profil modeli: **{profile.name}** ({profile.description}). Zmienisz go w ⚙️."
         ),
-        author="Hapilot",
+        author=_author(),
     ).send()
 
 
@@ -200,7 +209,7 @@ async def settings_update(values: dict):
     name = values.get("profile")
     if name and name in get_settings().profiles and name != cl.user_session.get("profile"):
         cl.user_session.set("profile", name)
-        await cl.Message(content=f"⚙️ Profil modeli dla tej rozmowy: **{name}**", author="Hapilot").send()
+        await cl.Message(content=f"⚙️ Profil modeli dla tej rozmowy: **{name}**", author=_author()).send()
 
 
 @cl.on_chat_resume
@@ -319,7 +328,7 @@ async def _send_answer(text: str) -> None:
         text += f"\n\n⚠️ *Nie znalazłem pliku {', '.join(missing)} w tej rozmowie. Spróbujmy jeszcze raz.*"
     editable = [e.name for e in elements if await cl.make_async(_document_params)(e.name)]
     actions = ([_panel_action(panel["id"])] if panel else []) + [_edit_action(name) for name in editable]
-    message = cl.Message(content=text, elements=elements, actions=actions, author="Hapilot")
+    message = cl.Message(content=text, elements=elements, actions=actions, author=_author())
     await message.send()
     if panel:
         panel["message_id"] = message.id  # a resumed chat puts the buttons back under this message
@@ -362,7 +371,7 @@ async def on_show_panel(action: cl.Action):
         await ui_panel.show(turns, wanted)
     else:
         await cl.Message(content="Ta odpowiedź jest już za stara — panel pamięta ostatnie "
-                                 f"{ui_panel.MAX_TURNS} odpowiedzi ze źródłami lub plikami.", author="Hapilot").send()
+                                 f"{ui_panel.MAX_TURNS} odpowiedzi ze źródłami lub plikami.", author=_author()).send()
 
 
 def _attach(message: cl.Message) -> str:
@@ -412,12 +421,12 @@ async def _handle_hitl_request(hitl_request: dict):
                              payload={"index": i, **(a.get("payload", {}))}) for i, a in enumerate(hitl_request.get("actions", []))]
         actions.append(cl.Action(name="hitl_cancel", label="↩️ Anuluj", payload={"action": "cancel"}))
         cl.user_session.set("hitl_actions", actions)
-        await cl.Message(content=hitl_request.get("content", "Którą opcję wybierasz?"), author="Hapilot", actions=actions).send()
+        await cl.Message(content=hitl_request.get("content", "Którą opcję wybierasz?"), author=_author(), actions=actions).send()
     else:
         actions = [cl.Action(name="hitl_yes", label="✅ Tak, działaj!", payload={"action": "yes"}),
                    cl.Action(name="hitl_no", label="↩️ Nie, dziękuję", payload={"action": "no"})]
         cl.user_session.set("hitl_actions", actions)
-        await cl.Message(content=hitl_request.get("content", "Kontynuować?"), author="Hapilot", actions=actions).send()
+        await cl.Message(content=hitl_request.get("content", "Kontynuować?"), author=_author(), actions=actions).send()
 
 
 async def _ask_document_form(fields: list, title: str, template_id: str, intro: str,
@@ -425,14 +434,14 @@ async def _ask_document_form(fields: list, title: str, template_id: str, intro: 
     """Show the document form; returns {"template_id", "parameters"} when submitted, else None (and says so)."""
     element = cl.CustomElement(name="hitl_form", display="inline",
                                props={"title": title, "fields": fields, "template_id": template_id})
-    ask = cl.AskElementMessage(content=intro, element=element, author="Hapilot", timeout=600)
+    ask = cl.AskElementMessage(content=intro, element=element, author=_author(), timeout=600)
     res = await ask.send()
     # Chainlit replaces the question with an English status ("Thanks for submitting"); say it in Polish
     ask.content = ("📋 Dane dokumentu zatwierdzone." if res and res.get("submitted") else
                    "📋 Formularz zamknięty bez zatwierdzenia." if res else "📋 Czas na wypełnienie formularza minął.")
     await ask.update()
     if res is None or not res.get("submitted"):
-        await cl.Message(content="Rozumiem — anulowałem operację. Daj znać, jeśli zmienisz zdanie! 😊", author="Hapilot").send()
+        await cl.Message(content="Rozumiem — anulowałem operację. Daj znać, jeśli zmienisz zdanie! 😊", author=_author()).send()
         return None
     answer = {"template_id": template_id, "parameters": dict(parameters or {})}
     for f in fields:
@@ -453,7 +462,7 @@ async def _handle_hitl_form(hitl_request: dict, continuation: dict):
     if answer is None:
         return
     response = {**continuation, "continuation_type": continuation.get("type", "generate_pdf"), **answer}
-    await cl.Message(content="✅ Dane zatwierdzone — tworzę dokument, to potrwa chwilę...", author="Hapilot").send()
+    await cl.Message(content="✅ Dane zatwierdzone — tworzę dokument, to potrwa chwilę...", author=_author()).send()
     await _continue_after_hitl(response)
 
 
@@ -499,7 +508,7 @@ async def on_edit_document(action: cl.Action):
     saved = await cl.make_async(_document_params)(name)
     if saved is None:
         await cl.Message(content=f"⚠️ Nie mogę już edytować **{name}** — brak zapisanych danych tego dokumentu.",
-                         author="Hapilot").send()
+                         author=_author()).send()
         return
     with run_context.use_context(user=_user()):
         form = build_document_hitl_form(saved["template_id"], saved.get("parameters") or {}, _load_templates_metadata(),
@@ -545,7 +554,7 @@ async def _clear_actions(clicked: cl.Action) -> None:
 @ui_activity.tracked
 async def on_hitl_cancel(action: cl.Action):
     await _clear_actions(action)
-    await cl.Message(content="Rozumiem — anulowałem. Jestem tu, gdybyś potrzebował czegoś innego! 😊", author="Hapilot").send()
+    await cl.Message(content="Rozumiem — anulowałem. Jestem tu, gdybyś potrzebował czegoś innego! 😊", author=_author()).send()
 
 
 @cl.action_callback("hitl_yes")
@@ -564,7 +573,7 @@ async def on_hitl_no(action: cl.Action):
     if continuation.get("type") == "resume_node":  # let the node record the refusal and finish its plan
         await _continue_after_hitl({**continuation, "continuation_type": "resume_node", "confirmed": False})
         return
-    await cl.Message(content="Rozumiem, anulowałem. Daj znać, jeśli będę mógł pomóc w czymś innym!", author="Hapilot").send()
+    await cl.Message(content="Rozumiem, anulowałem. Daj znać, jeśli będę mógł pomóc w czymś innym!", author=_author()).send()
 
 
 @cl.action_callback("hitl_select")

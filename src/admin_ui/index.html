@@ -6,6 +6,7 @@
   <title>Hapilot · Panel agenta</title>
   <link rel="icon" href="/favicon">
   <link rel="stylesheet" href="/hapilot/admin/assets/admin.css">
+  <link rel="stylesheet" href="/hapilot/branding.css" data-branding>
   <script>
     try { const t = localStorage.getItem("hapilot-admin-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
@@ -13,13 +14,14 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/" title="Wróć do czatu">
-      <span class="brand-mark">H</span>
-      <span class="brand-text"><b>Hapilot</b><span>Panel agenta</span></span>
+      <span class="brand-mark" id="brand-mark">H</span>
+      <span class="brand-text"><b id="brand-name">Hapilot</b><span>Panel agenta</span></span>
     </a>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="graph" class="tab active">🕸️ Graf agenta</button>
       <button role="tab" data-tab="prompts" class="tab">📝 Prompty</button>
       <button role="tab" data-tab="templates" class="tab">📄 Szablony</button>
+      <button role="tab" data-tab="branding" class="tab" id="branding-tab" hidden>🎨 Wygląd</button>
       <button role="tab" data-tab="audit" class="tab">📜 Dziennik zmian</button>
     </nav>
     <div class="topbar-right">
@@ -118,6 +120,11 @@
       </div>
     </section>
 
+    <!-- ======================= company look (administrators) ======================= -->
+    <section class="view" data-view="branding">
+      <div class="brand-layout" id="brand-root"><p class="muted">Wczytuję…</p></div>
+    </section>
+
     <!-- ======================= audit ======================= -->
     <section class="view" data-view="audit">
       <div class="audit-wrap">
@@ -136,5 +143,6 @@
 
   <script src="/hapilot/admin/assets/admin.js"></script>
   <script src="/hapilot/admin/assets/templates.js"></script>
+  <script src="/hapilot/admin/assets/branding.js"></script>
 </body>
 </html>

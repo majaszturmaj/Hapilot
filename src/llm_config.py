@@ -232,6 +232,9 @@ def get_llm(role: str, *, model_role: Optional[str] = None, temperature: Optiona
     system_prompt = _role_prompt(prompt_role)
     if role != "coder":
         system_prompt += SECURITY_RULES + _load_project_context()
+    from src import branding
+
+    system_prompt = branding.apply_to_prompt(system_prompt, role)  # UI only: the company's name and description
     system_prompt += _time_context()
     if fallback:
         tracing.event("model_fallback", role=role, model=spec.model)

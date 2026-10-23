@@ -17,6 +17,7 @@
     signature_uploaded: ["✍️", "Wgrano skan podpisu"], signature_deleted: ["🗑️", "Usunięto skan podpisu"],
     template_builtin_saved: ["📝", "Zmieniono wbudowany szablon"], template_builtin_restored: ["↩️", "Przywrócono wbudowany szablon"],
     node_updated: ["🛠️", "Zmieniono węzeł"], node_shared: ["🌐", "Udostępniono wszystkim"], node_unshared: ["🔒", "Wycofano udostępnienie"],
+    branding_saved: ["🎨", "Zmieniono wygląd aplikacji"], branding_reset: ["↩️", "Przywrócono wygląd Hapilota"],
   };
   const isAdmin = () => Boolean(state.graph && state.graph.admin);
   const customClass = (n) => (n.kind === "custom" ? (n.global ? " global" : " private") : "");
@@ -755,6 +756,7 @@
     if (tab === "prompts" && !state.promptsLoaded) loadPrompts().catch((err) => toast(err.message, "error"));
     if (tab === "audit") loadAudit();
     if (tab === "templates" && window.HapilotTemplates) window.HapilotTemplates.open();
+    if (tab === "branding" && window.HapilotBranding) window.HapilotBranding.open();
     if (tab === "graph") setTimeout(() => fit(), 0);
   }
 
@@ -797,7 +799,8 @@
       if (!$("#modal-backdrop").hidden) closeModal(); else if (state.selected) selectNode(null);
     });
     window.addEventListener("beforeunload", (ev) => {
-      if (state.dirty || (window.HapilotTemplates && window.HapilotTemplates.dirty())) { ev.preventDefault(); ev.returnValue = ""; }
+      if (state.dirty || (window.HapilotTemplates && window.HapilotTemplates.dirty())
+          || (window.HapilotBranding && window.HapilotBranding.dirty())) { ev.preventDefault(); ev.returnValue = ""; }
     });
     try {
       const me = await api("/me");
@@ -811,7 +814,7 @@
     if (tab === "signature") {  // link from the chat header and the document form
       switchTab("templates");
       window.HapilotTemplates.signature();
-    } else if (["graph", "prompts", "templates", "audit"].includes(tab)) switchTab(tab);
+    } else if (["graph", "prompts", "templates", "branding", "audit"].includes(tab)) switchTab(tab);
   }
 
   // helpers for the template editor (templates.js)

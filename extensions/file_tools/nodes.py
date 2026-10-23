@@ -376,7 +376,7 @@ def run_add_to_knowledge(state):
     listing = "\n".join(f"- {n}" for n in names)
     hitl = create_hitl_confirm_request(
         content=(f"📚 **Dodać do bazy wiedzy firmy?**\n\n{listing}\n\n"
-                 "Plik zostanie zapisany w bazie wiedzy tej instalacji Hapilota i będzie przeszukiwany we wszystkich rozmowach."),
+                 "Plik zostanie zapisany we wspólnej bazie wiedzy tej instalacji i będzie przeszukiwany we wszystkich rozmowach."),
         continuation={"type": "resume_node", "resume_node": "add_to_knowledge", "files": names,
                       "saved_plan": state.get("task_plan") or {}, "saved_step": state.get("current_step")},
     )

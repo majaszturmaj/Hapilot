@@ -14,12 +14,12 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
-from src import admin, doc_templates, signatures
+from src import admin, branding, doc_templates, signatures
 
 PREFIX = "/hapilot/admin"
 ASSETS = Path(__file__).resolve().parent / "admin_ui"
 ASSET_TYPES = {"admin.css": "text/css; charset=utf-8", "admin.js": "text/javascript; charset=utf-8",
-               "templates.js": "text/javascript; charset=utf-8"}
+               "templates.js": "text/javascript; charset=utf-8", "branding.js": "text/javascript; charset=utf-8"}
 NO_STORE = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY",
             "Referrer-Policy": "same-origin"}
 
@@ -68,7 +68,7 @@ async def _guard(request, write: bool = False, admin_only: bool = False):
 async def _call(fn, *args):
     try:
         return _json(await asyncio.to_thread(fn, *args))
-    except (admin.AdminError, doc_templates.TemplateError, signatures.SignatureError) as exc:
+    except (admin.AdminError, doc_templates.TemplateError, signatures.SignatureError, branding.BrandingError) as exc:
         return _json({"error": str(exc)}, 400)
 
 
@@ -230,6 +230,27 @@ async def signature(request):
     return await _call(signatures.save, user, data)
 
 
+# --------------------------------------------------------------------------- company look
+
+async def branding_api(request):
+    """GET: the current look (any user; administrators also get the history). PUT: save, DELETE: back to Hapilot
+    (administrators, same-origin)."""
+    if request.method == "GET":
+        user, error = await _guard(request)
+        return error or await _call(branding.info, user)
+    user, error = await _guard(request, write=True, admin_only=True)
+    if error:
+        return error
+    if request.method == "DELETE":
+        return await _call(branding.reset, user)
+    return await _call(branding.save, await _body(request), user)
+
+
+async def branding_restore(request):
+    user, error = await _guard(request, write=True, admin_only=True)
+    return error or await _call(branding.restore, request.path_params["index"], user)
+
+
 ROUTES = [
     ("", page, ["GET"]),
     ("/assets/{name}", asset, ["GET"]),
@@ -246,6 +267,8 @@ ROUTES = [
     ("/api/templates/preview", template_preview, ["POST"]),
     ("/api/templates/{tid}", template, ["GET", "PUT", "DELETE"]),
     ("/api/templates/{tid}/global", template_share, ["PUT"]),
+    ("/api/branding", branding_api, ["GET", "PUT", "DELETE"]),
+    ("/api/branding/restore/{index:int}", branding_restore, ["POST"]),
 ]
 _installed = False
 
