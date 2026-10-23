@@ -40,6 +40,18 @@ def test_bad_ui_settings_are_rejected(env, match):
         load_settings(env)
 
 
+def test_libraries_cannot_load_the_hosts_dotenv(tmp_path, monkeypatch):
+    """Found on the GPU host: run inside an install, tests that import chainlit got the install's .env (its documents
+    folder, UI address) — chainlit's __init__ loads ./.env."""
+    from dotenv import load_dotenv  # as chainlit imports it, after conftest
+
+    (tmp_path / ".env").write_text("HAPILOT_UI_HOST=0.0.0.0\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("HAPILOT_UI_HOST", raising=False)
+    assert load_dotenv(dotenv_path=tmp_path / ".env") is False
+    assert "HAPILOT_UI_HOST" not in __import__("os").environ
+
+
 def test_unit_tests_do_not_read_the_hosts_dotenv(tmp_path, monkeypatch):
     """A running install's .env (its data folder, documents, accounts) must never reach the unit tests."""
     import src.config as config

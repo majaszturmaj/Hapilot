@@ -19,6 +19,10 @@ def pytest_configure(config):
 
     data_dir = Path(tempfile.mkdtemp(prefix="hapilot-tests-"))
     os.environ["HAPILOT_SKIP_DOTENV"] = "1"  # the host's .env (a running install's settings) never reaches the tests
+    # ... nor through a library: importing chainlit loads ./.env (its __init__ calls dotenv.load_dotenv)
+    import dotenv
+
+    dotenv.load_dotenv = lambda *args, **kwargs: False
     os.environ["HAPILOT_OCR"] = "off"  # OCR runs Docker; tests that need it switch it on with the fake Docker client
     os.environ["HAPILOT_DATA_DIR"] = str(data_dir)
     os.environ["HAPILOT_APPROVAL_POLICY"] = "ask"
