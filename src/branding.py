@@ -8,8 +8,10 @@ once, without a restart:
   "Hapilocie", …) becomes the name, in its base form (Polish endings cannot be derived for any name);
 - **description** (1–2 sentences) — added to the system prompts as a ``[FIRMA]`` section, so the agent knows
   where it works; not shown to users;
-- **logo** (PNG or JPEG, checked by content; SVG is refused because it can carry scripts) — header, login page,
-  favicon and the assistant's avatar;
+- **logo** (PNG or JPEG, checked by content; SVG is refused because it can carry scripts) — header and login page;
+  also favicon and the assistant's avatar when it is roughly square — otherwise those show the name's first letter
+  on the main colour (a wide logo would be unreadable in a small circle). Without a logo, the header shows that
+  letter and the name (generated SVG), not Hapilot's logo;
 - **colour** — buttons and accents of the chat and of the agent panel.
 
 Stored in ``<data dir>/branding/``: ``branding.json`` with every version (who, when) and the logos by content
@@ -307,6 +309,63 @@ def markdown(text: str) -> str:
     if not look["customised"]:
         return text
     return replace_name(text, look["name"]).rstrip() + "\n\n---\n\n" + CREDIT + "\n"
+
+
+# --------------------------------------------------------------------------- icons
+
+def _logo_ratio() -> Optional[float]:
+    from src.signatures import SignatureError, image_info
+
+    path = logo_path()
+    if path is None:
+        return None
+    try:
+        _, width, height = image_info(path.read_bytes()[:65536])
+    except SignatureError:
+        return None
+    return width / height
+
+
+def icon() -> Optional[tuple[str, object]]:
+    """What the favicon and the assistant's avatar show with a custom look: ("logo", path) for a roughly square logo,
+    else ("svg", text) — the name's first letter on the main colour. None without a custom look (Chainlit's own)."""
+    look = active()
+    if not look["customised"]:
+        return None
+    ratio = _logo_ratio()
+    if ratio is not None and 0.67 <= ratio <= 1.5:
+        return "logo", logo_path()
+    return "svg", _letter_svg(look)
+
+
+def _foreground(color: str) -> str:
+    return "#ffffff" if _hsl(color)[2] < 62 else "#1a1a1a"
+
+
+def _letter_svg(look: dict) -> str:
+    from html import escape
+
+    letter = escape(look["name"][0].upper())
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+            f'<rect width="64" height="64" rx="14" fill="{look["color"]}"/>'
+            f'<text x="32" y="44" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="34" '
+            f'font-weight="700" fill="{_foreground(look["color"])}">{letter}</text></svg>')
+
+
+def wordmark_svg() -> Optional[str]:
+    """Header and login logo for a custom look without a logo file: the letter icon and the name. None otherwise."""
+    from html import escape
+
+    look = active()
+    if not look["customised"] or logo_path() is not None:
+        return None
+    width = 76 + 19 * len(look["name"])
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} 64" height="64" width="{width}">'
+            f'<rect width="64" height="64" rx="14" fill="{look["color"]}"/>'
+            f'<text x="32" y="44" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="34" '
+            f'font-weight="700" fill="{_foreground(look["color"])}">{escape(look["name"][0].upper())}</text>'
+            f'<text x="76" y="43" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="700" '
+            f'fill="{look["color"]}">{escape(look["name"])}</text></svg>')
 
 
 # --------------------------------------------------------------------------- colour

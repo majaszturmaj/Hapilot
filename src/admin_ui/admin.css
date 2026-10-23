@@ -468,7 +468,7 @@ pre.latex-log { width: 100%; font: 11.5px/1.5 var(--mono); white-space: pre-wrap
 .pv-button { width: 100%; padding: 9px; border-radius: 9px; background: var(--pv); color: #fff; text-align: center; font-weight: 600; font-size: 13px; }
 .pv-msg { display: flex; gap: 10px; }
 .pv-avatar { width: 30px; height: 30px; border-radius: 50%; flex: none; background: var(--pv); color: #fff; display: grid; place-items: center; font-weight: 700; overflow: hidden; }
-.pv-avatar img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.pv-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .pv-author { font-weight: 700; font-size: 13px; }
 .pv-text { font-size: 13px; margin-top: 2px; }
 .pv-send { margin-top: 14px; display: flex; justify-content: space-between; align-items: center; padding: 7px 8px 7px 12px; border: 1px solid var(--border-strong); border-radius: 12px; color: var(--muted); font-size: 13px; }

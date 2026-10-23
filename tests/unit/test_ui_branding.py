@@ -15,7 +15,8 @@ from src import branding, ui_branding  # noqa: E402
 from src.config import reset_settings  # noqa: E402
 from src.source_view import png  # noqa: E402
 
-LOGO = png(bytes([90]) * (64 * 32), 64, 32, 64, 1)
+LOGO = png(bytes([90]) * (64 * 32), 64, 32, 64, 1)       # wide: header and login only
+SQUARE = png(bytes([90]) * (48 * 48), 48, 48, 48, 1)     # also favicon and avatar
 
 
 @pytest.fixture
@@ -40,14 +41,36 @@ def test_without_a_custom_look_chainlit_serves_its_own(client):
     assert "--primary: 79 62% 41%" in client.get("/hapilot/style.css").text  # public/custom.css (Hapilot green)
 
 
-def test_custom_logo_everywhere_and_never_cached(client):
-    _brand(logo="data:image/png;base64," + base64.b64encode(LOGO).decode())
-    for path in ("/logo?theme=light", "/logo?theme=dark", "/favicon", "/avatars/Asystent%20Przyk%C5%82adowej",
-                 "/avatars/default", "/avatars/Hapilot"):
+def _data(raw):
+    return "data:image/png;base64," + base64.b64encode(raw).decode()
+
+
+ICONS = ("/favicon", "/avatars/Asystent%20Przyk%C5%82adowej", "/avatars/default", "/avatars/Hapilot")
+
+
+def test_square_logo_everywhere_and_never_cached(client):
+    _brand(logo=_data(SQUARE))
+    for path in ("/logo?theme=light", "/logo?theme=dark") + ICONS:
         res = client.get(path)
-        assert res.status_code == 200 and res.content == LOGO, path
+        assert res.status_code == 200 and res.content == SQUARE, path
         assert res.headers["cache-control"] == "no-cache" and res.headers["content-type"] == "image/png"
-    assert client.get("/avatars/kroki").content != LOGO  # other authors: Chainlit's own avatar
+    assert client.get("/avatars/kroki").content != SQUARE  # other authors: Chainlit's own avatar
+
+
+def test_wide_logo_in_the_header_letter_icon_elsewhere(client):
+    """Found in the browser: a wide logo in the round avatar and the favicon was an unreadable speck."""
+    _brand(logo=_data(LOGO))
+    assert client.get("/logo").content == LOGO
+    for path in ICONS:
+        res = client.get(path)
+        assert res.headers["content-type"].startswith("image/svg+xml") and b">A</text>" in res.content, path
+        assert b'fill="#1e5aa8"' in res.content and b"<script" not in res.content
+
+
+def test_custom_name_without_logo_never_shows_hapilots_logo(client):
+    _brand()
+    logo = client.get("/logo?theme=dark")
+    assert logo.headers["content-type"].startswith("image/svg+xml") and "Asystent Przykładowej" in logo.text
 
 
 def test_colour_and_translations(client):

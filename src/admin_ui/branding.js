@@ -72,13 +72,24 @@
         } }, "Usuń logo") : null));
   }
 
+  // the favicon and the avatar show the logo only when it is roughly square (src/branding.py, icon())
+  function avatarPreview(d) {
+    const el = h("div", { class: "pv-avatar" }, (d.name || "H")[0].toUpperCase());
+    if (d.logo) {
+      const img = new Image();
+      img.onload = () => { const r = img.naturalWidth / img.naturalHeight; if (r >= 0.67 && r <= 1.5) el.replaceChildren(h("img", { src: d.logo, alt: "" })); };
+      img.src = d.logo;
+    }
+    return el;
+  }
+
   function renderPreview() {
     const d = state.draft;
     const pane = $("#brand-preview");
     if (!pane) return;
     const logo = d.logo ? h("img", { src: d.logo, alt: "" }) : h("span", { class: "pv-mark" }, (d.name || "H")[0].toUpperCase());
     pane.style.setProperty("--pv", d.color);
-    pane.replaceChildren(
+    pane.replaceChildren(...[  // replaceChildren would print a null as the text "null"
       h("div", { class: "pv-title" }, "Podgląd"),
       h("div", { class: "pv-card pv-login" },
         h("div", { class: "pv-logo" }, logo),
@@ -87,14 +98,15 @@
         h("div", { class: "pv-button" }, "Zaloguj się")),
       h("div", { class: "pv-card pv-chat" },
         h("div", { class: "pv-msg" },
-          h("div", { class: "pv-avatar" }, d.logo ? h("img", { src: d.logo, alt: "" }) : (d.name || "H")[0].toUpperCase()),
+          avatarPreview(d),
           h("div", {}, h("div", { class: "pv-author" }, d.name || "…"),
             h("div", { class: "pv-text" }, `👋 Cześć! Jestem ${d.name || "…"} — Twój lokalny asystent AI.`))),
         h("div", { class: "pv-send" }, h("span", {}, "Napisz wiadomość…"), h("span", { class: "pv-dot" }, "↑"))),
       d.description ? h("div", { class: "pv-card pv-prompt" },
         h("div", { class: "pv-label" }, "Fragment promptu asystenta (niewidoczny dla użytkowników)"),
         h("pre", {}, `[FIRMA]\n${d.description}\nPrzedstawiając się, używaj nazwy: ${d.name}.`)) : null,
-      h("p", { class: "muted pv-note" }, "Po zapisaniu nowy wygląd obowiązuje u wszystkich użytkowników od następnego odświeżenia strony."));
+      h("p", { class: "muted pv-note" }, "Po zapisaniu nowy wygląd obowiązuje u wszystkich użytkowników od następnego odświeżenia strony.")]
+      .filter(Boolean));
   }
 
   function field(label, hint, control, extra) {
@@ -125,7 +137,7 @@
           d.description),
         counter),
       field("Logo",
-        "PNG albo JPEG do 1 MB (SVG nie jest przyjmowany ze względów bezpieczeństwa). Najlepiej na przezroczystym tle i czytelne zarówno na jasnym, jak i ciemnym motywie. Pokazuje się w nagłówku, na ekranie logowania, jako ikona karty i awatar asystenta.",
+        "PNG albo JPEG do 1 MB (SVG nie jest przyjmowany ze względów bezpieczeństwa). Najlepiej na przezroczystym tle i czytelne zarówno na jasnym, jak i ciemnym motywie. Pokazuje się w nagłówku i na ekranie logowania; jako ikona karty i awatar asystenta — gdy jest mniej więcej kwadratowe (inaczej pierwsza litera nazwy na kolorze głównym).",
         h("div", { id: "brand-logo-box", class: "brand-logo-box" })),
       field("Kolor główny", "Przyciski i akcenty czatu oraz panelu.",
         h("div", { class: "brand-color-row" }, colorPick, colorText,

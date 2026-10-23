@@ -146,6 +146,19 @@ def test_colour_css():
     assert branding.css() == ""  # Hapilot green comes from public/custom.css
 
 
+def test_icons_follow_the_logo_shape():
+    assert branding.icon() is None and branding.wordmark_svg() is None  # Hapilot: Chainlit's own files
+    branding.save({**LOOK, "logo": _data_url(_png(48, 48))}, "admin")
+    branding.enable_for_ui()
+    kind, value = branding.icon()
+    assert kind == "logo" and value == branding.logo_path() and branding.wordmark_svg() is None
+    branding.save({**LOOK, "logo": _data_url(_png(240, 60))}, "admin")
+    kind, value = branding.icon()
+    assert kind == "svg" and ">A</text>" in value and 'fill="#1e5aa8"' in value
+    branding.save({**LOOK, "logo": "remove"}, "admin")
+    assert "Asystent Przykładowej</text>" in branding.wordmark_svg()
+
+
 def test_storage_is_plain_json(data_dir):
     branding.save(LOOK, "admin")
     saved = json.loads((data_dir / "branding" / "branding.json").read_text(encoding="utf-8"))
