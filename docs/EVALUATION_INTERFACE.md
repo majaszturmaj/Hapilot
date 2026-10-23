@@ -148,7 +148,8 @@ so nothing depends on callback propagation.
 ```
 
 `config_hash` covers the resolved profile, the run settings, retrieval and chunking parameters, the
-embedding model, the sandbox image id, the text of all prompts and templates, and the corpus fingerprint —
+embedding model, the sandbox image id, the OCR state and image id, the text of all prompts and templates, and the
+corpus fingerprint —
 two runs with the same hash ran the same configuration on the same corpus (the code itself is identified
 by `hapilot.commit`). Resuming into a directory whose `run.json` has a different hash or a different
 Hapilot commit is refused, so one directory never mixes configurations or code versions. No host names or user paths are recorded (model files by base name only).
@@ -178,7 +179,7 @@ per-task collection that the knowledge search queries together with the corpus.
 
 | Format | Extraction | Chunk metadata |
 |---|---|---|
-| .pdf | pypdf, per page | `page` |
+| .pdf | pypdf, per page; pages without a text layer (scans) by OCR — Tesseract `pol+eng` in the isolated `hapilot-ocr` container, cached ([src/ocr.py](../src/ocr.py)) | `page`; `ocr` on scanned pages |
 | .docx | python-docx: paragraphs and tables (cells joined with ` \| `) | — |
 | .eml | Python `email`: From, To, Cc, Date, Subject headers + plain-text body (HTML converted to text); names of attached files listed, text of attached .pdf/.docx/.txt extracted | — |
 | .xlsx | openpyxl (values, not formulas): per sheet, rows as ` \| `-separated lines with the header row | `sheet` |

@@ -99,6 +99,19 @@ class _Containers:
         if command[0] == "python3":
             proc = subprocess.run([sys.executable, "-I", command[1]], cwd=workdir, capture_output=True, text=True, timeout=30)
             return FakeContainer(proc.returncode, proc.stdout + proc.stderr)
+        if command[:2] == ["sh", "-c"] and "tesseract" in command[2]:
+            if self.client.ocr_fails:
+                return FakeContainer(1, "tesseract failed on /work/p00001.png")
+            for image in sorted(workdir.glob("p*.png")):
+                assert image.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+                self.client.ocr_pages.append(image.name)
+                (image.with_suffix(".txt")).write_text(self.client.ocr_text + "\n\f", encoding="utf-8")
+                words = self.client.ocr_text.split()
+                rows = ["level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext",
+                        "1\t1\t0\t0\t0\t0\t0\t0\t2480\t3508\t-1\t"]
+                rows += [f"5\t1\t1\t1\t1\t{i}\t10\t10\t50\t20\t{90 if i % 2 else 80}\t{w}" for i, w in enumerate(words, 1)]
+                (image.with_suffix(".tsv")).write_text("\n".join(rows) + "\n", encoding="utf-8")
+            return FakeContainer(0, "")
         if command[:2] == ["sh", "-c"] and "pdflatex" in command[2]:
             tex = re.search(r"(\S+)\.tex", command[2]).group(1)
             if self.client.latex_fails:
@@ -117,3 +130,6 @@ class FakeDocker:
         self.runs: list = []
         self.hang = False
         self.latex_fails = False
+        self.ocr_fails = False
+        self.ocr_text = "Protokół odbioru zeskanowany: urządzenie przyjęto bez zastrzeżeń."
+        self.ocr_pages: list = []

@@ -114,6 +114,12 @@ Indexing: [src/ingest_data.py](../src/ingest_data.py) with [src/extractors.py](.
 .pdf (per page), .docx (paragraphs and tables in order), .eml (headers, body, attached files), .xlsx (rows
 per sheet, values), .txt, .md; chunks of 800 characters with 200 overlap (spreadsheet chunks start with
 the column names); each chunk keeps its relative file path, page or sheet and an id `path#index:sha`.
+PDF pages without a text layer (scans: fewer than 25 non-space characters) are read by OCR
+([src/ocr.py](../src/ocr.py)): rendered at 300 dpi in greyscale (pypdfium2) and read by Tesseract (`pol+eng`) in a
+container of `hapilot-ocr` ([sandbox/ocr.Dockerfile](../sandbox/ocr.Dockerfile)) with the sandbox's isolation, one
+container per document; results are cached per document and page in `HAPILOT_DATA_DIR/ocr_cache`, and their chunks
+are marked `ocr`. Attachments go through the same extraction. What the OCR can do (off, unavailable, image and
+languages) is part of the corpus fingerprint, so the index is rebuilt when it changes.
 Unreadable files are listed, not dropped. An unchanged corpus is not re-indexed. Files added from the chat
 live in `HAPILOT_ADDED_DOCS_DIR` and are indexed with the corpus under the source prefix `dodane/`
 (`add_documents` indexes a new one at once and updates the corpus fingerprint).
@@ -168,7 +174,8 @@ dropped, and the scan is looked up by the run's `user`, so nobody can sign with 
 non-root user, `cap_drop=ALL`, `no-new-privileges`, read-only root filesystem, `/tmp` tmpfs, memory /
 CPU / process limits and a timeout; the session workspace is mounted read-write at `/work`, the company
 documents (the evaluation corpus in eval runs) read-only at `/data`. The coder gets the list of these files
-and the results of earlier plan steps. The image is never pulled at run time.
+and the results of earlier plan steps. The image is never pulled at run time. OCR containers (`hapilot-ocr`) run
+through the same function with the same options; they see only a temporary folder of page images.
 
 ## Serving models
 

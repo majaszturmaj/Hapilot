@@ -191,7 +191,8 @@ def install(tmp_path, monkeypatch):
     events = []
     ui = {"running": True, "healthy": True}
     monkeypatch.setattr(hapilotctl, "owned", lambda name: {"pid": 4242} if name == "ui" and ui["running"] else None)
-    monkeypatch.setattr(hapilotctl, "restart_ui", lambda: events.append(("restart", _git(live, "rev-parse", "HEAD"))))
+    monkeypatch.setattr(hapilotctl, "switch_services", lambda ui_running, force_ingest=False: events.append(
+        ("switch", _git(live, "rev-parse", "HEAD"), ui_running, force_ingest)))
 
     def health():
         if not ui["healthy"]:
@@ -217,7 +218,7 @@ def test_update_tests_switches_restarts_and_backs_up(install):
     new = _commit(install["dev"], {"tests/test_more.py": "def test_more():\n    assert 2 + 2 == 4\n"}, "second")
     assert hapilotctl.update("main") == 0
     assert _head(install) == new
-    assert install["events"] == [("restart", new)]  # restarted after the switch, with the new commit checked out
+    assert install["events"] == [("switch", new, True, False)]  # after the switch, with the new commit checked out
     status = hapilotctl.read_update_status()
     assert status["state"] == "updated" and "2 passed" in status["message"]
     backup = Path(status["last_update"]["backup"])
@@ -245,7 +246,8 @@ def test_ui_that_does_not_come_back_is_rolled_back(install):
     install["ui"]["healthy"] = False
     assert hapilotctl.update("main") == 1
     assert _head(install) == install["first"]
-    assert install["events"] == [("restart", new), ("restart", install["first"])]
+    # the old commit rebuilds the index (the new one may have changed it) and starts its UI
+    assert install["events"] == [("switch", new, True, False), ("switch", install["first"], True, True)]
     status = hapilotctl.read_update_status()
     assert status["state"] == "error"  # the old version did not answer either (the fake UI stays down)
     install["ui"]["healthy"] = True
@@ -264,7 +266,7 @@ def test_update_without_a_running_ui_does_not_start_it(install):
     install["ui"]["running"] = False
     new = _commit(install["dev"], {"README": "new\n"}, "second")
     assert hapilotctl.update("main") == 0
-    assert _head(install) == new and install["events"] == []
+    assert _head(install) == new and install["events"] == [("switch", new, False, False)]  # index only, no UI start
 
 
 def test_hand_edited_checkout_is_not_updated(install):
@@ -272,3 +274,51 @@ def test_hand_edited_checkout_is_not_updated(install):
     (install["live"] / "tests" / "test_ok.py").write_text("# edited by hand\n")
     assert hapilotctl.update("main") == 1
     assert _head(install) == install["first"] and hapilotctl.read_update_status()["state"] == "error"
+
+
+def test_new_commit_builds_its_own_images_without_the_installs_settings(install, monkeypatch):
+    """A commit with the OCR image's Dockerfile builds its images with its own launcher (Docker's cache makes an
+    unchanged image instant); the install's settings (HAPILOT_*) do not reach it."""
+    marker = install["var"] / "built.txt"
+    monkeypatch.setenv("HAPILOT_UI_HOST", "0.0.0.0")
+    monkeypatch.setenv("BUILD_MARKER", str(marker))
+    script = ("import os, sys\n"
+              "open(os.environ['BUILD_MARKER'], 'w').write(' '.join(sys.argv[1:]) + ' ' + "
+              "str(sorted(k for k in os.environ if k.startswith('HAPILOT_'))))\n")
+    new = _commit(install["dev"], {"sandbox/ocr.Dockerfile": "FROM scratch\n", "scripts/hapilotctl.py": script}, "ocr")
+    assert hapilotctl.update("main") == 0 and _head(install) == new
+    assert marker.read_text() == "build-images --quiet []"
+
+
+def test_switch_services_stops_indexes_and_starts(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(hapilotctl, "log_dir", lambda: tmp_path)
+    monkeypatch.setattr(hapilotctl, "stop", lambda name: calls.append(("stop", name)))
+
+    class Done:
+        def __init__(self, code=0):
+            self.returncode, self.stdout, self.stderr = code, "out", "boom" if code else ""
+
+    fail = {"step": None}
+
+    def run(cmd, **kwargs):
+        calls.append(tuple(cmd[2:]))
+        return Done(1 if cmd[2] == fail["step"] else 0)
+
+    monkeypatch.setattr(hapilotctl.subprocess, "run", run)
+    hapilotctl.switch_services(True)
+    assert calls == [("stop", "ui"), ("ingest",), ("ui", "up")]
+    calls.clear()
+    hapilotctl.switch_services(False, force_ingest=True)
+    assert calls == [("ingest", "--force")]
+    calls.clear()
+    fail["step"] = "ingest"
+    with pytest.raises(hapilotctl.UpdateError, match="indexing failed: boom"):
+        hapilotctl.switch_services(True)
+    assert calls == [("stop", "ui"), ("ingest",)]  # the UI is not started on a half-built index
+
+
+def test_images_include_the_ocr_image():
+    tags = [tag for tag, _ in hapilotctl.images()]
+    assert tags == ["hapilot-sandbox:0.2", "hapilot-ocr:0.1"]
+    assert all(dockerfile.is_file() for _, dockerfile in hapilotctl.images())

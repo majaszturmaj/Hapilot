@@ -174,6 +174,9 @@ class Settings:
     ui_port: int = 8601
     modelswap_port: int = 8611
     backend_port: int = 8612
+    ocr_enabled: bool = True
+    ocr_image: str = "hapilot-ocr:0.1"
+    ocr_languages: str = "pol+eng"
     ui_host: str = "127.0.0.1"
     ui_ssl_cert: Optional[Path] = None
     ui_ssl_key: Optional[Path] = None
@@ -224,6 +227,13 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
     n8n_base = get("HAPILOT_N8N_WEBHOOK_BASE", "http://127.0.0.1:8678/webhook").rstrip("/")
     assert_local_url(n8n_base)  # used only when the optional n8n_operations extension is enabled
 
+    ocr = get("HAPILOT_OCR", "on").strip().lower()
+    if ocr not in ("on", "off"):
+        raise ConfigError("HAPILOT_OCR must be on or off")
+    ocr_languages = get("HAPILOT_OCR_LANGUAGES", "pol+eng").strip()
+    if not re.fullmatch(r"[a-z_]+(\+[a-z_]+)*", ocr_languages):  # Tesseract language codes, e.g. pol+eng
+        raise ConfigError("HAPILOT_OCR_LANGUAGES must be Tesseract language codes joined by '+', e.g. pol+eng")
+
     ui_host = get("HAPILOT_UI_HOST", "127.0.0.1").strip()
     try:
         ipaddress.ip_address(ui_host)
@@ -260,6 +270,9 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         ui_port=port("HAPILOT_UI_PORT", 8601),
         modelswap_port=port("HAPILOT_MODELSWAP_PORT", 8611),
         backend_port=port("HAPILOT_BACKEND_PORT", 8612),
+        ocr_enabled=ocr == "on",
+        ocr_image=get("HAPILOT_OCR_IMAGE", "hapilot-ocr:0.1"),
+        ocr_languages=ocr_languages,
         ui_host=ui_host,
         ui_ssl_cert=path("HAPILOT_UI_SSL_CERT", Path()) if cert else None,
         ui_ssl_key=path("HAPILOT_UI_SSL_KEY", Path()) if key else None,

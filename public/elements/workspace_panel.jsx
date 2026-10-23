@@ -39,7 +39,9 @@ function PdfPages({ pages, active }) {
         const firstOfChunk = {};
         return (
           <div key={page.n}>
-            <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>Strona {page.n}</div>
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>
+              Strona {page.n}{page.scan ? " · skan: tekst odczytany przez OCR, bez zaznaczeń na stronie" : ""}
+            </div>
             <div style={{ position: "relative", width: "100%", paddingTop: `${(page.ratio || 1.414) * 100}%`,
                           border: BORDER, background: "white" }}>
               <img src={page.url} loading="lazy" alt={`Strona ${page.n}`}

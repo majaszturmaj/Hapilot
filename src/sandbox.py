@@ -8,7 +8,8 @@ Every run is a fresh, short-lived Docker container:
   company documents (so code can analyse e.g. an .xlsx from the knowledge base);
 - is killed when it exceeds its timeout, and removed afterwards.
 
-The sandbox image is built once by ``scripts/hapilotctl.py setup``; it is never pulled at run time.
+The sandbox image is built once by ``scripts/hapilotctl.py setup``; it is never pulled at run time. The OCR
+image (src/ocr.py) runs through the same function, with the same isolation.
 """
 
 from __future__ import annotations
@@ -93,15 +94,18 @@ def container_options(workdir: Path, data_dir: Optional[Path] = None) -> dict:
     }
 
 
-def run(command: list[str], workdir: Path, timeout: Optional[int] = None, data_dir: Optional[Path] = None) -> SandboxResult:
-    """Run ``command`` in a fresh sandbox container with ``workdir`` at /work (and ``data_dir`` read-only at /data)."""
+def run(command: list[str], workdir: Path, timeout: Optional[int] = None, data_dir: Optional[Path] = None,
+        image: Optional[str] = None) -> SandboxResult:
+    """Run ``command`` in a fresh sandbox container with ``workdir`` at /work (and ``data_dir`` read-only at /data).
+    ``image`` defaults to the sandbox image."""
     s = get_settings()
+    image = image or s.sandbox_image
     client = docker_client()
     try:
-        client.images.get(s.sandbox_image)
+        client.images.get(image)
     except Exception as exc:
         raise SandboxUnavailable(
-            f"Sandbox image {s.sandbox_image!r} not found — build it with `scripts/hapilotctl.py setup`"
+            f"Image {image!r} not found — build it with `scripts/hapilotctl.py setup`"
         ) from exc
 
     import time as _time
@@ -109,7 +113,7 @@ def run(command: list[str], workdir: Path, timeout: Optional[int] = None, data_d
     from src import tracing
 
     started = _time.monotonic()
-    container = client.containers.run(s.sandbox_image, command, **container_options(workdir, data_dir))
+    container = client.containers.run(image, command, **container_options(workdir, data_dir))
     timed_out = False
     try:
         try:

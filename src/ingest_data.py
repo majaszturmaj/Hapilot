@@ -6,10 +6,10 @@ Usage:
 Reads .pdf, .docx, .eml, .xlsx, .txt and .md files (recursively) from the documents directory
 (default: HAPILOT_DOCS_DIR), extracts their text (src/extractors.py), splits it into overlapping
 chunks, embeds them on CPU and stores them in the embedded ChromaDB. Chunks keep the file path
-relative to the documents directory, and the page (PDF) or sheet (XLSX). Files that cannot be read
-are reported, never silently dropped. A fingerprint of the corpus (plus the index version and the
-embedding model) is stored next to the database; an unchanged corpus is not re-indexed unless
---force is given. Runs offline: the embedding model must already be cached (``hapilotctl.py setup``).
+relative to the documents directory, and the page (PDF) or sheet (XLSX); chunks of scanned pages
+read by OCR (src/ocr.py) are marked ``ocr``. Files that cannot be read are reported, never silently dropped. A fingerprint of the corpus (plus the index version and the
+embedding model, and what the OCR can do) is stored next to the database; an unchanged corpus is not
+re-indexed unless --force is given. Runs offline: the embedding model must already be cached (``hapilotctl.py setup``).
 
 Documents that users add from the chat ("dodaj ten plik do bazy wiedzy") are kept in
 HAPILOT_ADDED_DOCS_DIR and indexed with the company documents under the path prefix ``dodane/``;
@@ -84,27 +84,35 @@ def split_entries(entries: list[tuple[Path, str]]) -> tuple[list, list[dict]]:
             print(f"❌ Pominięto {rel}: {exc}")
             continue
         index = 0
+        ocr_pages = [seg.meta for seg in segments if seg.meta.get("ocr")]
         for seg in segments:
             meta = {"source": rel}
             if "page" in seg.meta:
                 meta["page"] = seg.meta["page"]
             if "sheet" in seg.meta:
                 meta["sheet"] = seg.meta["sheet"]
+            if seg.meta.get("ocr"):
+                meta["ocr"] = True
             for piece in splitter.split_text(seg.text):
                 # spreadsheet rows mean little without their column names
                 text = f"[kolumny: {seg.meta['header']}]\n{piece}" if seg.meta.get("header") and not piece.startswith(seg.meta["header"]) else piece
                 chunks.append(Document(page_content=text, metadata={**meta, "chunk_id": knowledge_base.chunk_id(rel, index, text)}))
                 index += 1
-        print(f"📄 Wczytano: {rel} ({index} fragm.)")
+        note = ""
+        if ocr_pages:
+            mean = sum(m["ocr_confidence"] for m in ocr_pages) / len(ocr_pages)
+            note = f"; OCR: {len(ocr_pages)} str., pewność {mean:.0f}%"
+        print(f"📄 Wczytano: {rel} ({index} fragm.{note})")
     return chunks, skipped
 
 
 def _signature(fingerprint: str) -> dict:
-    from src import knowledge_base
+    from src import knowledge_base, ocr
     from src.config import get_settings
 
     return {"fingerprint": fingerprint, "index_version": knowledge_base.INDEX_VERSION,
-            "embedding_model": get_settings().embedding_model, "chunk_size": CHUNK_SIZE, "chunk_overlap": CHUNK_OVERLAP}
+            "embedding_model": get_settings().embedding_model, "chunk_size": CHUNK_SIZE, "chunk_overlap": CHUNK_OVERLAP,
+            "ocr": ocr.signature()}
 
 
 def _add_chunks(store, chunks: list) -> None:
@@ -130,6 +138,9 @@ def ingest(docs_dir: Path, collection: str, path: Optional[Path] = None, force: 
             return saved
     if not entries:
         print(f"⚠️ Brak dokumentów ({', '.join(SUPPORTED)}) w {docs_dir}")
+    if signature["ocr"] == "unavailable":
+        print("⚠️ OCR niedostępny (brak Dockera lub obrazu OCR — `scripts/hapilotctl.py setup`): strony zeskanowane "
+              "nie zostaną odczytane. Po zbudowaniu obrazu następne indeksowanie je odczyta.")
 
     chunks, skipped = split_entries(entries)
     client = knowledge_base.chroma_client(path)

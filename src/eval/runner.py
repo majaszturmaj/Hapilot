@@ -81,11 +81,12 @@ def _model_server_info(base_url: str) -> dict:
         return {}
 
 
-def _sandbox_image_id() -> Optional[str]:
+def _sandbox_image_id(name: Optional[str] = None) -> Optional[str]:
+    """Docker id of the sandbox image (or of ``name``, e.g. the OCR image); None without Docker or the image."""
     try:
         from src import sandbox
 
-        return getattr(sandbox.docker_client().images.get(get_settings().sandbox_image), "id", None)
+        return getattr(sandbox.docker_client().images.get(name or get_settings().sandbox_image), "id", None)
     except Exception:
         return None
 
@@ -150,6 +151,7 @@ class EvalSession:
         profile = settings.profile(self.cfg.profile)
         self.corpus = index_corpus(self.cfg.corpus_dir)
         self.corpus_files = [p.relative_to(self.cfg.corpus_dir).as_posix() for p in corpus_files(self.cfg.corpus_dir)]
+        from src import ocr
         from src.knowledge_base import INDEX_VERSION, RRF_K
         from src.ingest_data import CHUNK_OVERLAP, CHUNK_SIZE
 
@@ -159,6 +161,7 @@ class EvalSession:
                                                          "roles": profile.roles},
                   "retrieval": retrieval, "chunking": chunking, "embedding_model": settings.embedding_model,
                   "sandbox_image": settings.sandbox_image, "sandbox_image_id": _sandbox_image_id(),
+                  "ocr": ocr.signature(), "ocr_image_id": _sandbox_image_id(settings.ocr_image) if settings.ocr_enabled else None,
                   "prompts": _prompts_digest(), "corpus": self.corpus["fingerprint"]}
         config_hash = "sha256:" + hashlib.sha256(json.dumps(hashed, sort_keys=True, default=str).encode()).hexdigest()
 

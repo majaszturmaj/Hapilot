@@ -94,7 +94,7 @@ What Hapilot does to keep data on your machines:
 - model endpoints are checked against a local/LAN allowlist (`src/config.py`); there is no cloud model path;
 - Hugging Face, Chroma and LangChain telemetry and downloads are switched off at run time (`src/privacy.py`);
   the embedding model is downloaded once during setup;
-- the sandbox has no network; the UI, model proxy and optional n8n listen on 127.0.0.1 only — the UI is opened to
+- the sandbox and the OCR containers (scanned PDFs) have no network; the UI, model proxy and optional n8n listen on 127.0.0.1 only — the UI is opened to
   the local network only when the operator sets `HAPILOT_UI_HOST` (with login and HTTPS,
   [docs/deployment.md](docs/deployment.md)); model servers always stay on 127.0.0.1;
 - each chat session has its own workspace; files are never served across sessions (the side panel serves
@@ -124,7 +124,7 @@ git clone https://github.com/majaszturmaj/Hapilot.git ~/Hapilot && cd ~/Hapilot
 python3 -m venv .venv
 .venv/bin/pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cpu
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python scripts/hapilotctl.py setup     # sandbox image, embedding model, config/models.local.yaml
+.venv/bin/python scripts/hapilotctl.py setup     # sandbox and OCR images, embedding model, config/models.local.yaml
 ```
 
 Edit `config/models.local.yaml` (paths to `llama-server` and the GGUF files), then:
@@ -194,7 +194,9 @@ port that is in use and prints the tunnel command with the configured UI port (`
 ### Your documents
 
 Put company documents (.pdf, .docx, .eml, .xlsx, .txt, .md) in a folder, set `HAPILOT_DOCS_DIR` in `.env`, and run
-`hapilotctl.py ingest`. The default is the fictional demo company in
+`hapilotctl.py ingest`. Scanned PDFs (pages without a text layer) are read by OCR — Tesseract with the Polish and
+English models, in an offline container built by `setup`; `HAPILOT_OCR=off` switches it off. The recognised text is
+only as good as the scan. The default is the fictional demo company in
 [examples/demo_company/](examples/demo_company/). `data/private_docs/` is ignored by git. Files that users add
 from the chat are kept in `var/added_docs/` (`HAPILOT_ADDED_DOCS_DIR`) and indexed together with your documents
 (source path `dodane/…`); to remove one, delete it there and run `hapilotctl.py ingest --force`.

@@ -56,7 +56,7 @@ HAPILOT_UI_SSL_KEY=/home/USER/hapilot-team-data/tls/hapilot.key
 binds the UI to that interface only.
 
 ```bash
-.venv/bin/python scripts/hapilotctl.py setup                       # sandbox image, embedding model, data folders
+.venv/bin/python scripts/hapilotctl.py setup                       # sandbox and OCR images, embedding model, data folders
 .venv/bin/python scripts/hapilotctl.py make-cert --ip 192.0.2.10 --dns hapilot.example.test
 .venv/bin/python scripts/hapilotctl.py add-user admin              # and one account per person or role
 .venv/bin/python scripts/hapilotctl.py ingest                      # documents in HAPILOT_DOCS_DIR
@@ -84,12 +84,15 @@ binds the UI to that interface only.
    kept). Workspaces and the knowledge base are not copied: updates do not change them, and `ingest` rebuilds the
    index.
 3. **Prepares the new commit next to the running one** (a temporary git worktree): installs `requirements*.txt` if
-   they changed, builds the sandbox image if `sandbox/` changed, and runs the unit tests there.
-4. **Switches** the checkout to the new commit and restarts the UI with the new commit's launcher, if the UI was
-   running; then checks that it answers and still asks for a login.
+   they changed, builds its Docker images (sandbox and OCR; Docker's cache makes unchanged ones instant) and runs
+   the unit tests there.
+4. **Switches** the checkout to the new commit; with the new commit's launcher it stops the UI, brings the knowledge
+   base up to date (`ingest`: re-indexed only if the documents, the index version or the OCR changed — never while
+   the UI has the database open) and starts the UI again, if it was running; then checks that it answers and still
+   asks for a login.
 
 If step 3 fails, the running UI is never touched. If step 4 fails, the checkout goes back to the previous commit
-(and its requirements) and the UI is restarted on it. A commit that failed is not tried again until a newer one
+(and its requirements), the knowledge base is rebuilt by that commit (`ingest --force`) and the UI is restarted on it. A commit that failed is not tried again until a newer one
 arrives (`--retry` forces it). Every change is logged in `<data folder>/log/update.log`; test output of a failed
 attempt in `<data folder>/log/update-tests.log`; the last check in `<data folder>/run/update.json`.
 
@@ -125,5 +128,5 @@ in a branch of your own and set `HAPILOT_UPDATE_BRANCH` to it.
   CPU wheel by hand (see above), or pip fetches the CUDA build.
 - A restart closes the open browser connections; Chainlit reconnects, and chats are kept in the history. A document
   form left open longer than the idle time is lost when the UI restarts.
-- The updater goes online: `git fetch` from the checkout's `origin`, pip when requirements change, Docker when the
-  sandbox image is rebuilt. The UI itself still makes no outbound connections (README, "Privacy").
+- The updater goes online: `git fetch` from the checkout's `origin`, pip when requirements change, Docker when an
+  image's Dockerfile changed (base image and packages). The UI itself still makes no outbound connections (README, "Privacy").

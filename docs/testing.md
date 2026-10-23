@@ -21,8 +21,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-test.txt
 [tests/fakes.py](../tests/fakes.py) and [tests/conftest.py](../tests/conftest.py):
 
 - `llm` fixture (`LLMScript`): replies per agent role, in order, and records every prompt;
-- `docker` fixture (`FakeDocker`): runs generated Python in a subprocess and fakes `pdflatex`; it fails the
-  test if Hapilot tries to pull an image;
+- `docker` fixture (`FakeDocker`): runs generated Python in a subprocess and fakes `pdflatex` and `tesseract`; it
+  fails the test if Hapilot tries to pull an image. OCR is off in unit tests unless a test switches it on with
+  this fixture;
 - vector store: tests replace the knowledge-base backend or the Chroma client with in-memory fakes;
 - egress guard: installed for the whole session; any non-local connection or DNS lookup fails the test.
 
@@ -54,6 +55,11 @@ runs three suites on the demo company ([examples/demo_company/](../examples/demo
 | smoke | [tests/scenarios/smoke.yaml](../tests/scenarios/smoke.yaml), 11 requests through the whole graph, 3 of them with uploaded files; indexes the demo corpus into a temporary knowledge base | the answer contains / does not contain given text; a PDF or other file was generated and contains / lacks given text; egress guard on |
 | planner | [tests/scenarios/planner.yaml](../tests/scenarios/planner.yaml), 25 requests, planner node only (guards included) | required, alternative, forbidden tools and their order |
 | dev | [tests/eval/dev_tasks.jsonl](../tests/eval/dev_tasks.jsonl), 10 tasks through the evaluation interface, date 2026-10-14 | schema validation; JSON answer values, sources, plan tools, created files ([scripts/dev_eval_check.py](../scripts/dev_eval_check.py)) |
+
+OCR (real Tesseract, no model): `scripts/ocr_check.py` turns the demo price list into an image-only PDF at
+200 dpi, reads it through Hapilot's extraction and compares the result with the original text layer (character
+similarity, Polish diacritics recovered; fails below 0.9 similarity). `scripts/ocr_check.py --report FILE…` lists,
+for real documents, the pages read by OCR with character counts and Tesseract's mean confidence — numbers only.
 
 The scenarios and tasks are about Hapilot's own fictional demo company. They are development checks, not
 the thesis benchmark, and they are not used to score Hapilot there.

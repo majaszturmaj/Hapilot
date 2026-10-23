@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Hapilot launcher for the GPU host — starts and stops only what it started itself.
 
-    .venv/bin/python scripts/hapilotctl.py setup            # sandbox image, embedding model, config files
+    .venv/bin/python scripts/hapilotctl.py setup            # sandbox and OCR images, embedding model, config files
     .venv/bin/python scripts/hapilotctl.py up [--profile P] # model proxy + knowledge base + UI
     .venv/bin/python scripts/hapilotctl.py status | down
     .venv/bin/python scripts/hapilotctl.py smoke [--profile P]
@@ -17,7 +17,8 @@ Safety rules built in:
 - ports are checked before starting; everything binds to 127.0.0.1, except the UI when the operator sets
   HAPILOT_UI_HOST (local network access, docs/deployment.md); model servers always stay on 127.0.0.1;
 - the model proxy is not started while another process uses the GPU;
-- Docker is used only to build the sandbox image (setup) and, from Hapilot itself, for sandbox runs.
+- Docker is used only to build the sandbox and OCR images (setup, build-images) and, from Hapilot itself, for sandbox
+  and OCR runs.
 """
 
 from __future__ import annotations
@@ -235,9 +236,7 @@ def cmd_setup(args) -> None:
         secret.write_text(secrets.token_urlsafe(48))
         secret.chmod(0o600)
     if not args.skip_image:
-        image = get_settings().sandbox_image
-        say(f"building sandbox image {image} (downloads the base image and TeX Live once)")
-        subprocess.run(["docker", "build", "-t", image, str(ROOT / "sandbox")], check=True)
+        build_images()
     if not args.skip_embeddings:
         apply_offline_env(allow_downloads=True)
         from huggingface_hub import snapshot_download
@@ -246,6 +245,26 @@ def cmd_setup(args) -> None:
         say(f"downloading embedding model {model} (once; afterwards Hapilot runs offline)")
         snapshot_download(model, allow_patterns=EMBEDDING_FILES)
     say("setup done")
+
+
+def images() -> list[tuple[str, Path]]:
+    """(tag, Dockerfile) of the images Hapilot runs: the sandbox and the OCR."""
+    s = get_settings()
+    return [(s.sandbox_image, ROOT / "sandbox" / "Dockerfile"), (s.ocr_image, ROOT / "sandbox" / "ocr.Dockerfile")]
+
+
+def build_images(quiet: bool = False) -> None:
+    """Build both images; Docker's layer cache makes this quick when a Dockerfile has not changed."""
+    for tag, dockerfile in images():
+        if not quiet:
+            say(f"building image {tag} from {dockerfile.relative_to(ROOT)} (the first build downloads the base image "
+                "and packages once)")
+        subprocess.run(["docker", "build", *(["-q"] if quiet else []), "-t", tag, "-f", str(dockerfile),
+                        str(dockerfile.parent)], check=True, capture_output=quiet)
+
+
+def cmd_build_images(args) -> None:
+    build_images(quiet=args.quiet)
 
 
 def cmd_ingest(args) -> None:
@@ -549,9 +568,9 @@ def install_requirements(cwd: Path) -> None:
         raise UpdateError(f"pip install failed: {(proc.stderr or proc.stdout).strip()[-300:]}")
 
 
-def prepare_commit(target: str, requirements: bool, sandbox: bool) -> str:
-    """Check out ``target`` next to the running install and get it ready: dependencies, sandbox image, unit tests.
-    The running UI keeps its files until the switch. Returns pytest's summary line."""
+def prepare_commit(target: str, requirements: bool) -> str:
+    """Check out ``target`` next to the running install and get it ready: dependencies, its Docker images (sandbox,
+    OCR), unit tests. The running UI keeps its files until the switch. Returns pytest's summary line."""
     work = var_dir() / "update" / "worktree"
     if work.exists():
         shutil.rmtree(work)
@@ -563,11 +582,11 @@ def prepare_commit(target: str, requirements: bool, sandbox: bool) -> str:
     try:
         if requirements:
             install_requirements(work)
-        if sandbox:
-            image = subprocess.run([str(PY), "-c", "from src.config import get_settings; print(get_settings().sandbox_image)"],
-                                   cwd=work, env=env, capture_output=True, text=True, check=True).stdout.strip()
-            subprocess.run(["docker", "build", "-q", "-t", image, str(work / "sandbox")], check=True, capture_output=True,
-                           timeout=3600)
+        if (work / "sandbox" / "ocr.Dockerfile").is_file():  # commits since the OCR image know `build-images`
+            built = subprocess.run([str(PY), str(work / "scripts" / "hapilotctl.py"), "build-images", "--quiet"], cwd=work,
+                                   env=env, capture_output=True, text=True, timeout=3600)
+            if built.returncode:
+                raise UpdateError(f"building the Docker images failed: {(built.stderr or built.stdout).strip()[-300:]}")
         try:
             proc = subprocess.run([str(PY), "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider"], cwd=work, env=env,
                                   capture_output=True, text=True, timeout=1800)
@@ -584,12 +603,22 @@ def prepare_commit(target: str, requirements: bool, sandbox: bool) -> str:
     return summary
 
 
-def restart_ui() -> None:
-    """Restart the UI with the launcher of the commit now checked out (it knows how its own UI starts)."""
-    proc = subprocess.run([str(PY), str(ROOT / "scripts" / "hapilotctl.py"), "ui", "restart"], cwd=ROOT,
-                          capture_output=True, text=True, timeout=600)
-    if proc.returncode:
-        raise UpdateError(f"UI restart failed: {(proc.stderr or proc.stdout).strip()[-300:]}")
+def switch_services(ui_running: bool, force_ingest: bool = False) -> None:
+    """With the commit now checked out, using its own launcher: stop the UI, bring the knowledge base up to date
+    (re-indexed only if documents, index version or OCR changed — the embedded database is never written while the
+    UI has it open), start the UI again."""
+    launcher = [str(PY), str(ROOT / "scripts" / "hapilotctl.py")]
+    if ui_running:
+        stop("ui")
+    for step, cmd, timeout in (("indexing", launcher + ["ingest"] + (["--force"] if force_ingest else []), 7200),
+                               ("UI start", launcher + ["ui", "up"], 600)):
+        if step == "UI start" and not ui_running:
+            break
+        proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+        with open(log_dir() / "update-switch.log", "a", encoding="utf-8") as fh:
+            fh.write(proc.stdout[-20000:] + proc.stderr[-5000:])
+        if proc.returncode:
+            raise UpdateError(f"{step} failed: {(proc.stderr or proc.stdout).strip()[-300:]}")
 
 
 def ui_health(timeout: float = 120) -> None:
@@ -639,11 +668,11 @@ def update(branch: str, now: bool = False, idle_minutes: float = 10, retry: bool
     requirements = any(name in REQUIREMENTS for name in changed)
     switched = False
     try:
-        summary = prepare_commit(target, requirements, sandbox=any(name.startswith("sandbox/") for name in changed))
+        summary = prepare_commit(target, requirements)
         git("reset", "--hard", "--quiet", target)
         switched = True
+        switch_services(bool(ui))
         if ui:
-            restart_ui()
             ui_health()
     except (UpdateError, subprocess.SubprocessError, OSError) as exc:
         try:
@@ -651,9 +680,10 @@ def update(branch: str, now: bool = False, idle_minutes: float = 10, retry: bool
                 git("reset", "--hard", "--quiet", old)
             if requirements:
                 install_requirements(ROOT)
-            if switched and ui:
-                restart_ui()
-                ui_health()
+            if switched:  # the new commit may have rebuilt the index: rebuild it as the old commit does it
+                switch_services(bool(ui), force_ingest=True)
+                if ui:
+                    ui_health()
         except (UpdateError, subprocess.SubprocessError, OSError) as again:
             record_update("error", f"update to {target[:8]} failed ({exc}); going back to {old[:8]} failed too "
                           f"({again}) — needs a look by hand", failed_target=target, backup=str(backup))
@@ -766,6 +796,9 @@ def main() -> None:
     p.add_argument("--skip-image", action="store_true")
     p.add_argument("--skip-embeddings", action="store_true")
     p.set_defaults(func=cmd_setup)
+    p = sub.add_parser("build-images", help="build the sandbox and OCR images (Docker's cache skips unchanged ones)")
+    p.add_argument("--quiet", action="store_true")
+    p.set_defaults(func=cmd_build_images)
     p = sub.add_parser("ingest")
     p.add_argument("--docs", type=Path)
     p.add_argument("--force", action="store_true")

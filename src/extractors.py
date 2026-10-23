@@ -3,6 +3,8 @@
 Used for the knowledge base (src/ingest_data.py) and for attachments (src/attachments.py), so a
 document reads the same way wherever it comes from. Every extractor takes bytes, which lets e-mail
 attachments go through the same code. A file that cannot be read raises ``ExtractionError``.
+PDF pages without a text layer (scans) are read by OCR (src/ocr.py); their segments carry ``ocr``
+and ``ocr_confidence``.
 """
 
 from __future__ import annotations
@@ -43,7 +45,7 @@ def extract_bytes(name: str, data: bytes) -> list[Segment]:
     suffix = Path(name).suffix.lower()
     try:
         if suffix == ".pdf":
-            segments = _pdf(data)
+            segments = _pdf(data, name)
         elif suffix == ".docx":
             segments = [Segment(_docx(data))]
         elif suffix == ".eml":
@@ -83,11 +85,32 @@ def _text(data: bytes) -> str:
     return data.decode("latin-1")
 
 
-def _pdf(data: bytes) -> list[Segment]:
+def _pdf(data: bytes, name: str = "") -> list[Segment]:
     from pypdf import PdfReader
 
+    from src import ocr
+    from src.config import get_settings
+
     reader = PdfReader(io.BytesIO(data))
-    return [Segment(page.extract_text() or "", {"page": i + 1}) for i, page in enumerate(reader.pages)]
+    segments = [Segment(page.extract_text() or "", {"page": i + 1}) for i, page in enumerate(reader.pages)]
+    scanned = [s.meta["page"] for s in segments if ocr.needs_ocr(s.text)]
+    if not scanned:
+        return segments
+    try:
+        texts = ocr.read_pages(data, scanned)
+    except ocr.OCRUnavailable as exc:
+        if len(scanned) == len(segments):
+            raise ExtractionError(f"{name}: no text found — scanned pages, OCR not available: {exc}") from exc
+        if get_settings().ocr_enabled:
+            print(f"⚠️ {name}: {len(scanned)} zeskanowanych stron bez tekstu — OCR nie zadziałał ({exc}); "
+                  "po naprawie: `hapilotctl.py ingest --force`")
+        return segments
+    for s in segments:
+        page = texts.get(s.meta["page"])
+        if page is not None and not ocr.needs_ocr(page.text):
+            s.text = page.text
+            s.meta.update(ocr=True, ocr_confidence=page.confidence)
+    return segments
 
 
 def _docx(data: bytes) -> str:

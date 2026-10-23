@@ -6,7 +6,8 @@ each document the panel shows the whole document with those chunks highlighted:
 
 - PDF: the original pages, rendered on the server (pypdfium2), with boxes over the chunk text.
   The chunk was extracted by pypdf, the boxes come from pdfium's text layer; both are compared
-  without whitespace, so line breaks and spacing differences do not matter.
+  without whitespace, so line breaks and spacing differences do not matter. Scanned pages have no
+  text layer (their text came from OCR, src/ocr.py): they are shown without boxes and marked as scans.
 - other formats (.docx, .eml, .xlsx, .txt, .md): the full extracted text (src/extractors.py, the
   same text the index was built from) with character ranges marked.
 
@@ -174,6 +175,27 @@ def pdf_page_sizes(path: Path) -> list[tuple[float, float]]:
         pdf.close()
 
 
+def pdf_scanned_pages(path: Path) -> set[int]:
+    """Pages without a text layer (scans): their text came from OCR, so there is nothing to draw boxes on."""
+    import pypdfium2 as pdfium
+
+    from src.ocr import needs_ocr
+
+    pdf = pdfium.PdfDocument(str(path))
+    try:
+        scanned = set()
+        for i in range(len(pdf)):
+            page = pdf[i]
+            textpage = page.get_textpage()
+            if needs_ocr(textpage.get_text_range(0, textpage.count_chars())):
+                scanned.add(i + 1)
+            textpage.close()
+            page.close()
+        return scanned
+    finally:
+        pdf.close()
+
+
 def pdf_boxes(path: Path, page_no: int, texts: list[tuple[str, int]]) -> list[dict]:
     """Highlight boxes on one PDF page for ``(text, chunk_no)`` pairs, in page fractions (origin top left)."""
     import pypdfium2 as pdfium
@@ -294,10 +316,12 @@ class SourceDoc:
                 by_page: dict[int, list[tuple[str, int]]] = {}
                 for i, c in enumerate(self.chunks):
                     by_page.setdefault(int(c.get("page") or 1), []).append((chunk_body(c.get("text", "")), i))
+                scanned = pdf_scanned_pages(self.path)
                 for n, (width, height) in enumerate(pdf_page_sizes(self.path), 1):
                     texts = by_page.get(n, [])  # chunks are cut per page at indexing time
-                    boxes = pdf_boxes(self.path, n, texts) if texts else []
-                    pages.append({"n": n, "url": page_url(self.path, n), "ratio": round(height / width, 4), "boxes": boxes})
+                    boxes = pdf_boxes(self.path, n, texts) if texts and n not in scanned else []
+                    pages.append({"n": n, "url": page_url(self.path, n), "ratio": round(height / width, 4), "boxes": boxes,
+                                  "scan": n in scanned})
                 return {**base, "kind": "pdf", "pages": pages}
             except Exception as exc:  # unreadable for pdfium: fall back to the extracted text
                 print(f"⚠️ [PANEL] {self.source}: PDF rendering failed ({type(exc).__name__}: {exc}); showing text")
