@@ -362,8 +362,12 @@
   function render() {
     if (!state.built) build();
     renderStats();
-    renderTable();
-    renderTrash();
+    // the list is polled every 2 s while documents are indexed: redraw it only when it changed, so a click never
+    // lands on a row that was just replaced
+    const files = JSON.stringify([state.info.files, state.info.writable]);
+    if (files !== state.drawnFiles) { state.drawnFiles = files; renderTable(); }
+    const trash = JSON.stringify(state.info.trash);
+    if (trash !== state.drawnTrash) { state.drawnTrash = trash; renderTrash(); }
     renderUploads();
     $("#kb-readonly").hidden = state.info.writable;
     $("#kb-add").disabled = !state.info.writable;
