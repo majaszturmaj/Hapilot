@@ -21,6 +21,7 @@
       <button role="tab" data-tab="graph" class="tab active">🕸️ Graf agenta</button>
       <button role="tab" data-tab="prompts" class="tab">📝 Prompty</button>
       <button role="tab" data-tab="templates" class="tab">📄 Szablony</button>
+      <button role="tab" data-tab="knowledge" class="tab" id="knowledge-tab" hidden>📚 Baza wiedzy</button>
       <button role="tab" data-tab="branding" class="tab" id="branding-tab" hidden>🎨 Wygląd</button>
       <button role="tab" data-tab="audit" class="tab">📜 Dziennik zmian</button>
     </nav>
@@ -120,6 +121,11 @@
       </div>
     </section>
 
+    <!-- ======================= knowledge base (administrators) ======================= -->
+    <section class="view" data-view="knowledge">
+      <div class="kb-wrap" id="kb-root"><p class="muted">Wczytuję…</p></div>
+    </section>
+
     <!-- ======================= company look (administrators) ======================= -->
     <section class="view" data-view="branding">
       <div class="brand-layout" id="brand-root"><p class="muted">Wczytuję…</p></div>
@@ -144,5 +150,6 @@
   <script src="/hapilot/admin/assets/admin.js"></script>
   <script src="/hapilot/admin/assets/templates.js"></script>
   <script src="/hapilot/admin/assets/branding.js"></script>
+  <script src="/hapilot/admin/assets/knowledge.js"></script>
 </body>
 </html>

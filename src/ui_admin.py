@@ -4,22 +4,27 @@ Who may use it: any user logged in to the Chainlit UI (its ``access_token`` cook
 own JWT decoder). What each user may do is decided in src/admin.py (own private nodes for everyone; global
 nodes and built-in prompts for administrators). Requests that change something must also come from the
 panel's own origin (the ``Origin`` header, when sent, must match the host) and carry the ``X-Hapilot-Admin``
-header, which a cross-site form cannot set.
+header, which a cross-site form cannot set. The knowledge base (``/api/kb…``, src/knowledge_admin.py) is for
+administrators only; documents are uploaded as the request body (no form encoding), up to
+``HAPILOT_KB_MAX_UPLOAD_MB``.
 """
 
 from __future__ import annotations
 
 import asyncio
+import mimetypes
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
-from src import admin, branding, doc_templates, signatures
+from src import admin, branding, doc_templates, knowledge_admin, signatures
+from src.config import get_settings
 
 PREFIX = "/hapilot/admin"
 ASSETS = Path(__file__).resolve().parent / "admin_ui"
 ASSET_TYPES = {"admin.css": "text/css; charset=utf-8", "admin.js": "text/javascript; charset=utf-8",
-               "templates.js": "text/javascript; charset=utf-8", "branding.js": "text/javascript; charset=utf-8"}
+               "templates.js": "text/javascript; charset=utf-8", "branding.js": "text/javascript; charset=utf-8",
+               "knowledge.js": "text/javascript; charset=utf-8"}
 NO_STORE = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY",
             "Referrer-Policy": "same-origin"}
 
@@ -68,8 +73,9 @@ async def _guard(request, write: bool = False, admin_only: bool = False):
 async def _call(fn, *args):
     try:
         return _json(await asyncio.to_thread(fn, *args))
-    except (admin.AdminError, doc_templates.TemplateError, signatures.SignatureError, branding.BrandingError) as exc:
-        return _json({"error": str(exc)}, 400)
+    except (admin.AdminError, doc_templates.TemplateError, signatures.SignatureError, branding.BrandingError,
+            knowledge_admin.KnowledgeError) as exc:
+        return _json({"error": str(exc)}, getattr(exc, "status", 400))
 
 
 async def _body(request) -> dict:
@@ -251,6 +257,105 @@ async def branding_restore(request):
     return error or await _call(branding.restore, request.path_params["index"], user)
 
 
+# --------------------------------------------------------------------------- knowledge base (administrators)
+
+INLINE = {".pdf": "application/pdf", ".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8"}
+
+
+async def _receive(request) -> Path:
+    """The request body (the file as is) in a temporary file of the knowledge base; refused above the limit."""
+    limit = get_settings().kb_max_upload_mb * 1024 * 1024
+    too_big = knowledge_admin.KnowledgeError(f"Plik jest za duży (najwyżej {get_settings().kb_max_upload_mb} MB).")
+    length = request.headers.get("content-length", "")
+    if length.isdigit() and int(length) > limit:
+        raise too_big
+    target = knowledge_admin.incoming_file()
+    size = 0
+    try:
+        with target.open("wb") as fh:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > limit:
+                    raise too_big
+                fh.write(chunk)
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
+    return target
+
+
+async def _received(request):
+    """(temporary file, None) or (None, error response)."""
+    try:
+        return await _receive(request), None
+    except knowledge_admin.KnowledgeError as exc:
+        return None, _json({"error": str(exc)}, 413)
+
+
+async def kb(request):
+    user, error = await _guard(request, admin_only=True)
+    return error or await _call(knowledge_admin.overview, user)
+
+
+async def kb_upload(request):
+    """A new document (``?name=``); ``&replace=1`` replaces a document of that name."""
+    user, error = await _guard(request, write=True, admin_only=True)
+    if error:
+        return error
+    data, error = await _received(request)
+    if error:
+        return error
+    query = request.query_params
+    return await _call(knowledge_admin.upload, query.get("name", ""), data, user, query.get("replace") == "1")
+
+
+async def kb_file(request):
+    """``?source=``: GET the original (``&inline=1`` opens a PDF or text in the browser), PUT a new version,
+    DELETE (to the trash)."""
+    source = request.query_params.get("source", "")
+    if request.method == "GET":
+        user, error = await _guard(request, admin_only=True)
+        if error:
+            return error
+        from starlette.responses import FileResponse
+
+        try:
+            path = await asyncio.to_thread(knowledge_admin.file_for, source, user)
+        except knowledge_admin.KnowledgeError as exc:
+            return _json({"error": str(exc)}, 404)
+        inline = request.query_params.get("inline") == "1" and path.suffix.lower() in INLINE
+        media = INLINE.get(path.suffix.lower()) or mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        return FileResponse(path, media_type=media, filename=path.name, headers=NO_STORE,
+                            content_disposition_type="inline" if inline else "attachment")
+    user, error = await _guard(request, write=True, admin_only=True)
+    if error:
+        return error
+    if request.method == "DELETE":
+        return await _call(knowledge_admin.delete, source, user)
+    data, error = await _received(request)
+    if error:
+        return error
+    return await _call(knowledge_admin.replace_document, source, data, user)
+
+
+async def kb_text(request):
+    user, error = await _guard(request, admin_only=True)
+    return error or await _call(knowledge_admin.text, request.query_params.get("source", ""), user)
+
+
+async def kb_rescan(request):
+    user, error = await _guard(request, write=True, admin_only=True)
+    if error:
+        return error
+    knowledge_admin.request_rescan()
+    return _json({"queued": True})
+
+
+async def kb_restore(request):
+    user, error = await _guard(request, write=True, admin_only=True)
+    return error or await _call(knowledge_admin.restore, request.query_params.get("id", ""), user)
+
+
 ROUTES = [
     ("", page, ["GET"]),
     ("/assets/{name}", asset, ["GET"]),
@@ -269,6 +374,12 @@ ROUTES = [
     ("/api/templates/{tid}/global", template_share, ["PUT"]),
     ("/api/branding", branding_api, ["GET", "PUT", "DELETE"]),
     ("/api/branding/restore/{index:int}", branding_restore, ["POST"]),
+    ("/api/kb", kb, ["GET"]),
+    ("/api/kb/upload", kb_upload, ["POST"]),
+    ("/api/kb/file", kb_file, ["GET", "PUT", "DELETE"]),
+    ("/api/kb/text", kb_text, ["GET"]),
+    ("/api/kb/rescan", kb_rescan, ["POST"]),
+    ("/api/kb/trash/restore", kb_restore, ["POST"]),
 ]
 _installed = False
 

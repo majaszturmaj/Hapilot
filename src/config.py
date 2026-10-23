@@ -181,6 +181,9 @@ class Settings:
     ui_ssl_cert: Optional[Path] = None
     ui_ssl_key: Optional[Path] = None
     update_branch: str = "main"
+    kb_max_upload_mb: int = 50
+    kb_rescan_minutes: float = 5.0
+    kb_trash_days: int = 30
 
     def profile(self, name: Optional[str] = None) -> Profile:
         name = name or self.default_profile
@@ -244,6 +247,15 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
     if bool(cert) != bool(key):
         raise ConfigError("HAPILOT_UI_SSL_CERT and HAPILOT_UI_SSL_KEY must be set together (HTTPS) or both left empty")
 
+    def number(name: str, default: str, low: float, high: float) -> float:
+        try:
+            value = float(get(name, default))
+        except ValueError:
+            raise ConfigError(f"{name} must be a number") from None
+        if not low <= value <= high:
+            raise ConfigError(f"{name}={value:g}: use a value between {low:g} and {high:g}")
+        return value
+
     return Settings(
         data_dir=data_dir,
         workspace_root=path("HAPILOT_WORKSPACE_DIR", data_dir / "workspace"),
@@ -277,6 +289,9 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         ui_ssl_cert=path("HAPILOT_UI_SSL_CERT", Path()) if cert else None,
         ui_ssl_key=path("HAPILOT_UI_SSL_KEY", Path()) if key else None,
         update_branch=get("HAPILOT_UPDATE_BRANCH", "main").strip() or "main",
+        kb_max_upload_mb=int(number("HAPILOT_KB_MAX_UPLOAD_MB", "50", 1, 1024)),
+        kb_rescan_minutes=number("HAPILOT_KB_RESCAN_MINUTES", "5", 0, 1440),  # 0: no periodic re-check
+        kb_trash_days=int(number("HAPILOT_KB_TRASH_DAYS", "30", 1, 3650)),
     )
 
 

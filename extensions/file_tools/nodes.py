@@ -336,6 +336,9 @@ def _add(state, names: list[str]) -> dict:
     except Exception as exc:
         return _done(state, AIMessage(content=f"BŁĄD: Nie udało się dodać plików do bazy wiedzy: {exc}"), hitl_response=None,
                      execution_status="error")
+    from src import knowledge_admin
+
+    knowledge_admin.record_added(result["added"], run_context.current("user"))  # who and when, for the agent panel
     lines = []
     if result["added"]:
         lines.append(f"📚 Dodano do bazy wiedzy: {', '.join(result['added'])} ({result['chunks']} fragm.). "

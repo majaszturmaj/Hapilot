@@ -41,6 +41,20 @@ UI changes, plus one agent fix in the document generator (below).
   preview. UI only (`src/branding.py`, `src/ui_branding.py`); evaluation runs always run as Hapilot. Chainlit's own
   logo, favicon and avatar are now sent with `Cache-Control: no-cache`. The file tools' confirmation no longer
   names the product.
+- Knowledge base in the agent panel (tab „📚 Baza wiedzy”, administrators only; `src/knowledge_admin.py`): every
+  document the knowledge base searches (company folder and documents added from the chat) with type, size, pages,
+  chunks, OCR pages and confidence, who added it and when, and its indexing status; preview of the indexed text per
+  page; download / open the original. Upload of several files at once or by drag and drop (≤ 50 MB each,
+  `HAPILOT_KB_MAX_UPLOAD_MB`; type checked by content) straight into `HAPILOT_DOCS_DIR`; replace with a new version;
+  delete. Replaced and deleted files go to a trash for 30 days (`HAPILOT_KB_TRASH_DAYS`) and can be restored. Indexing
+  runs in a background thread of the UI and touches only the changed documents (`ingest_data.index_entries` /
+  `remove_sources`, per-document list `<collection>.files.json`, fingerprint kept current, so the next `ingest` of
+  an unchanged folder does nothing); the UI re-checks the folders at start-up and every 5 minutes
+  (`HAPILOT_KB_RESCAN_MINUTES`). Chat uploads record who added the file. Every change is in the audit log; the list of
+  who added what is in the updater's backup. `hapilotctl.py ingest` refuses to run while the UI runs (`up` skips it).
+  The demo documents in the checkout are listed, never changed.
+- Knowledge base fix: the BM25 index was cached by the number of chunks, so a document replaced by a version with
+  as many chunks was still searched in its old wording; it is now keyed by the chunk ids (which hash the text).
 - Signatures: the document form offers „Podpis” — a blank place for a handwritten signature (default) or the
   user's own scan (uploaded in the panel, „✍️ Mój podpis”; private, PNG/JPEG ≤ 2 MB). Built-in templates and the
   builder's signature block have a fixed-size signature place (`{{PODPIS_SLOT}}`), so the layout is the same either

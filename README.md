@@ -188,6 +188,15 @@ name's first letter on the main colour) and the main colour. A live preview show
 with who and when, any of them can be restored, and Hapilot's look comes back with one click. UI only: evaluation
 runs always run as Hapilot ([src/branding.py](src/branding.py), [src/ui_branding.py](src/ui_branding.py)).
 
+**Knowledge base.** Administrators manage the documents the assistant answers from in the panel's **📚 Baza wiedzy**
+tab: every document with its type, size, pages, chunks, pages read by OCR, who added it and when, and whether it is
+indexed; the text the index got from it (per page, scans marked); download. They add documents (several at once or
+by drag and drop, up to 50 MB each), which are saved into the company documents folder and indexed in the
+background, OCR included; replace one with a new version; and delete one. Replaced and deleted files stay in a
+trash for 30 days and can be restored. The UI re-checks the documents folder at start-up and every 5 minutes, so
+files copied there on the server are picked up too. Only the changed documents are indexed, never the whole folder
+again ([src/knowledge_admin.py](src/knowledge_admin.py)). Other users do not see the tab.
+
 ### Ports
 
 | Port (127.0.0.1; the UI: `HAPILOT_UI_HOST`) | Service | Variable |
@@ -206,9 +215,11 @@ Put company documents (.pdf, .docx, .eml, .xlsx, .txt, .md) in a folder, set `HA
 `hapilotctl.py ingest`. Scanned PDFs (pages without a text layer) are read by OCR — Tesseract with the Polish and
 English models, in an offline container built by `setup`; `HAPILOT_OCR=off` switches it off. The recognised text is
 only as good as the scan. The default is the fictional demo company in
-[examples/demo_company/](examples/demo_company/). `data/private_docs/` is ignored by git. Files that users add
-from the chat are kept in `var/added_docs/` (`HAPILOT_ADDED_DOCS_DIR`) and indexed together with your documents
-(source path `dodane/…`); to remove one, delete it there and run `hapilotctl.py ingest --force`.
+[examples/demo_company/](examples/demo_company/) (shown in the panel, never changed by it). `data/private_docs/` is
+ignored by git. Files that users add from the chat are kept in `var/added_docs/` (`HAPILOT_ADDED_DOCS_DIR`) and
+indexed together with your documents (source path `dodane/…`). While the UI runs, it keeps the index up to date
+itself — through the agent panel (**📚 Baza wiedzy**) or by re-checking the folder every few minutes — and
+`hapilotctl.py ingest` refuses to run (the embedded database takes one writer).
 
 ## Evaluation (headless)
 

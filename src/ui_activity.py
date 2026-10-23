@@ -8,6 +8,7 @@ an answer short.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import json
 import os
@@ -52,6 +53,16 @@ def tracked(func):
             _change(-1)
 
     return wrapper
+
+
+@contextlib.contextmanager
+def busy():
+    """Counted as running for the duration (background work of the UI, e.g. indexing a document)."""
+    _change(+1)
+    try:
+        yield
+    finally:
+        _change(-1)
 
 
 def idle(ui_pid: Optional[int], idle_seconds: float, path: Optional[Path] = None,

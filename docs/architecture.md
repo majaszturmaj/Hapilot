@@ -124,6 +124,23 @@ Unreadable files are listed, not dropped. An unchanged corpus is not re-indexed.
 live in `HAPILOT_ADDED_DOCS_DIR` and are indexed with the corpus under the source prefix `dodane/`
 (`add_documents` indexes a new one at once and updates the corpus fingerprint).
 
+Next to the fingerprint, `<collection>.files.json` lists what the index holds per document: content hash, size,
+chunks, pages, pages read by OCR with their mean confidence, or why the file could not be read. `index_entries` and
+`remove_sources` change single documents — the old chunks of a document are deleted by its source path, its new
+chunks added; text extraction (OCR included) runs before the index is touched — and rewrite the fingerprint and the
+list together, so the next `ingest` of the same folders does nothing. A list that does not belong to the current
+fingerprint (an index built by an older version) is rebuilt from the index's chunk metadata. The BM25 ranking is
+cached per collection and rebuilt whenever the set of chunk ids changes (ids carry a hash of the text).
+
+The embedded database takes one writer. While the UI runs, only the UI writes its knowledge base
+([src/knowledge_admin.py](../src/knowledge_admin.py)): one background thread indexes documents changed in the agent
+panel's **📚 Baza wiedzy** tab (administrators: upload into `HAPILOT_DOCS_DIR`, replace, delete into a trash under
+`HAPILOT_DATA_DIR/knowledge_base/trash` kept `HAPILOT_KB_TRASH_DAYS` days, restore) and re-checks both folders at
+start-up and every `HAPILOT_KB_RESCAN_MINUTES` minutes (size and modification time first, then the content hash).
+`knowledge_base.index_lock` keeps that thread and a chat upload apart; `hapilotctl.py ingest` refuses to run while
+the UI runs. Who added a document and when is kept in `HAPILOT_DATA_DIR/knowledge_base/registry.json`; every change
+goes to the audit log. A documents folder inside the checkout (the demo documents) is listed but never changed.
+
 ## Company look (UI only)
 
 [src/branding.py](../src/branding.py) keeps the look an administrator sets in the agent panel (name, company

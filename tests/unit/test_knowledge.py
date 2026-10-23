@@ -121,3 +121,28 @@ def test_collection_rebuilt_by_another_process_is_reloaded(monkeypatch):
         assert [c.chunk_id for c in chunks] == ["c1"] and resets == [1]
     finally:
         knowledge_base.set_backend(None)
+
+
+def test_bm25_sees_a_document_replaced_by_one_with_as_many_chunks():
+    """Regression: the BM25 index was cached by the number of chunks, so a document replaced in the agent panel by a
+    new version with the same number of chunks kept being searched in its old wording."""
+
+    class Swappable:
+        chunks = [("doc.txt#0:aaa", "Parking dla gości jest w strefie B.", {"source": "doc.txt"})]
+
+        def dense(self, path, collection, query, k):
+            return []  # BM25 alone decides
+
+        def all_chunks(self, path, collection):
+            return list(self.chunks)
+
+    fake = Swappable()
+    knowledge_base.set_backend(fake)
+    try:
+        target = [(Path("/x"), "corpus")]
+        assert [c.chunk_id for c in knowledge_base.search("strefie B parking", targets=target)] == ["doc.txt#0:aaa"]
+        fake.chunks = [("doc.txt#0:bbb", "Goście parkują przy portierni od strony północnej.", {"source": "doc.txt"})]
+        found = knowledge_base.search("portierni północnej", targets=target)
+        assert [c.chunk_id for c in found] == ["doc.txt#0:bbb"] and "portierni" in found[0].text
+    finally:
+        knowledge_base.set_backend(None)

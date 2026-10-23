@@ -11,7 +11,8 @@ the chat's workspace and side panel are the same as before. Workspaces are keyed
 (thread) id, so they survive a reconnect. Every logged-in user also gets the agent panel at
 ``/hapilot/admin`` (src/ui_admin.py) and runs on their own agent: built-in nodes, global custom nodes
 and their own private ones (src/admin.py). Handlers are counted while they run (src/ui_activity.py), so the
-updater never restarts the UI in the middle of an answer.
+updater never restarts the UI in the middle of an answer. While the UI runs it alone writes the knowledge base: a
+background thread indexes documents changed in the agent panel or in the documents folder (src/knowledge_admin.py).
 """
 
 import json
@@ -89,6 +90,11 @@ def _summarize_node_output(node_name: str, output: dict) -> str:
 
 
 ui_panel.install_route()  # PDF pages and downloads for the right-hand panel
+
+# the knowledge base follows the documents folder: re-checked now and every few minutes (src/knowledge_admin.py)
+from src import knowledge_admin as _knowledge_admin  # noqa: E402
+
+_knowledge_admin.start()
 
 # --------------------------------------------------------------------------- optional login and chat history
 

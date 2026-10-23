@@ -18,6 +18,10 @@
     template_builtin_saved: ["📝", "Zmieniono wbudowany szablon"], template_builtin_restored: ["↩️", "Przywrócono wbudowany szablon"],
     node_updated: ["🛠️", "Zmieniono węzeł"], node_shared: ["🌐", "Udostępniono wszystkim"], node_unshared: ["🔒", "Wycofano udostępnienie"],
     branding_saved: ["🎨", "Zmieniono wygląd aplikacji"], branding_reset: ["↩️", "Przywrócono wygląd Hapilota"],
+    kb_uploaded: ["📚", "Dodano dokument do bazy wiedzy"], kb_replaced: ["🔄", "Zastąpiono dokument nową wersją"],
+    kb_deleted: ["🗑️", "Usunięto dokument (do kosza)"], kb_restored: ["↩️", "Przywrócono dokument z kosza"],
+    kb_added_chat: ["💬", "Dodano dokument z czatu"], kb_folder_added: ["📁", "Nowy plik w folderze dokumentów"],
+    kb_folder_changed: ["📁", "Zmieniony plik w folderze dokumentów"], kb_folder_removed: ["📁", "Plik usunięty z folderu dokumentów"],
   };
   const isAdmin = () => Boolean(state.graph && state.graph.admin);
   const customClass = (n) => (n.kind === "custom" ? (n.global ? " global" : " private") : "");
@@ -757,6 +761,7 @@
     if (tab === "audit") loadAudit();
     if (tab === "templates" && window.HapilotTemplates) window.HapilotTemplates.open();
     if (tab === "branding" && window.HapilotBranding) window.HapilotBranding.open();
+    if (tab === "knowledge" && window.HapilotKnowledge) window.HapilotKnowledge.open();
     if (tab === "graph") setTimeout(() => fit(), 0);
   }
 
@@ -800,7 +805,8 @@
     });
     window.addEventListener("beforeunload", (ev) => {
       if (state.dirty || (window.HapilotTemplates && window.HapilotTemplates.dirty())
-          || (window.HapilotBranding && window.HapilotBranding.dirty())) { ev.preventDefault(); ev.returnValue = ""; }
+          || (window.HapilotBranding && window.HapilotBranding.dirty())
+          || (window.HapilotKnowledge && window.HapilotKnowledge.dirty())) { ev.preventDefault(); ev.returnValue = ""; }
     });
     try {
       const me = await api("/me");
@@ -814,7 +820,7 @@
     if (tab === "signature") {  // link from the chat header and the document form
       switchTab("templates");
       window.HapilotTemplates.signature();
-    } else if (["graph", "prompts", "templates", "branding", "audit"].includes(tab)) switchTab(tab);
+    } else if (["graph", "prompts", "templates", "knowledge", "branding", "audit"].includes(tab)) switchTab(tab);
   }
 
   // helpers for the template editor (templates.js)

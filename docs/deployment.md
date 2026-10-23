@@ -23,7 +23,7 @@ git branch: new commits are tested and switched to automatically, with a rollbac
 | Code | a git checkout, e.g. `~/Hapilot-team` | the updater only — the updater refuses to run when tracked files were edited by hand |
 | Settings | `.env` in the checkout (not tracked) | the operator |
 | Data: accounts, chats, custom nodes, templates, signatures, knowledge base, workspaces, logs, backups | a folder outside the checkout (`HAPILOT_DATA_DIR`) | the running UI |
-| Company documents | e.g. `<data folder>/docs` (`HAPILOT_DOCS_DIR`) | the operator, then `hapilotctl.py ingest` |
+| Company documents | e.g. `<data folder>/docs` (`HAPILOT_DOCS_DIR`) | administrators in the agent panel (**📚 Baza wiedzy**), or the operator in the folder; the running UI indexes the changes |
 
 Keeping the data outside the checkout means an update can never touch it.
 
@@ -67,6 +67,23 @@ binds the UI to that interface only.
 `make-cert` names every address and host name people will type (`--ip`, `--dns`, repeatable); `localhost` and
 127.0.0.1 are always included, for an SSH tunnel.
 
+## Company documents
+
+Once the UI runs, the knowledge base follows the documents folder without `ingest`:
+
+- administrators add, replace and delete documents in the agent panel (`/hapilot/admin`, tab **📚 Baza wiedzy**);
+  new files are saved into `HAPILOT_DOCS_DIR` and indexed in the background, OCR included;
+- files copied into the folder on the server, changed or deleted there are picked up at start-up and every
+  `HAPILOT_KB_RESCAN_MINUTES` minutes (default 5; 0 = only at start-up and on "Sprawdź folder teraz");
+- replaced and deleted files are kept in `<data folder>/knowledge_base/trash/` for `HAPILOT_KB_TRASH_DAYS` days
+  (default 30) and can be restored in the panel; after that they are deleted;
+- one file may have up to `HAPILOT_KB_MAX_UPLOAD_MB` MB (default 50).
+
+Only the changed documents are indexed. While the UI runs, `hapilotctl.py ingest` refuses to run: the embedded
+database takes one writer, and the UI is it. To rebuild the whole index: `ui down`, `ingest --force`, `ui up`.
+Indexing counts as activity for the updater, so it never restarts the UI in the middle of it; a re-check that finds
+nothing to do does not.
+
 ## Updates
 
 ```bash
@@ -80,9 +97,9 @@ binds the UI to that interface only.
    progress, or within 10 minutes of the last chat action (`--idle-minutes`; the UI records its activity in
    `<data folder>/run/ui_activity.json`). The next run tries again. `--now` skips the wait.
 2. **Backs up** the chat database (SQLite online backup), the accounts file, custom nodes, templates, prompt and
-   template edits, the audit log and signatures to `<data folder>/backups/<time>-<old commit>/` (the 10 newest are
-   kept). Workspaces and the knowledge base are not copied: updates do not change them, and `ingest` rebuilds the
-   index.
+   template edits, the audit log, signatures and the list of who added which document to
+   `<data folder>/backups/<time>-<old commit>/` (the 10 newest are kept). Workspaces, the documents (and their
+   trash) and the knowledge base are not copied: updates do not change them, and `ingest` rebuilds the index.
 3. **Prepares the new commit next to the running one** (a temporary git worktree): installs `requirements*.txt` if
    they changed, builds those of its Docker images (sandbox, OCR) whose tag does not exist yet — an existing tag is
    never rebuilt, a changed Dockerfile comes with a new tag — and runs the unit tests there.

@@ -279,6 +279,11 @@ def cmd_build_images(args) -> None:
 
 
 def cmd_ingest(args) -> None:
+    if owned("ui"):  # the embedded database takes one writer: while the UI runs, that is the UI
+        raise SystemExit("[hapilotctl] the UI is running and keeps the knowledge base up to date itself (agent panel → "
+                         "📚 Baza wiedzy; it re-checks the documents folder at start-up and every "
+                         f"{get_settings().kb_rescan_minutes:g} min). Indexing from here now could damage the index. "
+                         "To rebuild it: ui down, ingest --force, ui up.")
     cmd = [str(PY), "-m", "src.ingest_data"] + (["--docs", str(args.docs)] if args.docs else []) + (["--force"] if args.force else [])
     subprocess.run(cmd, cwd=ROOT, check=True)
 
@@ -384,7 +389,8 @@ def cmd_ui(args) -> None:
 
 def cmd_up(args) -> None:
     models_up(args.profile)
-    cmd_ingest(argparse.Namespace(docs=None, force=False))
+    if not owned("ui"):  # a running UI keeps the knowledge base up to date itself
+        cmd_ingest(argparse.Namespace(docs=None, force=False))
     ui_up(args.profile)
     say(f"open the UI {ui_address()}")
 
@@ -542,13 +548,13 @@ def record_update(state: str, message: str, log: bool = True, **fields) -> dict:
 
 
 def backup_data(commit: str, keep: int = 10) -> Path:
-    """Copies of what people created — chats, accounts, custom nodes, templates, prompt edits, signatures — before
-    an update. Workspaces and the knowledge base are not copied: updates do not change them (ingest rebuilds the
-    index)."""
+    """Copies of what people created — chats, accounts, custom nodes, templates, prompt edits, signatures, who added
+    which document — before an update. Workspaces, the documents (and their trash) and the knowledge base are not
+    copied: updates do not change them (ingest rebuilds the index)."""
     import sqlite3
     from contextlib import closing
 
-    from src import admin, doc_templates
+    from src import admin, doc_templates, knowledge_admin
     from src.ui_auth import users_file
 
     root = var_dir() / "backups"
@@ -561,7 +567,8 @@ def backup_data(commit: str, keep: int = 10) -> Path:
             source.backup(copy)
     items = {"ui_users": users_file(), "custom_extensions": admin.custom_dir(), "prompt_overrides": admin.overrides_dir(),
              "admin_audit.jsonl": admin.audit_path(), "custom_templates": doc_templates.custom_dir(),
-             "template_overrides": doc_templates.overrides_dir(), "signatures": var_dir() / "signatures"}
+             "template_overrides": doc_templates.overrides_dir(), "signatures": var_dir() / "signatures",
+             "knowledge_registry.json": knowledge_admin.registry_path()}
     for name, path in items.items():
         if path and path.is_dir():
             shutil.copytree(path, dest / name)

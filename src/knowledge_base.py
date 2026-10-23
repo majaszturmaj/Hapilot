@@ -9,6 +9,9 @@
   corpus plus a task's attachments).
 - Which collections are searched comes from the run context (``kb_path``, ``kb_collection``,
   ``extra_collections``); the default is the UI's knowledge base from Settings.
+- One process writes an index at a time (embedded database): while the UI runs, only the UI changes its
+  knowledge base (agent panel, chat uploads, folder re-check — src/knowledge_admin.py); ``index_lock`` keeps
+  those writers of one process apart.
 
 Heavy libraries are imported only when the knowledge base is used; tests replace the backend.
 """
@@ -67,6 +70,7 @@ class E5Embeddings:
 
 
 _lock = threading.RLock()
+index_lock = threading.RLock()  # held while this process changes an index (src/ingest_data.py)
 _embeddings: Any = None
 _clients: dict[str, Any] = {}
 _stores: dict[tuple[str, str], Any] = {}
@@ -151,7 +155,7 @@ class BM25:
         return out
 
 
-_bm25_cache: dict[tuple[str, str], tuple[int, list, BM25]] = {}
+_bm25_cache: dict[tuple[str, str], tuple[str, list, BM25]] = {}
 
 
 # --------------------------------------------------------------------------- backend (Chroma, or a test double)
@@ -194,15 +198,52 @@ def _dense_fresh(path: Path, collection: str, query: str, k: int) -> list:
 
 
 def _bm25_for(path: Path, collection: str) -> tuple[list, BM25]:
+    """BM25 over the collection's chunks, rebuilt whenever its chunks change. Keyed by the chunk ids, which carry
+    a hash of the text: a document replaced by one with as many chunks is not missed (a count was not enough)."""
     chunks = _backend.all_chunks(path, collection)
     key = (str(path), collection)
+    version = hashlib.sha256("\n".join(sorted(str(cid) for cid, _text, _meta in chunks)).encode("utf-8")).hexdigest()
     with _lock:
         cached = _bm25_cache.get(key)
-        if cached and cached[0] == len(chunks):
+        if cached and cached[0] == version:
             return cached[1], cached[2]
         index = BM25([tokenize(text) for _id, text, _meta in chunks])
-        _bm25_cache[key] = (len(chunks), chunks, index)
+        _bm25_cache[key] = (version, chunks, index)
         return chunks, index
+
+
+# --------------------------------------------------------------------------- per document (incremental changes)
+
+def _collection(collection: str, path: Optional[Path] = None) -> Any:
+    """The raw Chroma collection, or None when it does not exist yet."""
+    try:
+        return chroma_client(path).get_collection(collection)
+    except Exception as exc:
+        if "does not exist" in str(exc):
+            return None
+        raise
+
+
+def delete_source(source: str, collection: str, path: Optional[Path] = None) -> None:
+    """Remove every chunk of one document from the index."""
+    found = _collection(collection, path)
+    if found is not None:
+        found.delete(where={"source": source})
+
+
+def source_summary(collection: str, path: Optional[Path] = None) -> dict[str, dict]:
+    """Per document in the index: its number of chunks and the pages read by OCR."""
+    found = _collection(collection, path)
+    if found is None:
+        return {}
+    summary: dict[str, dict] = {}
+    for meta in found.get(include=["metadatas"])["metadatas"]:
+        meta = meta or {}
+        entry = summary.setdefault(str(meta.get("source", "")), {"chunks": 0, "ocr_pages": set()})
+        entry["chunks"] += 1
+        if meta.get("ocr") and meta.get("page"):
+            entry["ocr_pages"].add(int(meta["page"]))
+    return summary
 
 
 # --------------------------------------------------------------------------- search
