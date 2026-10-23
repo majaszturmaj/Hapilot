@@ -124,6 +124,16 @@ Unreadable files are listed, not dropped. An unchanged corpus is not re-indexed.
 live in `HAPILOT_ADDED_DOCS_DIR` and are indexed with the corpus under the source prefix `dodane/`
 (`add_documents` indexes a new one at once and updates the corpus fingerprint).
 
+## Company look (UI only)
+
+[src/branding.py](../src/branding.py) keeps the look an administrator sets in the agent panel (name, company
+description, logo, colour) in `HAPILOT_DATA_DIR/branding/` with every version. The chat process enables it
+(`enable_for_ui`); then `get_llm` replaces every form of "Hapilot" in the system prompt with the name and adds the
+description as a `[FIRMA]` section (not for the coder). [src/ui_branding.py](../src/ui_branding.py) puts routes
+ahead of Chainlit's for `/logo`, `/favicon`, `/avatars/…` and `/project/translations`, serves the chat stylesheet
+with the colour (`/hapilot/style.css`) and wraps Chainlit's loader of the "O aplikacji" page; the page title comes
+from `config.ui.name`. Evaluation runs and scripts never enable it.
+
 ## Attachments
 
 [src/attachments.py](../src/attachments.py) (UI uploads and evaluation tasks): files are copied into the

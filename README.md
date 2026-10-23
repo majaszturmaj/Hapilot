@@ -179,6 +179,15 @@ and own templates; a request can name one („według szablonu Oferta handlowa�
 Scans are private — no other user, administrators included, can see or use them — and the model never chooses
 the signature; without a form (evaluation) the place stays blank ([src/signatures.py](src/signatures.py)).
 
+**Company look.** Administrators adapt the UI to the company in the panel's **🎨 Wygląd** tab, for every user at
+once: the app's name (page title, login page, the assistant's name on messages and in the welcome text, the
+"O aplikacji" page — which then credits Hapilot — and, in the system prompts, every form of "Hapilot"), a 1–2
+sentence company description (added to the system prompts as a `[FIRMA]` section; not shown to users), a logo
+(PNG or JPEG up to 1 MB; header and login page, and favicon and avatar when it is roughly square — otherwise the
+name's first letter on the main colour) and the main colour. A live preview shows the result; versions are kept
+with who and when, any of them can be restored, and Hapilot's look comes back with one click. UI only: evaluation
+runs always run as Hapilot ([src/branding.py](src/branding.py), [src/ui_branding.py](src/ui_branding.py)).
+
 ### Ports
 
 | Port (127.0.0.1; the UI: `HAPILOT_UI_HOST`) | Service | Variable |

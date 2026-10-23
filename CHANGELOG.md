@@ -32,6 +32,15 @@ UI changes, plus one agent fix in the document generator (below).
   templates globally and edit the built-in ones (history, restore). Each user's chats see built-in + global + own
   templates; a template named in the request is used even if a built-in keyword matches. New fill filters
   `|lista`, `|tabela:N`, `|linie`, `|akapity`; form fields honour `multiline`. Evaluation runs use only `templates/`.
+- Company look (agent panel, tab „🎨 Wygląd”, administrators): the app's name, a 1–2 sentence company
+  description, a logo (PNG/JPEG ≤ 1 MB, checked by content; SVG refused) and the main colour, for every user,
+  without a restart. The name replaces "Hapilot" in the page title, login page, messages, welcome text, the
+  "O aplikacji" page (with a credit to Hapilot) and — every inflected form — in the system prompts; the description
+  becomes a `[FIRMA]` prompt section. Wide logos stay in the header and login page; favicon and avatar then show
+  the name's first letter on the main colour. Versions with history, restore, reset to Hapilot, audit log; live
+  preview. UI only (`src/branding.py`, `src/ui_branding.py`); evaluation runs always run as Hapilot. Chainlit's own
+  logo, favicon and avatar are now sent with `Cache-Control: no-cache`. The file tools' confirmation no longer
+  names the product.
 - Signatures: the document form offers „Podpis” — a blank place for a handwritten signature (default) or the
   user's own scan (uploaded in the panel, „✍️ Mój podpis”; private, PNG/JPEG ≤ 2 MB). Built-in templates and the
   builder's signature block have a fixed-size signature place (`{{PODPIS_SLOT}}`), so the layout is the same either

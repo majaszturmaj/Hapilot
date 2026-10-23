@@ -37,6 +37,8 @@ def _brand(**extra):
 def test_without_a_custom_look_chainlit_serves_its_own(client):
     logo = client.get("/logo?theme=dark")
     assert logo.status_code == 200 and logo.content != LOGO
+    for path in ("/logo", "/favicon", "/avatars/default"):  # found in the browser: an old logo stayed cached
+        assert client.get(path).headers["cache-control"] == "no-cache", path
     assert client.get("/hapilot/branding.css").text == ""
     assert "--primary: 79 62% 41%" in client.get("/hapilot/style.css").text  # public/custom.css (Hapilot green)
 
