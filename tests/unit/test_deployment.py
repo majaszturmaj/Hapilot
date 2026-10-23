@@ -254,6 +254,11 @@ def test_ui_that_does_not_come_back_is_rolled_back(install):
     assert hapilotctl.update("main", retry=True) == 0 and _head(install) == new
 
 
+def test_backups_of_updates_in_the_same_second_do_not_collide(install):
+    first, second = hapilotctl.backup_data("a" * 40), hapilotctl.backup_data("a" * 40)
+    assert first != second and first.is_dir() and second.is_dir()  # failed on a fast machine: FileExistsError
+
+
 def test_update_waits_while_people_use_the_ui(install):
     _commit(install["dev"], {"README": "new\n"}, "second")
     (install["var"] / "run" / "ui_activity.json").write_text(json.dumps({"pid": 4242, "active": 1, "updated": 0}))

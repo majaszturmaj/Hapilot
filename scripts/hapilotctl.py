@@ -541,7 +541,7 @@ def backup_data(commit: str, keep: int = 10) -> Path:
     from src.ui_auth import users_file
 
     root = var_dir() / "backups"
-    dest = root / f"{dt.datetime.now():%Y%m%d-%H%M%S}-{commit[:8]}"
+    dest = root / f"{dt.datetime.now():%Y%m%d-%H%M%S-%f}-{commit[:8]}"  # two updates in one second (a retry)
     dest.mkdir(parents=True)
     dest.chmod(0o700)
     chat_db = Path(os.environ.get("HAPILOT_CHAT_DB", "").strip() or var_dir() / "chat_history.sqlite").expanduser()
@@ -663,7 +663,11 @@ def update(branch: str, now: bool = False, idle_minutes: float = 10, retry: bool
             record_update("deferred", f"{target[:8]} waits: {why}", log=False)
             return 0
     say(f"updating {old[:8]} → {target[:8]} (origin/{branch})")
-    backup = backup_data(old)
+    try:
+        backup = backup_data(old)
+    except (OSError, ImportError) as exc:  # never update without a backup
+        record_update("error", f"backup before updating to {target[:8]} failed: {exc}; not updating")
+        return 1
     changed = git("diff", "--name-only", old, target).splitlines()
     requirements = any(name in REQUIREMENTS for name in changed)
     switched = False
