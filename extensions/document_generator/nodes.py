@@ -6,6 +6,7 @@
 2. Second pass (after the form): the confirmed parameters are compiled to PDF and the plan goes on.
 """
 
+import json
 import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -16,6 +17,24 @@ from src.llm_config import get_bielik_chat
 PREVIOUS_ANSWER_LIMIT = 6000
 JSON_ONLY_RETRY = ('Odpowiedz WYŁĄCZNIE obiektem JSON w formacie {"template_id": "...", "parameters": {...}} — '
                    "bez żadnego tekstu przed ani po nim.")
+MAX_JSON_ATTEMPTS = 3  # like the coder: the first answer and two corrections
+
+
+def _json_problem(raw: str):
+    """(parsed object, None) for a usable answer, else (None, what is wrong — told to the model on the retry)."""
+    parsed = extract_json_object(raw)
+    if parsed is None:
+        start = (raw or "").find("{")
+        if start < 0:
+            return None, "Odpowiedź nie zawierała obiektu JSON."
+        try:
+            json.loads(raw[start:raw.rfind("}") + 1] or raw[start:])
+        except json.JSONDecodeError as exc:
+            return None, f"JSON był niepoprawny: {exc.msg} (linia {exc.lineno}, kolumna {exc.colno})."
+        return None, "JSON był niepoprawny."
+    if not isinstance(parsed.get("template_id"), str) or not isinstance(parsed.get("parameters", {}), dict):
+        return None, 'W obiekcie JSON brakowało pola "template_id" (tekst) albo "parameters" nie było obiektem.'
+    return parsed, None
 
 
 def _generate(state, template_id: str, parameters: dict, signature=None) -> dict:
@@ -141,15 +160,22 @@ Odpowiedz WYŁĄCZNIE w formacie JSON:
         raw = invoke_llm_and_normalize(llm, conversation).content
         if raw.startswith("[LLM"):
             return _error(f"Model nie może przetworzyć zapytania.\n{raw[:200]}")
-        parsed = extract_json_object(raw)
+        parsed, problem = _json_problem(raw)
+        attempt = 1
+        while parsed is None and attempt < MAX_JSON_ATTEMPTS:
+            # models sometimes answer with the letter itself, or with JSON broken by an unescaped quote or a
+            # stray comma: ask again, saying what was wrong (as the coder gets its error back)
+            attempt += 1
+            print(f"      ⚠️ [DOC GEN] {problem} Ponawiam (próba {attempt}/{MAX_JSON_ATTEMPTS})")
+            conversation = conversation + [AIMessage(content=raw), HumanMessage(
+                content=f"{problem} Popraw to (próba {attempt}/{MAX_JSON_ATTEMPTS}). Pamiętaj o cudzysłowach "
+                        f'wewnątrz tekstu (\\") i znakach nowej linii (\\n). {JSON_ONLY_RETRY}')]
+            raw = invoke_llm_and_normalize(llm, conversation).content
+            if raw.startswith("[LLM"):
+                return _error(f"Model nie może przetworzyć zapytania.\n{raw[:200]}")
+            parsed, problem = _json_problem(raw)
         if parsed is None:
-            # one retry: models sometimes answer with the letter itself instead of the JSON
-            print("      ⚠️ [DOC GEN] Odpowiedź bez JSON — ponawiam z prośbą o sam obiekt JSON")
-            retry = conversation + [AIMessage(content=raw), HumanMessage(content=JSON_ONLY_RETRY)]
-            raw = invoke_llm_and_normalize(llm, retry).content
-            parsed = None if raw.startswith("[LLM") else extract_json_object(raw)
-        if parsed is None:
-            return _error(f"Model nie zwrócił poprawnego JSON.\n{raw[:300]}")
+            return _error(f"Model nie zwrócił poprawnego JSON ({MAX_JSON_ATTEMPTS} próby): {problem}\n{raw[:300]}")
     except Exception as exc:
         return _error(str(exc))
 

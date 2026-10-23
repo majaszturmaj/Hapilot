@@ -87,8 +87,10 @@ Agent fix (document generator):
   in the previous turn (passed to the template-filler prompt when the request refers back to earlier output;
   `_refers_to_previous_answer`, `_get_previous_turn_answer` in `src/agent_graph.py`). Before, only the current
   turn was used, so the model invented a different document or returned no JSON.
-- When the template filler answers without a JSON object, it is asked once more for the JSON only before the
-  step fails with „Model nie zwrócił poprawnego JSON".
+- When the template filler answers without a usable JSON object — no JSON, JSON the parser rejects (e.g. an
+  unescaped quote or a trailing comma) or an object without `template_id` / `parameters` — it is asked again, like
+  the coder: up to 3 attempts, each told what was wrong (the parser's message, line and column) and seeing its
+  earlier answers; then the step fails with „Model nie zwrócił poprawnego JSON (3 próby)".
 
 ## v0.3.1 — 2026-10-19 (stage 6: deployment and timing; fonts)
 

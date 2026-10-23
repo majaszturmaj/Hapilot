@@ -197,13 +197,35 @@ def test_document_generator_retries_once_on_prose_answer(graph, invoke, llm, doc
     assert len(prompts) == 2 and JSON_ONLY_RETRY in prompts[1]
 
 
-def test_document_generator_errors_after_failed_retry(graph, invoke, llm, docker):
+def test_document_generator_errors_after_three_attempts(graph, invoke, llm, docker):
     llm.on("task_planner", plan(("template_pdf", "Podanie", "Podanie o urlop")))
-    llm.on("template_filler", "Nie potrafię.", "Nadal bez JSON.")
+    llm.on("template_filler", "Nie potrafię.", "Nadal bez JSON.", "Wciąż nie.")
     state = invoke(graph, "Napisz podanie o urlop", "s-json-fail", approval_policy="auto")
-    assert len(llm.prompts_for("template_filler")) == 2
+    assert len(llm.prompts_for("template_filler")) == 3
     assert docker.runs == []
-    assert any("Model nie zwrócił poprawnego JSON" in m.content for m in state["messages"])
+    assert any("Model nie zwrócił poprawnego JSON (3 próby)" in m.content for m in state["messages"])
+
+
+def test_document_generator_retries_broken_json_with_the_error(graph, invoke, llm, docker):
+    """Regression: JSON broken by an unescaped quote got one retry that did not say what was wrong, then the
+    request failed. Now up to 3 attempts, like the coder, each told the parser's error."""
+    llm.on("task_planner", plan(("template_pdf", "Podanie", "Podanie o urlop")))
+    broken = '{"template_id": "letter", "parameters": {"SUBJECT": "Wniosek "urlopowy""}}'
+    llm.on("template_filler", broken, '{"template_id": "letter", "parameters": {"SUBJECT": "x",}}', LETTER)
+    state = invoke(graph, "Napisz podanie o urlop", "s-json-broken", approval_policy="auto")
+    assert "Wygenerowano plik: letter_" in last_text(state)
+    prompts = llm.prompts_for("template_filler")
+    assert len(prompts) == 3
+    assert "JSON był niepoprawny" in prompts[1] and "próba 2/3" in prompts[1]
+    assert "próba 3/3" in prompts[2] and broken in prompts[2]  # the model sees its earlier answers
+
+
+def test_document_generator_retries_json_without_template(graph, invoke, llm, docker):
+    llm.on("task_planner", plan(("template_pdf", "Podanie", "Podanie o urlop")))
+    llm.on("template_filler", '{"SUBJECT": "Urlop"}', LETTER)
+    state = invoke(graph, "Napisz podanie o urlop", "s-json-shape", approval_policy="auto")
+    assert "Wygenerowano plik: letter_" in last_text(state)
+    assert 'brakowało pola "template_id"' in llm.prompts_for("template_filler")[1]
 
 
 def test_edit_request_without_document_is_not_forced(graph, invoke, llm):
