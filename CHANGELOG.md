@@ -40,7 +40,7 @@ UI changes, plus one agent fix in the document generator (below).
 - `tracing.event` also passes events to an optional run `observer` (no effect on traces).
 - OCR for scanned PDFs (`src/ocr.py`): PDF pages without a text layer are rendered at 300 dpi (pypdfium2) and read
   by Tesseract (`pol+eng`) in a new image `hapilot-ocr:0.1` (`sandbox/ocr.Dockerfile`, built by `setup` /
-  `build-images`), run with the sandbox's isolation (no network, non-root, read-only); one container per document,
+  `build-images`; existing image tags are never rebuilt), run with the sandbox's isolation (no network, non-root, read-only); one container per document,
   results cached per page in `var/ocr_cache/`. Applies to the knowledge base and to attachments (also in evaluation
   runs); OCR chunks are marked `ocr`, ingest prints pages and mean confidence per file; the side panel shows scanned
   pages without highlight boxes, marked as scans. The OCR state is part of the corpus fingerprint (an existing index

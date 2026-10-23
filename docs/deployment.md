@@ -84,8 +84,8 @@ binds the UI to that interface only.
    kept). Workspaces and the knowledge base are not copied: updates do not change them, and `ingest` rebuilds the
    index.
 3. **Prepares the new commit next to the running one** (a temporary git worktree): installs `requirements*.txt` if
-   they changed, builds its Docker images (sandbox and OCR; Docker's cache makes unchanged ones instant) and runs
-   the unit tests there.
+   they changed, builds those of its Docker images (sandbox, OCR) whose tag does not exist yet — an existing tag is
+   never rebuilt, a changed Dockerfile comes with a new tag — and runs the unit tests there.
 4. **Switches** the checkout to the new commit; with the new commit's launcher it stops the UI, brings the knowledge
    base up to date (`ingest`: re-indexed only if the documents, the index version or the OCR changed — never while
    the UI has the database open) and starts the UI again, if it was running; then checks that it answers and still

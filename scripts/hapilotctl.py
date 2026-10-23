@@ -254,8 +254,14 @@ def images() -> list[tuple[str, Path]]:
 
 
 def build_images(quiet: bool = False) -> None:
-    """Build both images; Docker's layer cache makes this quick when a Dockerfile has not changed."""
+    """Build the images whose tag does not exist yet. An existing tag is never rebuilt: other installs on the host
+    (e.g. a frozen evaluation build) may use it, and a rebuild would fetch newer packages. A changed Dockerfile comes
+    with a new tag (sandbox 0.1 → 0.2)."""
     for tag, dockerfile in images():
+        if subprocess.run(["docker", "image", "inspect", tag], capture_output=True).returncode == 0:
+            if not quiet:
+                say(f"image {tag} exists — not rebuilt")
+            continue
         if not quiet:
             say(f"building image {tag} from {dockerfile.relative_to(ROOT)} (the first build downloads the base image "
                 "and packages once)")
@@ -800,7 +806,7 @@ def main() -> None:
     p.add_argument("--skip-image", action="store_true")
     p.add_argument("--skip-embeddings", action="store_true")
     p.set_defaults(func=cmd_setup)
-    p = sub.add_parser("build-images", help="build the sandbox and OCR images (Docker's cache skips unchanged ones)")
+    p = sub.add_parser("build-images", help="build the sandbox and OCR images that do not exist yet")
     p.add_argument("--quiet", action="store_true")
     p.set_defaults(func=cmd_build_images)
     p = sub.add_parser("ingest")

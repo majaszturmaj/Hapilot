@@ -282,8 +282,8 @@ def test_hand_edited_checkout_is_not_updated(install):
 
 
 def test_new_commit_builds_its_own_images_without_the_installs_settings(install, monkeypatch):
-    """A commit with the OCR image's Dockerfile builds its images with its own launcher (Docker's cache makes an
-    unchanged image instant); the install's settings (HAPILOT_*) do not reach it."""
+    """A commit with the OCR image's Dockerfile builds its missing images with its own launcher; the install's
+    settings (HAPILOT_*) do not reach it."""
     marker = install["var"] / "built.txt"
     monkeypatch.setenv("HAPILOT_UI_HOST", "0.0.0.0")
     monkeypatch.setenv("BUILD_MARKER", str(marker))
@@ -321,6 +321,23 @@ def test_switch_services_stops_indexes_and_starts(tmp_path, monkeypatch):
     with pytest.raises(hapilotctl.UpdateError, match="indexing failed: boom"):
         hapilotctl.switch_services(True)
     assert calls == [("stop", "ui"), ("ingest",)]  # the UI is not started on a half-built index
+
+
+def test_existing_image_tags_are_never_rebuilt(monkeypatch):
+    calls = []
+
+    class Done:
+        def __init__(self, code):
+            self.returncode = code
+
+    def run(cmd, **kwargs):
+        calls.append(cmd[:3])
+        return Done(0 if cmd[:3] == ["docker", "image", "inspect"] and cmd[3] == "hapilot-sandbox:0.2" else 1
+                    if cmd[:3] == ["docker", "image", "inspect"] else 0)
+
+    monkeypatch.setattr(hapilotctl.subprocess, "run", run)
+    hapilotctl.build_images(quiet=True)
+    assert calls == [["docker", "image", "inspect"], ["docker", "image", "inspect"], ["docker", "build", "-q"]]
 
 
 def test_images_include_the_ocr_image():
