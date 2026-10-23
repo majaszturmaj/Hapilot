@@ -521,6 +521,7 @@ table.kb-table { width: 100%; border-collapse: separate; border-spacing: 0; }
 .kb-icon { font-size: 18px; flex: none; margin-right: 8px; }
 .kb-link { border: 0; background: none; padding: 0; text-align: left; font-weight: 600; cursor: pointer; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 380px; }
 .kb-link:hover { color: var(--brand-strong); text-decoration: underline; }
+.kb-link.gone, .kb-link.gone:hover { color: var(--muted); text-decoration: line-through; cursor: default; }
 .kb-who { white-space: nowrap; }
 .kb-row-actions { white-space: nowrap; text-align: right; }
 .kb-row-actions .icon-btn { width: 30px; height: 30px; font-size: 14px; margin-left: 4px; text-decoration: none; color: var(--text); }

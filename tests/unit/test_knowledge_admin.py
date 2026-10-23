@@ -199,7 +199,13 @@ def test_folder_recheck_picks_up_files_changed_on_the_server(kb, tmp_path):
     assert {e["action"] for e in admin.audit_log("admin")} == {"kb_folder_added", "kb_folder_changed"}
 
     (kb["docs"] / "kadry" / "bhp.txt").unlink()
+    # found on the GPU host: a file deleted on the server vanished from the list at once, although it stays
+    # searchable until the next re-check — it is listed as being removed (and its chunks still counted) until then
+    waiting = _by_source(knowledge_admin.overview("admin"))["kadry/bhp.txt"]
+    assert waiting["status"] == "removing" and waiting["writable"] is False
+    assert knowledge_admin.overview("admin")["totals"]["files"] == 1
     assert knowledge_admin.rescan()["removed"] == 1 and "kadry/bhp.txt" not in kb["index"].sources()
+    assert "kadry/bhp.txt" not in _by_source(knowledge_admin.overview("admin"))
     assert _ingest_again()["files"] == 1 and kb["client"].rebuilt == 0
 
 

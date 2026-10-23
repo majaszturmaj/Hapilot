@@ -22,7 +22,7 @@
 
   function ago(iso) {
     if (!iso) return "";
-    const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
     return min < 1 ? "przed chwilą" : min < 60 ? `${min} min temu` : fmtDate(iso);
   }
 
@@ -216,11 +216,13 @@
   const STATUS = {
     indexed: ["ok", "✓ zaindeksowany"], queued: ["wait", "⏳ w kolejce"], indexing: ["run", "⚙️ indeksuję…"],
     pending: ["wait", "🕓 czeka na sprawdzenie folderu"], error: ["bad", "⚠️ błąd"],
+    removing: ["wait", "🗑 usuwam z indeksu"],
   };
 
   function statusPill(f) {
     const [cls, text] = STATUS[f.status] || ["wait", f.status];
-    const pill = h("span", { class: `kb-status ${cls}`, title: f.error || "" }, text);
+    const pill = h("span", { class: `kb-status ${cls}`, title: f.status === "removing"
+      ? "Pliku nie ma już w folderze; asystent przestanie z niego korzystać po najbliższym sprawdzeniu folderu." : f.error || "" }, text);
     if (f.status === "error") {
       pill.classList.add("clickable");
       pill.onclick = () => openModal(h("div", {},
@@ -246,7 +248,7 @@
     const q = state.query.trim().toLowerCase();
     const filters = {
       all: () => true, firma: (f) => f.origin === "firma", dodane: (f) => f.origin === "dodane",
-      problem: (f) => ["error", "pending"].includes(f.status), ocr: (f) => (f.ocr_pages || 0) > 0,
+      problem: (f) => ["error", "pending", "removing"].includes(f.status), ocr: (f) => (f.ocr_pages || 0) > 0,
     };
     const { key, dir } = state.sort;
     const value = { name: (f) => f.source.toLowerCase(), size: (f) => f.size, chunks: (f) => f.chunks || 0,
@@ -282,12 +284,13 @@
         h("td", { class: "kb-name", "data-label": "Dokument" },
           h("span", { class: "kb-icon" }, ICONS[f.ext] || "📄"),
           h("div", { class: "kb-name-text" },
-            h("button", { class: "kb-link", title: `Podgląd tekstu: ${f.source}`, onclick: () => preview(f) }, f.name),
+            f.status === "removing" ? h("span", { class: "kb-link gone" }, f.name)
+              : h("button", { class: "kb-link", title: `Podgląd tekstu: ${f.source}`, onclick: () => preview(f) }, f.name),
             f.folder || f.origin === "dodane" ? h("div", { class: "muted small" },
               f.origin === "dodane" ? h("span", { class: "kb-badge chat" }, "dodany z czatu") : null,
               f.folder && f.origin !== "dodane" ? `📁 ${f.folder}` : null) : null)),
         h("td", { "data-label": "Typ" }, f.type),
-        h("td", { class: "num", "data-label": "Rozmiar" }, fmtSize(f.size)),
+        h("td", { class: "num", "data-label": "Rozmiar" }, f.status === "removing" ? "—" : fmtSize(f.size)),
         h("td", { class: "num", "data-label": "Strony" }, f.pages || (f.sheets ? `${f.sheets} ark.` : "—")),
         h("td", { class: "num", "data-label": "Fragmenty" }, f.chunks != null ? String(f.chunks) : "—"),
         h("td", { "data-label": "OCR" }, f.ocr_pages ? h("span", { class: "kb-badge ocr",
@@ -295,9 +298,9 @@
           `📷 ${f.ocr_pages} str.` + (f.ocr_confidence != null ? ` · ${Math.round(f.ocr_confidence)}%` : "")) : h("span", { class: "muted" }, "—")),
         whoCell(f),
         h("td", { "data-label": "Stan" }, statusPill(f)),
-        h("td", { class: "kb-row-actions" },
+        h("td", { class: "kb-row-actions" }, f.status === "removing" ? null : [
           h("button", { class: "icon-btn", title: "Podgląd tekstu", onclick: () => preview(f) }, "👁"),
-          h("a", { class: "icon-btn", title: "Pobierz oryginał", href: `${API}/kb/file?source=${enc(f.source)}` }, "⬇"),
+          h("a", { class: "icon-btn", title: "Pobierz oryginał", href: `${API}/kb/file?source=${enc(f.source)}` }, "⬇")],
           f.writable ? h("button", { class: "icon-btn", title: "Zastąp nową wersją", onclick: () => replace(f) }, "🔄") : null,
           f.writable ? h("button", { class: "icon-btn danger", title: "Usuń (do kosza)", onclick: () => remove(f) }, "🗑") : null))))));
   }

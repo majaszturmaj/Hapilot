@@ -442,7 +442,7 @@ def run_pending() -> int:
         except Exception as exc:  # the worker keeps running; the panel shows the error on the document
             if key != "*":
                 _errors[key] = f"{type(exc).__name__}: {exc}"
-            print(f"⚠️ [Baza wiedzy] {key}: {type(exc).__name__}: {exc}")
+            print(f"⚠️ [Baza wiedzy] {key}: {type(exc).__name__}: {exc}", flush=True)
         finally:
             with _cond:
                 _running = None
@@ -464,10 +464,10 @@ def _process(key: str, job: dict) -> None:
             facts = ingest_data.index_entries([(path, key)], collection=s.collection, docs_dir=docs, added_dir=added,
                                               path=s.chroma_path)[key]
             print(f"📚 [Baza wiedzy] zaindeksowano: {key} ({facts.get('chunks', 0)} fragm."
-                  + (f"; błąd: {facts['error']}" if facts.get("error") else "") + ")")
+                  + (f"; błąd: {facts['error']}" if facts.get("error") else "") + ")", flush=True)
         else:
             ingest_data.remove_sources([key], collection=s.collection, docs_dir=docs, added_dir=added, path=s.chroma_path)
-            print(f"📚 [Baza wiedzy] usunięto z indeksu: {key}")
+            print(f"📚 [Baza wiedzy] usunięto z indeksu: {key}", flush=True)
     _errors.pop(key, None)
 
 
@@ -511,7 +511,7 @@ def rescan() -> dict:
                               ("kb_folder_removed", gone)):
             for rel in items:
                 admin.audit(SYSTEM, action, rel, "zmiana w folderze na serwerze")
-        print(f"📚 [Baza wiedzy] folder: nowe {len(new)}, zmienione {len(changed)}, usunięte {len(gone)}")
+        print(f"📚 [Baza wiedzy] folder: nowe {len(new)}, zmienione {len(changed)}, usunięte {len(gone)}", flush=True)
     purged = purge_trash()
     _last_scan = {"at": _now(), "added": len(new), "changed": len(changed), "removed": len(gone), "purged": purged}
     return _last_scan
@@ -592,13 +592,25 @@ def overview(user: str) -> dict:
             "added_by": entry.get("added_by"), "added_at": entry.get("added_at"), "via": entry.get("via"),
             "replaced_by": entry.get("replaced_by"), "replaced_at": entry.get("replaced_at"),
             "writable": _writable(rel)})
+    on_disk = {f["source"] for f in files}
+    for rel, facts in sorted(listed.items()):  # deleted or moved away, still searchable until its removal job runs
+        if rel not in on_disk:
+            files.append({
+                "source": rel, "name": Path(rel).name, "folder": str(Path(rel).parent) if "/" in rel else "",
+                "origin": "dodane" if rel.startswith(ADDED_PREFIX + "/") else "firma",
+                "type": TYPES.get(Path(rel).suffix.lower(), Path(rel).suffix), "ext": Path(rel).suffix.lower(),
+                "size": facts.get("size") or 0, "modified": None, "pages": facts.get("pages"), "sheets": facts.get("sheets"),
+                "chunks": facts.get("chunks"), "ocr_pages": facts.get("ocr_pages"), "ocr_confidence": facts.get("ocr_confidence"),
+                "indexed_at": facts.get("indexed_at"), "error": None, "status": "removing", "added_by": None,
+                "added_at": None, "via": (who.get(rel) or {}).get("via"), "replaced_by": None, "replaced_at": None,
+                "writable": False})
     days = s.kb_trash_days
     bin_ = [{**{k: e.get(k) for k in ("id", "source", "name", "reason", "by", "at", "size")},
              "days_left": max(0, days - (datetime.now(timezone.utc) - _parse(e.get("at"))).days)}
             for e in reversed(trash())]
     return {
         "files": files, "trash": bin_,
-        "totals": {"files": len(files), "size": total_size, "chunks": sum(int(f["chunks"] or 0) for f in files),
+        "totals": {"files": len(on_disk), "size": total_size, "chunks": sum(int(f["chunks"] or 0) for f in files),
                    "ocr_pages": sum(int(f["ocr_pages"] or 0) for f in files)},
         "queue": {"waiting": len([k for k in queued if k != "*"]), "running": running["source"] if running else None,
                   "rescan": "*" in queued or bool(running and running["source"] == "*")},
