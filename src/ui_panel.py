@@ -167,6 +167,30 @@ def build_turn(session: str, pending: PendingTurn, answer: str) -> Optional[dict
             "sources": [d.describe(page_url) for d in docs], "files": files}
 
 
+IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+ATTACH_LIMIT = 10  # files attached under one answer
+
+
+def answer_files(session: str, pending: Optional[PendingTurn], text: str, uploads: list[str]) -> list[Path]:
+    """Files to attach under an answer, whatever happens to the side panel: those the request created or changed
+    (e.g. a chart saved by code), then earlier files of this chat that the answer names (a request to send one again).
+    Never the user's own uploads (``uploads``), never hidden helper files (scripts, .aux, signatures), and not the .tex
+    written next to a generated PDF."""
+    with run_context.use_context(session_id=session):
+        workspace = run_context.workspace_dir()
+    if not workspace.is_dir():
+        return []
+    files = [workspace / c.name for c in source_view.changes(pending.before, source_view.snapshot(workspace))] \
+        if pending is not None else []
+    pdf_stems = {p.stem for p in files if p.suffix.lower() == ".pdf"}
+    files = [p for p in files if not (p.suffix.lower() == ".tex" and p.stem in pdf_stems)]
+    for path in sorted(workspace.iterdir()):
+        if (path.is_file() and len(path.name) >= 5 and path.name in (text or "") and path not in files
+                and not source_view._hidden(path.name)):
+            files.append(path)
+    return [p for p in files if p.name not in uploads and p.is_file()][:ATTACH_LIMIT]
+
+
 def add_turn(turns: list, turn: dict) -> list:
     """Append a turn with the next id (ids stay stable when old turns are dropped)."""
     turn["id"] = turns[-1]["id"] + 1 if turns else 1

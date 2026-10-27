@@ -4,6 +4,21 @@
 
 UI changes, plus one agent fix in the document generator (below).
 
+- Crash fix: every use of pdfium (side panel pages, highlight boxes, scan detection, OCR rendering) goes through one
+  process-wide lock (`source_view.PDFIUM_LOCK`). pdfium is not thread-safe; on the pilot the UI died with a segfault
+  while a browser loaded a panel's page images in parallel (2026-10-26, and a general protection fault on 2026-10-23);
+  a 16-thread stress run reproduced it 3 out of 3 times before the fix. PNG encoding stays outside the lock.
+- `ui ensure` waits while an update runs and logs every restart; docs/deployment.md adds a cron line that runs it every
+  minute (an outage after a crash lasted up to 10 minutes).
+- Files a request created or changed (e.g. a chart saved by code) are attached under the answer — images shown inline —
+  independent of the side panel; a file of the chat that an answer names is attached again; the user's own uploads,
+  scripts and the `.tex` next to a generated PDF never are. A program's result lists the files it created
+  ("Utworzone pliki: …"), shown separately from its output.
+- Prompts: the writer describes only what tool results contain — it cannot see charts, so it no longer describes their
+  shape — and says that created files are attached; the chat node names a requested file instead of claiming it
+  cannot send files; both coder prompts save charts with `plt.savefig` (never `plt.show()`) and print the numbers that
+  describe them.
+
 - Right-hand panel **📎 Źródła i pliki** (Chainlit element sidebar, `public/elements/workspace_panel.jsx`). Opens
   after an answer that used company documents or changed files; the button under the answer reopens it.
   - *Źródła*: the documents whose chunks went into the prompts for the answer, cited ones first. PDFs are shown

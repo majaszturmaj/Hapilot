@@ -22,6 +22,8 @@ print(math.factorial(10))
 4. NAPRAWA BŁĘDÓW: Jeśli poprzedni kod zawierał błąd, dostaniesz traceback. Przeanalizuj go i zwróć POPRAWIONY, KOMPLETNY skrypt. Nie powtarzaj tego samego błędu.
 
 5. KOMPLETNOŚĆ: Zawsze dołączaj instrukcje import na początku. Kod musi być w pełni samodzielny.
+
+6. WYKRESY: Każdy wykres zapisz do pliku PNG w bieżącym katalogu: `plt.savefig("opisowa_nazwa.png", dpi=120, bbox_inches="tight")` (nigdy `plt.show()`), i wypisz print() liczby, które go opisują — dla każdej serii: minimum, maksimum, średnią i zakres dat lub wartości — żeby dało się omówić wykres bez oglądania go.
 </critical_rules>
 
 <examples>

@@ -114,10 +114,12 @@ def display_text(text: str) -> str:
     Only the presentation changes; the conversation history, evaluation answers and traces keep the original text.
     """
     body = re.sub(r"^\s*WYNIK:\s*\n?", "", text or "")
-    program = re.match(r"^SUKCES:\s*\n?([\s\S]*)$", body)
+    program = re.match(r"^SUKCES:\s*\n?([\s\S]*?)(?:\n\nUtworzone pliki: (.+?) \(system dołącza[^)]*\))?\s*$", body)
     if program:
         output = program.group(1).strip() or "(program nic nie wypisał)"
-        return f"🐍 **Wynik programu:**\n\n```text\n{output}\n```"
+        files = program.group(2)
+        shown = f"🐍 **Wynik programu:**\n\n```text\n{output}\n```"
+        return shown + (f"\n\n📎 Pliki utworzone przez program: **{files}** — poniżej." if files else "")
     body = re.sub(r"^SUKCES!?\s*", "", body)
     body = _GENERATED.sub(lambda m: f"📄 Gotowe: **{m.group(1)}**", body)
     if body.startswith("BŁĄD"):

@@ -410,6 +410,7 @@ def tool_execute_python(code: str) -> str:
             tracing.event("code_data_access", files=referenced)
     script = run_context.workspace_file(f"snippet_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.py")
     script.write_text(clean_code, encoding="utf-8")
+    before = _file_states(script.parent)
     print(f"💻 [TOOL USE] Executing Python in sandbox ({script.name})")
     try:
         result = sandbox.run(["python3", script.name], script.parent, timeout=get_settings().python_timeout, data_dir=data_dir())
@@ -418,8 +419,28 @@ def tool_execute_python(code: str) -> str:
     if result.timed_out:
         return f"BŁĄD WYKONANIA:\nPrzekroczono limit czasu ({get_settings().python_timeout} s).\n{result.output[-2000:]}"
     if result.exit_code == 0:
-        return f"SUKCES:\n{result.output or '[Brak outputu]'}"
+        created = [name for name, state in _file_states(script.parent).items() if before.get(name) != state]
+        files = f"\n\n{CREATED_FILES}: {', '.join(created)} {CREATED_NOTE}" if created else ""
+        return f"SUKCES:\n{result.output or '[Brak outputu]'}{files}"
     return f"BŁĄD WYKONANIA:\n{result.output}"
+
+
+# The program's result names the files it created or changed: the model then knows they exist (and that the user gets
+# them under the answer — src/app.py attaches them), instead of claiming it cannot send files.
+CREATED_FILES = "Utworzone pliki"
+CREATED_NOTE = "(system dołącza je pod odpowiedzią — użytkownik może je obejrzeć i pobrać)"
+
+
+def _file_states(folder: Path) -> dict[str, tuple[int, int]]:
+    """{name: (mtime, size)} of the files in a workspace a user would care about (no scripts or helper files)."""
+    from src.source_view import _hidden
+
+    states = {}
+    for path in sorted(folder.iterdir()) if folder.is_dir() else []:
+        if path.is_file() and not _hidden(path.name):
+            stat = path.stat()
+            states[path.name] = (stat.st_mtime_ns, stat.st_size)
+    return states
 
 
 def _extract_python_from_llm_output(raw_content: str) -> str:

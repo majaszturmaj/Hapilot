@@ -314,7 +314,8 @@ async def _finish(history: list, run) -> None:
 
 
 async def _send_answer(text: str) -> None:
-    """Send an answer: downloads for the files it announces, the side panel, and the buttons."""
+    """Send an answer: downloads for the files it announces and for the files the request created (charts saved by
+    code are shown as images), the side panel, and the buttons. The files do not depend on the panel."""
     elements, missing = [], []
     for name in generated_file_names(text):
         with run_context.use_context(session_id=_chat()):
@@ -326,6 +327,16 @@ async def _send_answer(text: str) -> None:
             elements.append(cl.File(name=name, path=str(path), display="inline"))
         else:
             missing.append(name)
+    try:
+        uploads = attachments.session_attachments(_state().messages)[1]
+        extra = await cl.make_async(ui_panel.answer_files)(_chat(), cl.user_session.get("panel_pending"), text, uploads)
+    except Exception as exc:  # the answer matters more than its attachments
+        print(f"⚠️ [FILES] {type(exc).__name__}: {exc}")
+        extra = []
+    for path in extra:
+        if all(e.name != path.name for e in elements) and len(elements) < ui_panel.ATTACH_LIMIT:
+            kind = cl.Image if path.suffix.lower() in ui_panel.IMAGE_TYPES else cl.File
+            elements.append(kind(name=path.name, path=str(path), display="inline"))
     panel = await _panel_turn(text)
     text = display_text(text)
     if elements:
