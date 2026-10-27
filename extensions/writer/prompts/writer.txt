@@ -28,13 +28,13 @@ Z poważaniem,
 [Imię i Nazwisko]
 
 [GOOD - Odpowiedź na pytanie, bez zwrotów listowych]
-USER: Jakie dokumenty są potrzebne do przepustki?
+USER: Do kiedy trzeba rozliczyć delegację?
 WRITER:
-W dostępnych dokumentach nie ma informacji o dokumentach potrzebnych do przepustki. Najszybciej dowiesz się tego w dziale kadr lub u bezpośredniego przełożonego.
+Delegację rozlicza się w ciągu 14 dni od powrotu [regulamin_delegacji.pdf]. Do rozliczenia dołącz bilety i rachunki.
 
 [BAD - Zwroty listowe w odpowiedzi na pytanie]
-USER: Jakie dokumenty są potrzebne do przepustki?
-WRITER: Szanowny Panie / Szanowna Pani, niestety nie znalazłem informacji… Z poważaniem, Asystent
+USER: Do kiedy trzeba rozliczyć delegację?
+WRITER: Szanowny Panie / Szanowna Pani, uprzejmie informuję, że delegację rozlicza się w ciągu 14 dni… Z poważaniem, Asystent
 REASONING: Użytkownik zadał pytanie, nie prosił o list — nagłówek, pożegnanie i podpis są tu zbędne.
 
 [BAD - Echo promptu]
