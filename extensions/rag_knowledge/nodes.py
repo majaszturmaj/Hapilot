@@ -161,3 +161,51 @@ Jeśli w dokumentach i historii nie ma odpowiedzi, przyznaj że nie znalazłeś 
     result = {"messages": [final_response]}
     result.update(_advance_plan_step(state))
     return result
+
+
+# --------------------------------------------------------------------------- list of documents
+
+def _plural(n: int, one: str, few: str, many: str) -> str:
+    if n == 1:
+        return one
+    return few if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14) else many
+
+
+def document_list_text(docs: list[dict], attached: list[str]) -> str:
+    """The knowledge base's documents (from the index) and the files attached in this chat, as an answer."""
+    from src.ingest_data import ADDED_PREFIX
+
+    if not docs:
+        lines = ["📚 Baza wiedzy jest pusta — nie ma w niej jeszcze żadnych dokumentów."]
+    else:
+        lines = [f"📚 **W bazie wiedzy {_plural(len(docs), 'jest', 'są', 'jest')} {len(docs)} "
+                 f"{_plural(len(docs), 'dokument', 'dokumenty', 'dokumentów')}:**", ""]
+        for i, d in enumerate(docs, 1):
+            source = d["source"]
+            added = source.startswith(ADDED_PREFIX + "/")
+            name = source.split("/", 1)[1] if added else source
+            if d["pages"]:
+                detail = f"{d['pages']} {_plural(d['pages'], 'strona', 'strony', 'stron')}"
+                if d["ocr_pages"]:
+                    detail += (f", w tym {d['ocr_pages']} "
+                               f"{_plural(d['ocr_pages'], 'odczytana', 'odczytane', 'odczytanych')} ze skanu")
+            elif d["sheets"]:
+                detail = f"{_plural(len(d['sheets']), 'arkusz', 'arkusze', 'arkuszy')}: {', '.join(d['sheets'])}"
+            else:
+                detail = f"{d['chunks']} {_plural(d['chunks'], 'fragment', 'fragmenty', 'fragmentów')}"
+            lines.append(f"{i}. **{name}** — {detail}" + (" (dodany z czatu)" if added else ""))
+    if attached:
+        lines += ["", "📎 **Pliki załączone w tej rozmowie:** " + ", ".join(attached)]
+    lines += ["", "Odpowiadając na pytanie, szukam w tych dokumentach fragmentów, które do niego pasują, i podaję źródło."]
+    return "\n".join(lines)
+
+
+def run_document_list(state):
+    """List the documents the knowledge search can find — read from the index, no model, no search."""
+    print("   --> 📚 [NODE: DOCUMENT LIST] Spis dokumentów w bazie wiedzy")
+    from src import attachments, knowledge_base
+    from src.agent_graph import _advance_plan_step
+
+    attached = attachments.session_attachments(state["messages"])[1]
+    text = document_list_text(knowledge_base.documents(), attached)
+    return {"messages": [AIMessage(content=text)], **_advance_plan_step(state)}

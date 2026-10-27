@@ -58,9 +58,9 @@ knowledge       writer          chat     document_generator   modify_document   
 | Orchestration | LangGraph graph built from the loaded extensions ([src/agent_graph.py](src/agent_graph.py)) |
 | Models | Any OpenAI-compatible local server; roles mapped to models by **profiles** ([config/profiles.yaml](config/profiles.yaml)) |
 | Model serving | [tools/modelswap.py](tools/modelswap.py): one local endpoint that loads one llama.cpp model at a time |
-| Knowledge base | ChromaDB embedded in the Hapilot process; hybrid search: `intfloat/multilingual-e5-base` vectors (CPU) and BM25, fused by reciprocal rank fusion; .pdf, .docx, .eml, .xlsx, .txt, .md |
+| Knowledge base | ChromaDB embedded in the Hapilot process; hybrid search: `intfloat/multilingual-e5-base` vectors (CPU) and BM25, fused by reciprocal rank fusion; .pdf, .docx, .eml, .xlsx, .csv, .txt, .md; "which documents do you have?" is answered from the index itself (list of documents with pages and OCR pages) |
 | Documents | LaTeX templates (letter, report, protocol) in [templates/](templates/), compiled to PDF in the sandbox; Polish text in the PDF can be copied and searched; short reports get a compact layout |
-| Uploaded files | .pdf, .docx, .eml, .xlsx, .txt, .md attached in the chat: short ones go into the message, long ones are indexed for the session. Tools: summary of the whole file, editing (Word files keep styles, lists and tables), adding to the company knowledge base after confirmation ([extensions/file_tools](extensions/file_tools)) |
+| Uploaded files | .pdf, .docx, .eml, .xlsx, .csv, .txt, .md attached in the chat (the model is told this list; images are not read yet): short ones go into the message, long ones are indexed for the session. Tools: summary of the whole file, editing (Word files keep styles, lists and tables), adding to the company knowledge base after confirmation ([extensions/file_tools](extensions/file_tools)) |
 | Sandbox | Fresh Docker container per run: no network, non-root, read-only root filesystem, CPU/memory/process limits, timeout; the session's workspace is the only writable mount, company documents are readable at `/data` ([src/sandbox.py](src/sandbox.py)) |
 | UI | Chainlit, per-session workspace and model profile, optional password login; a right-hand panel **📎 Źródła i pliki** shows the company documents behind each answer (PDFs as original pages, other formats as full text) with the fragments that went into the prompt highlighted, and the files the request created or changed (preview, diff, download) ([src/source_view.py](src/source_view.py)); those files — e.g. a chart saved by code, shown as an image — are also attached under the answer, and a file an answer names (asked for again) comes with it |
 
@@ -211,7 +211,7 @@ port that is in use and prints the tunnel command with the configured UI port (`
 
 ### Your documents
 
-Put company documents (.pdf, .docx, .eml, .xlsx, .txt, .md) in a folder, set `HAPILOT_DOCS_DIR` in `.env`, and run
+Put company documents (.pdf, .docx, .eml, .xlsx, .csv, .txt, .md) in a folder, set `HAPILOT_DOCS_DIR` in `.env`, and run
 `hapilotctl.py ingest`. Scanned PDFs (pages without a text layer) are read by OCR — Tesseract with the Polish and
 English models, in an offline container built by `setup`; `HAPILOT_OCR=off` switches it off. The recognised text is
 only as good as the scan. The default is the fictional demo company in

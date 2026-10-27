@@ -44,7 +44,8 @@ from src.extractors import SUPPORTED
 ADDED_PREFIX = "dodane"   # source prefix of documents added from the chat (src/ingest_data.py)
 MAX_NAME = 120
 SYSTEM = "system"         # audit author of changes found by the folder re-check
-TYPES = {".pdf": "PDF", ".docx": "Word", ".xlsx": "Excel", ".eml": "E-mail", ".txt": "Tekst", ".md": "Markdown"}
+TYPES = {".pdf": "PDF", ".docx": "Word", ".xlsx": "Excel", ".csv": "CSV", ".eml": "E-mail", ".txt": "Tekst",
+         ".md": "Markdown"}
 PREVIEW_CHARS = 300_000
 _BAD_NAME = re.compile(r'[<>:"|?*\\/]')
 

@@ -47,7 +47,7 @@ Principles:
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `corpus_dir` | required | company documents the agent may search (.pdf, .docx, .eml, .xlsx, .txt, .md, recursively) |
+| `corpus_dir` | required | company documents the agent may search (.pdf, .docx, .eml, .xlsx, .csv, .txt, .md, recursively) |
 | `today` | required | the date the agent treats as today (`YYYY-MM-DD`): in prompts and in tools |
 | `profile` | `best-local` | model profile from `config/profiles.yaml` |
 | `seed` | `42` | sent with every model request |
@@ -183,6 +183,7 @@ per-task collection that the knowledge search queries together with the corpus.
 | .docx | python-docx: paragraphs and tables (cells joined with ` \| `) | — |
 | .eml | Python `email`: From, To, Cc, Date, Subject headers + plain-text body (HTML converted to text); names of attached files listed, text of attached .pdf/.docx/.txt extracted | — |
 | .xlsx | openpyxl (values, not formulas): per sheet, rows as ` \| `-separated lines with the header row | `sheet` |
+| .csv | Python `csv` (delimiter detected, UTF-8 or cp1250): rows as ` \| `-separated lines, at most 2,000 rows with a note — the whole file stays readable for code | — |
 | .txt, .md | as is (UTF-8, fallback cp1250) | — |
 
 Files that cannot be read are listed in `run.json` (`corpus.skipped`) — never silently dropped.

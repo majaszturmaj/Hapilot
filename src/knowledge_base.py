@@ -301,6 +301,30 @@ def search(query: str, k: Optional[int] = None, targets: Optional[list[tuple[Pat
     return result
 
 
+def documents(path: Optional[Path] = None, collection: Optional[str] = None) -> list[dict]:
+    """The documents in a collection, read from the index itself (what search can actually find): source, chunks,
+    pages (PDF), pages read by OCR, sheets (XLSX). Sorted by source; empty when there is no index yet."""
+    path = Path(path or get_settings().chroma_path)
+    collection = collection or get_settings().collection
+    try:
+        chunks = _backend.all_chunks(path, collection)
+    except Exception:
+        return []
+    docs: dict[str, dict] = {}
+    for _id, _text, meta in chunks:
+        meta = meta or {}
+        doc = docs.setdefault(str(meta.get("source", "?")), {"chunks": 0, "pages": set(), "ocr_pages": set(), "sheets": set()})
+        doc["chunks"] += 1
+        if meta.get("page"):
+            doc["pages"].add(int(meta["page"]))
+            if meta.get("ocr"):
+                doc["ocr_pages"].add(int(meta["page"]))
+        if meta.get("sheet"):
+            doc["sheets"].add(str(meta["sheet"]))
+    return [{"source": source, "chunks": d["chunks"], "pages": max(d["pages"]) if d["pages"] else 0,
+             "ocr_pages": len(d["ocr_pages"]), "sheets": sorted(d["sheets"])} for source, d in sorted(docs.items())]
+
+
 def format_chunks(chunks: Iterable[Chunk]) -> str:
     parts = []
     for c in chunks:

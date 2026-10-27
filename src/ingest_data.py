@@ -3,7 +3,7 @@
 Usage:
     python -m src.ingest_data [--docs DIR] [--collection NAME] [--force]
 
-Reads .pdf, .docx, .eml, .xlsx, .txt and .md files (recursively) from the documents directory
+Reads .pdf, .docx, .eml, .xlsx, .csv, .txt and .md files (recursively) from the documents directory
 (default: HAPILOT_DOCS_DIR), extracts their text (src/extractors.py), splits it into overlapping
 chunks, embeds them on CPU and stores them in the embedded ChromaDB. Chunks keep the file path
 relative to the documents directory, and the page (PDF) or sheet (XLSX); chunks of scanned pages

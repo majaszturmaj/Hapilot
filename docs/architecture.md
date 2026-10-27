@@ -112,7 +112,7 @@ collections can be searched together (the corpus plus a session's attachments).
 
 Indexing: [src/ingest_data.py](../src/ingest_data.py) with [src/extractors.py](../src/extractors.py) —
 .pdf (per page), .docx (paragraphs and tables in order), .eml (headers, body, attached files), .xlsx (rows
-per sheet, values), .txt, .md; chunks of 800 characters with 200 overlap (spreadsheet chunks start with
+per sheet, values), .csv (rows, delimiter detected, at most 2,000), .txt, .md; chunks of 800 characters with 200 overlap (spreadsheet chunks start with
 the column names); each chunk keeps its relative file path, page or sheet and an id `path#index:sha`.
 PDF pages without a text layer (scans: fewer than 25 non-space characters) are read by OCR
 ([src/ocr.py](../src/ocr.py)): rendered at 300 dpi in greyscale (pypdfium2) and read by Tesseract (`pol+eng`) in a
@@ -150,6 +150,17 @@ description as a `[FIRMA]` section (not for the coder). [src/ui_branding.py](../
 ahead of Chainlit's for `/logo`, `/favicon`, `/avatars/…` and `/project/translations`, serves the chat stylesheet
 with the colour (`/hapilot/style.css`) and wraps Chainlit's loader of the "O aplikacji" page; the page title comes
 from `config.ui.name`. Evaluation runs and scripts never enable it.
+
+## Answers about the knowledge base and data files
+
+"Which documents do you have?" is not a search: a planner guard (`asks_for_document_list`) sends it to the
+`list_documents` tool of [extensions/rag_knowledge](../extensions/rag_knowledge), which lists the documents found
+in the index itself (pages, OCR pages, sheets) and the files attached in the chat. The tool is declared with
+`"planner": false`: the planner's catalog does not change, only the guard uses it. Another guard
+(`asks_about_chart`) sends a chart request or follow-up in a conversation with a data file or earlier code to
+the coder instead of chat. The coder gets the structure of the session's .xlsx/.csv files — sheets, row
+counts, columns, first rows, and a note with the right `pandas` call when a sheet holds whole CSV lines in one
+column ([src/data_preview.py](../src/data_preview.py)) — plus the conversation's earlier requests and last code.
 
 ## Attachments
 

@@ -64,7 +64,12 @@ def _load_project_context() -> str:
         text = PROJECT_CONTEXT_FILE.read_text(encoding="utf-8").strip()
     except OSError:
         text = ""
-    return f"\n\n[PROJECT CONTEXT]\n{text or FALLBACK_PROJECT_CONTEXT.strip()}\n"
+    from src.extractors import SUPPORTED
+
+    formats = ", ".join(s.lstrip(".").upper() for s in SUPPORTED)
+    files = (f"Pliki, które użytkownik może dołączyć do wiadomości: {formats}. Obrazów (PNG, JPG) ani innych formatów "
+             "Hapilot na razie nie przyjmuje — zaproponuj PDF albo opis tekstem.")
+    return f"\n\n[PROJECT CONTEXT]\n{text or FALLBACK_PROJECT_CONTEXT.strip()}\n{files}\n"
 
 
 def _time_context() -> str:

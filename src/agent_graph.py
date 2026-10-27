@@ -144,6 +144,41 @@ _DOC_NEGATION = re.compile(
     r"\bw\s+oknie\s+czatu\b", re.IGNORECASE)
 
 
+# The user asks what the knowledge base holds ("do jakich plików masz dostęp?", "wypisz listę dokumentów w bazie") —
+# not which documents a procedure needs ("jakie dokumenty potrzebuję") and not about a topic ("jakie masz o urlopach").
+_LIST_DOCS = re.compile(
+    r"\b(?:(?:wypisz|wymie[nń]|poka[zż]|podaj|dostarcz|daj)(?:\s+mi)?\s+(?:list[eęa]|spis)\b"
+    r"|(?:list[aęe]|spis)\s+(?:wszystkich\s+)?(?:dokument|plik)"
+    r"|(?:jakie|kt[oó]re|do\s+jakich|do\s+kt[oó]rych)\s+(?:\w+\s+){0,2}?(?:dokument|plik))", re.IGNORECASE)
+_KB_REFERENCE = re.compile(
+    r"\b(?:masz|posiadasz|znasz|widzisz|dost[eę]p\w*|baz\w*\s+wiedzy|w\s+bazie|zaindeksowan\w*)\b", re.IGNORECASE)
+_TOPIC = re.compile(r"\b(?:o|dotycz\w*|na\s+temat|w\s+sprawie|odno[sś]nie)\s+\w", re.IGNORECASE)
+# Chart requests and follow-ups ("no to co z tym wykresem?", "wykres jest pusty") belong to the code, not to chat.
+_CHART = re.compile(r"\b(?:wykres\w*|diagram\w*)\b", re.IGNORECASE)
+_CHART_NEGATION = re.compile(
+    r"\b(?:bez|nie\s+(?:r[oó]b|tw[oó]rz|rysuj|generuj|potrzeb\w*))\b[^.?!\n]{0,25}\b(?:wykres|diagram)", re.IGNORECASE)
+_DATA_FILES = (".xlsx", ".csv")
+
+
+def asks_for_document_list(text: str) -> bool:
+    """The user asks which documents (files) the assistant has access to."""
+    if not text:
+        return False
+    return bool(_LIST_DOCS.search(text) and _KB_REFERENCE.search(text) and not _TOPIC.search(text))
+
+
+def asks_about_chart(text: str) -> bool:
+    """The message is about a chart (to make, fix or send again) — and does not say "no chart"."""
+    return bool(text and _CHART.search(text) and not _CHART_NEGATION.search(text))
+
+
+def _has_data_work(messages) -> bool:
+    """The conversation has a data file attached or code already run — a chart there is the code's job."""
+    if any(n.lower().endswith(_DATA_FILES) for n in attachments.session_attachments(messages)[1]):
+        return True
+    return any(isinstance(m, AIMessage) and "```python" in str(m.content) for m in messages)
+
+
 def is_modification_request(text: str, has_document: bool) -> bool:
     """A request to change an already generated document."""
     if not has_document or not text:
@@ -223,8 +258,16 @@ def task_planner_node(state: AgentState):
     guards: list[str] = []
     tool_names = set(_build_dynamic_tool_map())  # guards for the built-in document tools apply only if they are loaded
 
+    # Guard 0: "which documents do you have?" is answered from the index (the search only sees the best chunks, so
+    # the model listed one document of eleven — seen on the pilot).
+    if "list_documents" in tool_names and asks_for_document_list(own_words):
+        print("📚 [PLANNER GUARD] Pytanie o listę dokumentów → list_documents")
+        steps = [{"id": 1, "action": "Podaj listę dokumentów w bazie wiedzy", "tool": "list_documents",
+                  "input": last_user_msg}]
+        complexity = "low"
+        guards.append("forced_list_documents")
     # Guard 1: an edit of an existing document is a single modify_document step.
-    if ("modify_document" in tool_names and not has_new_attachment and is_modification_request(own_words, has_document)
+    elif ("modify_document" in tool_names and not has_new_attachment and is_modification_request(own_words, has_document)
             and not any(s.get("tool") == "modify_document" for s in steps)):
         print("📝 [PLANNER] Wykryto zapytanie o modyfikację dokumentu → modify_document")
         steps = [{"id": 1, "action": "Zmodyfikuj istniejący dokument zgodnie z instrukcjami użytkownika",
@@ -248,6 +291,16 @@ def task_planner_node(state: AgentState):
             steps = steps + [{"id": len(steps) + 1, "action": "Przygotuj dokument PDF, o który prosi użytkownik",
                               "tool": "template_pdf", "input": last_user_msg}]
             guards.append("added_template_pdf")
+    # Guard 6: a chart in a conversation with data or code goes to the code — chat can only talk about it (seen on the
+    # pilot: "no to co z tym wykresem?" went to chat, which promised code and delivered none).
+    tool_map = _build_dynamic_tool_map()
+    talk_only = all(tool_map.get(s.get("tool", "")) in ("chat", "writer") for s in steps)
+    if "python" in tool_names and talk_only and asks_about_chart(own_words) and _has_data_work(messages):
+        print("📊 [PLANNER GUARD] Wykres w rozmowie z danymi lub kodem → python")
+        steps = [{"id": 1, "action": "Przygotuj lub popraw wykres, o który chodzi użytkownikowi", "tool": "python",
+                  "input": last_user_msg}]
+        complexity = "low"
+        guards.append("forced_python_chart")
     # Guard 4: with no generated document, or with a new attachment (the edit is about that file), a
     # modify_document step next to other steps can only fail (seen with Bielik: file_edit, modify_document).
     if (not has_document or has_new_attachment) and len(steps) > 1 and any(s.get("tool") == "modify_document" for s in steps):

@@ -69,7 +69,9 @@ reaction_on_message_received = false
     # 3. For specific file extensions:
     #    accept = { "application/octet-stream" = [".xyz", ".pdb"] }
     # Note: Using "*/*" is not recommended as it may cause browser warnings
-    accept = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "message/rfc822", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain", "text/markdown"]
+    # MIME type → file name endings (Chainlit checks both, also on the server). Must match src/extractors.SUPPORTED.
+    # .csv comes as text/csv, text/plain or — on Windows with Excel — application/vnd.ms-excel (then only *.csv).
+    accept = { "application/pdf" = [".pdf"], "application/vnd.openxmlformats-officedocument.wordprocessingml.document" = [".docx"], "message/rfc822" = [".eml"], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" = [".xlsx"], "text/csv" = [".csv"], "application/vnd.ms-excel" = [".csv"], "text/plain" = [".txt", ".md", ".csv"], "text/markdown" = [".md"] }
     max_files = 5
     max_size_mb = 20
 

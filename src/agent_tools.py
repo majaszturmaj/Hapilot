@@ -59,13 +59,14 @@ def tool_rag_search(query: str) -> str:
 # =========================================================================== planning
 
 def planner_catalog() -> list:
-    """Tools the planner may use, as declared by the loaded extensions (plus the core ones)."""
+    """Tools the planner may use, as declared by the loaded extensions (plus the core ones); tools declared with
+    ``"planner": false`` are left out (the core's guards put them into plans)."""
     from src.core.extension_manager import get_active
 
     manager = get_active()
     if not manager.is_loaded():
         manager.discover_and_load()
-    return manager.get_tools()
+    return [t for t in manager.get_tools() if t.planner]
 
 
 def available_planner_tools() -> list[str]:
@@ -393,7 +394,20 @@ def files_for_code(limit: int = 200) -> str:
     workspace = [p.name for p in run_context.workspace_dir().iterdir() if p.is_file() and not p.name.startswith("snippet_")]
     if workspace:
         lines.append("Pliki sesji (załączniki) w bieżącym katalogu: " + ", ".join(sorted(workspace)))
+    structure = data_files_structure()
+    if structure:
+        lines.append("STRUKTURA PLIKÓW Z DANYMI (odczytana z plików — nie zgaduj układu):\n" + structure)
     return "\n".join(lines)
+
+
+def data_files_structure(max_files: int = 4, limit: int = 5000) -> str:
+    """Sheets, columns and first rows of the session's .xlsx/.csv files, newest first (src/data_preview.py)."""
+    from src.data_preview import DATA_SUFFIXES, preview
+
+    files = sorted((p for p in run_context.workspace_dir().iterdir() if p.is_file() and p.suffix.lower() in DATA_SUFFIXES),
+                   key=lambda p: p.stat().st_mtime, reverse=True)[:max_files]
+    text = "\n".join(filter(None, (preview(p) for p in files)))
+    return text if len(text) <= limit else text[:limit] + "\n[…]"
 
 
 @traced_tool("execute_python")

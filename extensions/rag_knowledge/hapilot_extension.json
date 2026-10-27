@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "rag_knowledge",
   "name": "Knowledge Base / RAG",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Answers from company documents (hybrid search in the local knowledge base)",
   "author": "Hapilot Team",
   "license": "MIT",
@@ -13,6 +13,12 @@
       "entry_point": "nodes:run_knowledge",
       "label": "🧠 Baza wiedzy (RAG)",
       "description": "Przeszukiwanie dokumentów firmowych"
+    },
+    {
+      "name": "document_list",
+      "entry_point": "nodes:run_document_list",
+      "label": "📚 Lista dokumentów",
+      "description": "Spis dokumentów w bazie wiedzy"
     }
   ],
   "tools": [
@@ -22,6 +28,12 @@
       "when_to_use": "Pytania o fakty z dokumentów firmy — zawsze przed odpowiedzią lub dokumentem, który ma się na nich opierać",
       "when_not_to_use": "Powitania, kontynuacja rozmowy, przeredagowanie poprzedniej odpowiedzi; streszczenie lub zmiana załączonego pliku (file_summary, file_edit); brak wyników nie blokuje dalszych kroków",
       "example": "„Ile dni wcześniej składa się wniosek urlopowy?” → rag_search"
+    },
+    {
+      "name": "list_documents",
+      "node": "document_list",
+      "description": "Spis dokumentów w bazie wiedzy (z indeksu) i plików załączonych w rozmowie",
+      "planner": false
     }
   ],
   "prompts": {

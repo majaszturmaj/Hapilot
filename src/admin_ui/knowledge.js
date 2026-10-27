@@ -9,7 +9,7 @@
   const { h, api, toast, confirmDialog, openModal, closeModal, fmtDate, plural } = A;
   const API = "/hapilot/admin/api";
   const $ = (sel, root = document) => root.querySelector(sel);
-  const ICONS = { ".pdf": "📕", ".docx": "📘", ".xlsx": "📗", ".eml": "✉️", ".txt": "📄", ".md": "📝" };
+  const ICONS = { ".pdf": "📕", ".docx": "📘", ".xlsx": "📗", ".csv": "📊", ".eml": "✉️", ".txt": "📄", ".md": "📝" };
   const INLINE = [".pdf", ".txt", ".md"];
   const state = { info: null, uploads: [], sending: false, timer: null, sort: { key: "name", dir: 1 }, filter: "all",
                   query: "", awaitScan: undefined, built: false, nextId: 1 };

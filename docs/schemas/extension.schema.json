@@ -55,7 +55,8 @@
           "when_to_use": {"type": "string"},
           "when_not_to_use": {"type": "string"},
           "example": {"type": "string"},
-          "aliases": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,40}$"}}
+          "aliases": {"type": "array", "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,40}$"}},
+          "planner": {"type": "boolean"}
         }
       }
     },

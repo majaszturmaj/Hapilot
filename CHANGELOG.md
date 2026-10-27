@@ -4,6 +4,22 @@
 
 UI changes, plus one agent fix in the document generator (below).
 
+- "Which documents do you have?" is answered from the index (`list_documents`, extensions/rag_knowledge 1.3.0):
+  every document with pages, pages read by OCR or sheets, documents added from the chat marked, and the files attached
+  in the conversation — no model, no search (the search sees only the best chunks; on the pilot the model listed one
+  document of eleven). A planner guard (`asks_for_document_list`) routes the question; the tool is declared
+  `"planner": false` (new manifest field), so the planner's catalog and prompt are unchanged.
+- CSV files: uploads in the chat (`.chainlit/config.toml` accept is now a MIME → endings map; `.csv` also under
+  `application/vnd.ms-excel` as Windows with Excel reports it, `.xls` still refused), knowledge base and the knowledge
+  tab; read like a sheet, at most 2,000 rows with a note. The project context now tells the model which formats it
+  accepts (from `extractors.SUPPORTED`) and that images are not read yet — on the pilot it claimed PNG and CSV worked.
+- Coder: sees the structure of the session's .xlsx/.csv files (`src/data_preview.py`: sheets, rows, columns, first
+  rows; a sheet whose cells hold whole CSV lines is recognised and the right `pandas` call given — on the pilot five
+  attempts at such a file gave five empty charts) and the conversation's earlier requests and last code. A planner
+  guard (`asks_about_chart`) sends chart requests and follow-ups ("wykres jest pusty") in a conversation with a data
+  file or earlier code to the coder instead of chat.
+- Writer: letter formulas („Szanowny Panie”, „Z poważaniem”, signature) only when the user asks for a letter, e-mail
+  or other message — not in answers to questions; no units, values or conclusions that are not in the results.
 - Crash fix: every use of pdfium (side panel pages, highlight boxes, scan detection, OCR rendering) goes through one
   process-wide lock (`source_view.PDFIUM_LOCK`). pdfium is not thread-safe; on the pilot the UI died with a segfault
   while a browser loaded a panel's page images in parallel (2026-10-26, and a general protection fault on 2026-10-23);

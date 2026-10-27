@@ -8,7 +8,7 @@ each document the panel shows the whole document with those chunks highlighted:
   The chunk was extracted by pypdf, the boxes come from pdfium's text layer; both are compared
   without whitespace, so line breaks and spacing differences do not matter. Scanned pages have no
   text layer (their text came from OCR, src/ocr.py): they are shown without boxes and marked as scans.
-- other formats (.docx, .eml, .xlsx, .txt, .md): the full extracted text (src/extractors.py, the
+- other formats (.docx, .eml, .xlsx, .csv, .txt, .md): the full extracted text (src/extractors.py, the
   same text the index was built from) with character ranges marked.
 
 A document is *cited* when the answer names it (by path or file name).
@@ -345,7 +345,7 @@ class SourceDoc:
             segments = extract(self.path)
         except ExtractionError as exc:
             return {**base, "kind": "missing", "error": str(exc)}
-        kind = "table" if self.path.suffix.lower() == ".xlsx" else "text"
+        kind = "table" if self.path.suffix.lower() in (".xlsx", ".csv") else "text"
         return {**base, "kind": kind, "sections": text_marks(segments, self.chunks)}
 
 

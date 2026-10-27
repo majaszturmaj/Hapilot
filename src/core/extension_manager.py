@@ -48,6 +48,7 @@ class ToolSpec:
     when_not_to_use: str = ""
     example: str = ""
     aliases: list[str] = field(default_factory=list)
+    planner: bool = True  # False: not offered to the planner; steps with it come only from the core's guards
 
 
 @dataclass
@@ -220,7 +221,8 @@ class ExtensionManager:
                     raise ExtensionError(f"tool {t['name']!r} needs a node of this extension (got {target!r})")
                 tools.append(ToolSpec(name=t["name"], node=target, extension_id=m.id, description=t["description"],
                                       when_to_use=t.get("when_to_use", ""), when_not_to_use=t.get("when_not_to_use", ""),
-                                      example=t.get("example", ""), aliases=list(t.get("aliases", []))))
+                                      example=t.get("example", ""), aliases=list(t.get("aliases", [])),
+                                      planner=bool(t.get("planner", True))))
             prompts = {}
             for role, source in m.raw.get("prompts", {}).items():
                 if source.endswith(".txt"):
@@ -293,7 +295,7 @@ class ExtensionManager:
         return list(self._tools.values()) + CORE_TOOLS
 
     def get_planner_tool_names(self) -> list[str]:
-        return [t.name for t in self.get_tools()]
+        return [t.name for t in self.get_tools() if t.planner]
 
     def tool_node_map(self) -> dict[str, str]:
         """Tool name (and alias) → node. Real tool names win over aliases; the first alias wins."""

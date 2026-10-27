@@ -89,6 +89,7 @@ my_extension/
 | `tools[].description` | required; the planner's one-line description of the tool |
 | `tools[].when_to_use`, `when_not_to_use`, `example` | added to the planner's catalog as `KIEDY:`, `KIEDY NIE:`, `PRZYKŁAD:` |
 | `tools[].aliases` | other names a model may write for this tool (e.g. `latex` for `template_pdf`); not shown to the planner |
+| `tools[].planner` | `false` keeps the tool out of the planner's catalog; plan steps with it come only from the core's deterministic guards (e.g. `list_documents`). Default `true` |
 | `prompts` | model role → `.txt` file in the extension (or inline text); `get_llm(role)` uses it |
 | `hooks` | `module:Class`, a subclass of [BaseExtension](../src/core/base_extension.py) |
 | `config` | free-form object; `get_active().get_config("my_extension")`, also passed to the hooks class |

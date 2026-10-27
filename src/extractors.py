@@ -1,4 +1,4 @@
-"""Text extraction from office documents: .pdf, .docx, .eml, .xlsx, .txt, .md.
+"""Text extraction from office documents: .pdf, .docx, .eml, .xlsx, .csv, .txt, .md.
 
 Used for the knowledge base (src/ingest_data.py) and for attachments (src/attachments.py), so a
 document reads the same way wherever it comes from. Every extractor takes bytes, which lets e-mail
@@ -18,7 +18,8 @@ from email.parser import BytesParser
 from html.parser import HTMLParser
 from pathlib import Path
 
-SUPPORTED = (".pdf", ".docx", ".eml", ".xlsx", ".txt", ".md")
+SUPPORTED = (".pdf", ".docx", ".eml", ".xlsx", ".csv", ".txt", ".md")
+CSV_ROWS = 2000  # rows of a .csv put into text (the index, the prompt); the whole file stays readable for code
 
 
 class ExtractionError(RuntimeError):
@@ -52,6 +53,8 @@ def extract_bytes(name: str, data: bytes) -> list[Segment]:
             segments = [Segment(_eml(data))]
         elif suffix == ".xlsx":
             segments = _xlsx(data)
+        elif suffix == ".csv":
+            segments = _csv(data)
         elif suffix in (".txt", ".md"):
             segments = [Segment(_text(data))]
         else:
@@ -202,6 +205,33 @@ def _cell(value) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     return str(value).strip()
+
+
+def _csv(data: bytes) -> list[Segment]:
+    """Rows as " | "-separated lines (like a sheet), delimiter detected; at most ``CSV_ROWS`` rows, with a note."""
+    import csv
+
+    text = _text(data)
+    try:
+        delimiter = csv.Sniffer().sniff(text[:65536], delimiters=",;\t|").delimiter
+    except csv.Error:
+        delimiter = ","
+    rows, total = [], 0
+    for row in csv.reader(io.StringIO(text), delimiter=delimiter):
+        cells = [c.strip() for c in row]
+        while cells and not cells[-1]:
+            cells.pop()
+        if not any(cells):
+            continue
+        total += 1
+        if len(rows) < CSV_ROWS:
+            rows.append(" | ".join(cells))
+    if not rows:
+        return []
+    body = "\n".join(rows)
+    if total > len(rows):
+        body += f"\n[… pokazano {len(rows)} z {total} wierszy — cały plik może przeanalizować kod Python]"
+    return [Segment(body, {"header": rows[0]})]
 
 
 def _xlsx(data: bytes) -> list[Segment]:
