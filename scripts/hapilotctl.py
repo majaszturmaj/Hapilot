@@ -350,10 +350,29 @@ def ui_down() -> None:
     ui_stopped_marker().write_text(dt.datetime.now().isoformat(timespec="seconds"))
 
 
+def update_lock(blocking: bool = False):
+    """The updater's lock (var/run/update.lock), held while an update or `ui ensure` runs; None when another holds it."""
+    import fcntl
+
+    handle = open(run_dir() / "update.lock", "w")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+    except BlockingIOError:
+        handle.close()
+        return None
+    return handle
+
+
 def ui_ensure(profile: str | None = None) -> None:
-    """Start the UI unless it runs or an operator stopped it; for cron (@reboot and the updater)."""
-    if not owned("ui") and not ui_stopped_marker().is_file():
-        ui_up(profile)
+    """Start the UI unless it runs or an operator stopped it; for cron (@reboot, every minute, the updater).
+    Skipped while an update runs: the updater stops and starts the UI itself."""
+    lock = update_lock()
+    if lock is None:
+        return
+    with lock:
+        if not owned("ui") and not ui_stopped_marker().is_file():
+            say(f"UI not running — starting it ({dt.datetime.now().isoformat(timespec='seconds')})")
+            ui_up(profile)
 
 
 def ui_address() -> str:
@@ -720,21 +739,18 @@ def update(branch: str, now: bool = False, idle_minutes: float = 10, retry: bool
 
 
 def cmd_update(args) -> None:
-    import fcntl
-
-    lock = open(run_dir() / "update.lock", "w")
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
+    lock = update_lock()
+    if lock is None:
         say("another update is running")
         return
-    try:
-        code = update(args.branch or get_settings().update_branch, now=args.now, idle_minutes=args.idle_minutes,
-                      retry=args.retry)
-    except UpdateError as exc:  # e.g. GitHub not reachable: nothing changed
-        record_update("error", str(exc))
-        code = 1
-    if args.keep_running:  # with the launcher of whatever commit is checked out now
+    with lock:
+        try:
+            code = update(args.branch or get_settings().update_branch, now=args.now, idle_minutes=args.idle_minutes,
+                          retry=args.retry)
+        except UpdateError as exc:  # e.g. GitHub not reachable: nothing changed
+            record_update("error", str(exc))
+            code = 1
+    if args.keep_running:  # after releasing the lock (ui ensure takes it), with the launcher now checked out
         subprocess.run([str(PY), str(ROOT / "scripts" / "hapilotctl.py"), "ui", "ensure"], cwd=ROOT)
     raise SystemExit(code)
 

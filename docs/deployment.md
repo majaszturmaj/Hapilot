@@ -120,10 +120,13 @@ No root rights needed. `crontab -e`, then (one line each; adapt the paths):
 ```bash
 @reboot cd ~/Hapilot-team && .venv/bin/python scripts/hapilotctl.py ui ensure >> ~/hapilot-team-data/log/cron.log 2>&1
 */10 * * * * cd ~/Hapilot-team && .venv/bin/python scripts/hapilotctl.py update --keep-running >> ~/hapilot-team-data/log/cron.log 2>&1
+* * * * * cd ~/Hapilot-team && .venv/bin/python scripts/hapilotctl.py ui ensure >> ~/hapilot-team-data/log/cron.log 2>&1
 ```
 
 `ui ensure` and `--keep-running` start the UI when it is not running — after a reboot or a crash — unless it was
-stopped on purpose with `ui down` or `down` (`ui up` lifts that). A model server outside Hapilot must be up before
+stopped on purpose with `ui down` or `down` (`ui up` lifts that). The line that runs every minute keeps an outage
+after a crash to about a minute; it logs each restart with the time and waits while an update runs (the updater
+stops and starts the UI itself). A model server outside Hapilot must be up before
 the UI is useful; start it from the same `@reboot` line or its own.
 
 ### Restoring a backup

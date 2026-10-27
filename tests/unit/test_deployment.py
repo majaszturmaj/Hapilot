@@ -115,6 +115,20 @@ def test_ensure_leaves_a_ui_stopped_by_the_operator_alone(tmp_path, monkeypatch)
     assert started == [None] and hapilotctl.ui_stopped_marker().is_file()
 
 
+def test_ensure_waits_while_an_update_runs(tmp_path, monkeypatch):
+    """`ui ensure` runs every minute; an update stops and starts the UI itself and must not be raced."""
+    monkeypatch.setattr(hapilotctl, "run_dir", lambda: tmp_path)
+    monkeypatch.setattr(hapilotctl, "owned", lambda name: None)
+    started = []
+    monkeypatch.setattr(hapilotctl, "ui_up", lambda profile=None: started.append(profile))
+    held = hapilotctl.update_lock()  # as the updater holds it
+    hapilotctl.ui_ensure()
+    assert started == []
+    held.close()
+    hapilotctl.ui_ensure()
+    assert started == [None]
+
+
 def test_make_cert(tmp_path):
     if not __import__("shutil").which("openssl"):
         pytest.skip("openssl not installed")
