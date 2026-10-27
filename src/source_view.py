@@ -164,15 +164,22 @@ def _label(meta: dict) -> str:
 
 # --------------------------------------------------------------------------- PDF pages
 
+# pdfium (pypdfium2) is not thread-safe: two threads inside it at once crash the whole process (segfault — the pilot
+# UI died on 2026-10-26 while a browser loaded a panel's page images in parallel). Every use of it in Hapilot —
+# open, read, render, close — happens under this lock (here, in src/ocr.py and in anything else that renders PDFs).
+PDFIUM_LOCK = threading.RLock()
+
+
 def pdf_page_sizes(path: Path) -> list[tuple[float, float]]:
     """(width, height) of every page, in points."""
     import pypdfium2 as pdfium
 
-    pdf = pdfium.PdfDocument(str(path))
-    try:
-        return [pdf.get_page_size(i) for i in range(len(pdf))]
-    finally:
-        pdf.close()
+    with PDFIUM_LOCK:
+        pdf = pdfium.PdfDocument(str(path))
+        try:
+            return [pdf.get_page_size(i) for i in range(len(pdf))]
+        finally:
+            pdf.close()
 
 
 def pdf_scanned_pages(path: Path) -> set[int]:
@@ -181,62 +188,71 @@ def pdf_scanned_pages(path: Path) -> set[int]:
 
     from src.ocr import needs_ocr
 
-    pdf = pdfium.PdfDocument(str(path))
-    try:
-        scanned = set()
-        for i in range(len(pdf)):
-            page = pdf[i]
-            textpage = page.get_textpage()
-            if needs_ocr(textpage.get_text_range(0, textpage.count_chars())):
-                scanned.add(i + 1)
-            textpage.close()
-            page.close()
-        return scanned
-    finally:
-        pdf.close()
+    with PDFIUM_LOCK:
+        pdf = pdfium.PdfDocument(str(path))
+        try:
+            scanned = set()
+            for i in range(len(pdf)):
+                page = pdf[i]
+                textpage = page.get_textpage()
+                try:
+                    if needs_ocr(textpage.get_text_range(0, textpage.count_chars())):
+                        scanned.add(i + 1)
+                finally:
+                    textpage.close()
+                    page.close()
+            return scanned
+        finally:
+            pdf.close()
 
 
 def pdf_boxes(path: Path, page_no: int, texts: list[tuple[str, int]]) -> list[dict]:
     """Highlight boxes on one PDF page for ``(text, chunk_no)`` pairs, in page fractions (origin top left)."""
     import pypdfium2 as pdfium
 
-    pdf = pdfium.PdfDocument(str(path))
-    try:
-        page = pdf[page_no - 1]
-        width, height = page.get_size()
-        textpage = page.get_textpage()
-        page_text = textpage.get_text_range(0, textpage.count_chars())
-        boxes = []
-        for text, no in texts:
-            for start, end in find_ranges(page_text, text):
-                for i in range(textpage.count_rects(start, end - start)):
-                    left, bottom, right, top = textpage.get_rect(i)
-                    boxes.append({"x": round(left / width, 5), "y": round(1 - top / height, 5),
-                                  "w": round((right - left) / width, 5), "h": round((top - bottom) / height, 5),
-                                  "chunk": no})
-        textpage.close()
-        page.close()
-        return boxes
-    finally:
-        pdf.close()
+    with PDFIUM_LOCK:
+        pdf = pdfium.PdfDocument(str(path))
+        try:
+            page = pdf[page_no - 1]
+            textpage = page.get_textpage()
+            try:
+                width, height = page.get_size()
+                page_text = textpage.get_text_range(0, textpage.count_chars())
+                boxes = []
+                for text, no in texts:
+                    for start, end in find_ranges(page_text, text):
+                        for i in range(textpage.count_rects(start, end - start)):
+                            left, bottom, right, top = textpage.get_rect(i)
+                            boxes.append({"x": round(left / width, 5), "y": round(1 - top / height, 5),
+                                          "w": round((right - left) / width, 5), "h": round((top - bottom) / height, 5),
+                                          "chunk": no})
+                return boxes
+            finally:
+                textpage.close()
+                page.close()
+        finally:
+            pdf.close()
 
 
 def render_pdf_page(path: Path, page_no: int, scale: float = 1.6) -> bytes:
-    """One PDF page as a PNG (no Pillow needed)."""
+    """One PDF page as a PNG (no Pillow needed). Only the rendering holds the pdfium lock, not the PNG encoding."""
     import pypdfium2 as pdfium
 
-    pdf = pdfium.PdfDocument(str(path))
-    try:
-        page = pdf[page_no - 1]
-        bitmap = page.render(scale=scale, rev_byteorder=True)  # RGB(A) byte order
+    with PDFIUM_LOCK:
+        pdf = pdfium.PdfDocument(str(path))
         try:
-            data = png(bytes(bitmap.buffer), bitmap.width, bitmap.height, bitmap.stride, bitmap.n_channels)
+            page = pdf[page_no - 1]
+            try:
+                bitmap = page.render(scale=scale, rev_byteorder=True)  # RGB(A) byte order
+                try:
+                    raw = (bytes(bitmap.buffer), bitmap.width, bitmap.height, bitmap.stride, bitmap.n_channels)
+                finally:
+                    bitmap.close()
+            finally:
+                page.close()
         finally:
-            bitmap.close()
-            page.close()
-        return data
-    finally:
-        pdf.close()
+            pdf.close()
+    return png(*raw)
 
 
 def png(buffer: bytes, width: int, height: int, stride: int, channels: int) -> bytes:

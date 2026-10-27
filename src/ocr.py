@@ -101,18 +101,19 @@ def read_pages(data: bytes, pages: list[int]) -> dict[int, PageText]:
 
 
 def render_page(pdf, page_no: int) -> bytes:
-    """One page of an open pypdfium2 document as a greyscale PNG at ``DPI``."""
+    """One page of an open pypdfium2 document as a greyscale PNG at ``DPI`` (caller holds the pdfium lock)."""
     from src.source_view import png
 
     page = pdf[page_no - 1]
     try:
         bitmap = page.render(scale=DPI / 72, grayscale=True)
         try:
-            return png(bytes(bitmap.buffer), bitmap.width, bitmap.height, bitmap.stride, bitmap.n_channels)
+            raw = (bytes(bitmap.buffer), bitmap.width, bitmap.height, bitmap.stride, bitmap.n_channels)
         finally:
             bitmap.close()
     finally:
         page.close()
+    return png(*raw)
 
 
 def _recognise(data: bytes, pages: list[int]) -> dict[int, PageText]:
@@ -126,12 +127,16 @@ def _recognise(data: bytes, pages: list[int]) -> dict[int, PageText]:
     tmp_root.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix="ocr-", dir=tmp_root))
     try:
-        pdf = pdfium.PdfDocument(data)
-        try:
-            for page in pages:
-                (work / f"p{page:05d}.png").write_bytes(render_page(pdf, page))
-        finally:
-            pdf.close()
+        from src.source_view import PDFIUM_LOCK
+
+        for page in pages:  # one page at a time under the pdfium lock (not thread-safe), so the UI is not blocked long
+            with PDFIUM_LOCK:
+                pdf = pdfium.PdfDocument(data)
+                try:
+                    image = render_page(pdf, page)
+                finally:
+                    pdf.close()
+            (work / f"p{page:05d}.png").write_bytes(image)
         # one container for the whole document; languages are checked in src/config.py ([a-z_+] only)
         script = (f'for f in /work/p*.png; do tesseract "$f" "${{f%.png}}" -l {s.ocr_languages} --dpi {DPI} '
                   f'txt tsv 2>/dev/null || {{ echo "tesseract failed on $f"; exit 1; }}; done')
