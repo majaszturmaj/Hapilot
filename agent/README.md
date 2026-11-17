@@ -17,11 +17,33 @@ measured: same SDK source, same session settings, same task prompt and document 
 | `spike/spike.py` | runs a task set through the container (one fresh container per task) and scores it with the set's own scorer |
 | `spike/fake_openai.py` | scripted OpenAI-compatible server for a dry run without a model |
 
+Stage 1 adds the documents the agent works on (Python, `src/`):
+
+| Path | What |
+|---|---|
+| `../src/text_mirror.py` | text mirror written by ingest from the index's own extraction (OCR included), kept in step with the index's document list: one `.txt` per document with page (`[strona N]`) and sheet (`[arkusz NAME]`) markers, one CSV per sheet; `python -m src.text_mirror check --chunks` / `sync` |
+| `../src/agent_workspace.py` | per-conversation workspace (`HAPILOT_AGENT_WORKSPACE_DIR`, default `<data dir>/agent_workspace`) and its `docker run --mount` arguments |
+
+What the container sees:
+
+| Path | From | Access |
+|---|---|---|
+| `/praca` | the conversation's folder (`<conversation>/praca`) | read-write (working directory) |
+| `/praca/dokumenty` | `HAPILOT_DOCS_DIR` | read-only |
+| `/praca/dodane` | `HAPILOT_ADDED_DOCS_DIR` (index source paths `dodane/…`) | read-only |
+| `/praca/tekst` | the text mirror: `<source path>.txt`, `<source path>.<sheet>.csv` | read-only |
+| `/praca/zalaczniki` | this conversation's uploads, each with `<name>.txt` (and CSVs) | read-only |
+| `/praca/wyniki` | files for the user (links out of the folder are never offered) | read-write |
+
+The added documents sit beside `/praca/dokumenty` rather than inside it: a mount inside a read-only mount would need
+its mount point created in the company's documents folder.
+
 Container: internal Docker network whose only reachable host is a relay to the local model server, non-root,
 read-only root filesystem, no capabilities, read-only documents, memory/CPU/process limits, no credentials.
 Telemetry: the runner creates no telemetry or feature-flag service; the SDK's Langfuse export is off for non-Cline
 providers unless explicitly configured (it is not); the egress log shows what was attempted.
 
-Tests: `node --test agent/runner/test/*.test.mjs` (egress guard) and `pytest tests/unit/test_v3_spike.py` (driver).
+Tests: `node --test agent/runner/test/*.test.mjs` (egress guard), `pytest tests/unit/test_v3_spike.py` (driver),
+`tests/unit/test_text_mirror.py` and `tests/unit/test_agent_workspace.py` (documents).
 
 The Cline SDK is third-party software: see `runner/NOTICE` and `runner/LICENSE-cline-sdk`.

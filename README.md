@@ -217,9 +217,10 @@ English models, in an offline container built by `setup`; `HAPILOT_OCR=off` swit
 only as good as the scan. The default is the fictional demo company in
 [examples/demo_company/](examples/demo_company/) (shown in the panel, never changed by it). `data/private_docs/` is
 ignored by git. Files that users add from the chat are kept in `var/added_docs/` (`HAPILOT_ADDED_DOCS_DIR`) and
-indexed together with your documents (source path `dodane/…`). While the UI runs, it keeps the index up to date
-itself — through the agent panel (**📚 Baza wiedzy**) or by re-checking the folder every few minutes — and
-`hapilotctl.py ingest` refuses to run (the embedded database takes one writer).
+indexed together with your documents (source path `dodane/…`). Indexing also writes a plain-text copy of every
+document next to the index (`var/chroma/<collection>.tekst/`, for the v3 agent). While the UI runs, it keeps the
+index up to date itself — through the agent panel (**📚 Baza wiedzy**) or by re-checking the folder every few
+minutes — and `hapilotctl.py ingest` refuses to run (the embedded database takes one writer).
 
 ## Evaluation (headless)
 

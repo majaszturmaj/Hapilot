@@ -14,8 +14,9 @@ What an administrator can do there:
 Indexing runs in one background thread of the UI process (the embedded database has one writer): only the changed
 documents, never a rebuild (src/ingest_data.py ``index_entries`` / ``remove_sources``). The same thread re-checks
 the folders at start-up and every ``HAPILOT_KB_RESCAN_MINUTES`` minutes, so files copied into the folder on the
-server, changed or deleted there are picked up without ``ingest`` (which refuses to run while the UI runs). Who
-added what and when: ``<data dir>/knowledge_base/registry.json``; every change is in the audit log.
+server, changed or deleted there are picked up without ``ingest`` (which refuses to run while the UI runs); each
+re-check also brings the text mirror in step (src/text_mirror.py ``sync``). Who added what and when:
+``<data dir>/knowledge_base/registry.json``; every change is in the audit log.
 
 A documents folder inside the Hapilot checkout (the demo documents, the default) is shown but not changed: the
 updater refuses to update a checkout whose tracked files were edited.
@@ -476,7 +477,7 @@ def rescan() -> dict:
     """Compare the folders with the index: index new and changed documents, remove the ones deleted from the folder.
     Documents waiting in the queue are left to their own job. Also empties the trash of old entries."""
     global _last_scan
-    from src import admin, ingest_data, knowledge_base, ui_activity
+    from src import admin, ingest_data, knowledge_base, text_mirror, ui_activity
 
     s = get_settings()
     docs, added = _bases()
@@ -513,6 +514,8 @@ def rescan() -> dict:
             for rel in items:
                 admin.audit(SYSTEM, action, rel, "zmiana w folderze na serwerze")
         print(f"📚 [Baza wiedzy] folder: nowe {len(new)}, zmienione {len(changed)}, usunięte {len(gone)}", flush=True)
+    ingest_data._mirror(lambda: ingest_data._report_sync(  # the text mirror repairs itself here (src/text_mirror.py)
+        text_mirror.sync(s.chroma_path, s.collection, docs, added)))
     purged = purge_trash()
     _last_scan = {"at": _now(), "added": len(new), "changed": len(changed), "removed": len(gone), "purged": purged}
     return _last_scan

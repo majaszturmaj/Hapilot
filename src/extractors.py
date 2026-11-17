@@ -118,25 +118,31 @@ def _pdf(data: bytes, name: str = "") -> list[Segment]:
 
 def _docx(data: bytes) -> str:
     from docx import Document
+
+    doc = Document(io.BytesIO(data))
+    return "\n".join(_block_lines(doc.element.body, doc))
+
+
+def _block_lines(element, parent) -> list[str]:
+    """Paragraphs and table rows of a .docx body (or header, footer), in reading order."""
     from docx.table import Table
     from docx.text.paragraph import Paragraph
 
-    doc = Document(io.BytesIO(data))
     lines: list[str] = []
-    for child in doc.element.body.iterchildren():
+    for child in element.iterchildren():
         tag = child.tag.rsplit("}", 1)[-1]
         if tag == "p":
-            text = Paragraph(child, doc).text.strip()
+            text = Paragraph(child, parent).text.strip()
             if text:
                 lines.append(text)
         elif tag == "tbl":
-            for row in Table(child, doc).rows:
+            for row in Table(child, parent).rows:
                 cells = [c.text.strip() for c in row.cells]
                 # merged cells repeat their text; keep each value once per row
                 deduped = [c for i, c in enumerate(cells) if i == 0 or c != cells[i - 1]]
                 if any(deduped):
                     lines.append(" | ".join(deduped))
-    return "\n".join(lines)
+    return lines
 
 
 class _HTMLText(HTMLParser):
@@ -251,3 +257,63 @@ def _xlsx(data: bytes) -> list[Segment]:
             segments.append(Segment("\n".join(rows), {"sheet": ws.title, "header": rows[0]}))
     wb.close()
     return segments
+
+
+# --------------------------------------------------------------------------- extra text for the text mirror
+# Used only by src/text_mirror.py (the v3 agent reads that mirror); ``extract`` and so the index do not change.
+
+def docx_header_footer(data: bytes) -> tuple[list[str], list[str]]:
+    """Texts of the headers and of the footers of a .docx: each distinct text once, in section order (the first-page
+    and even-page variants only when the document uses them)."""
+    from docx import Document
+
+    doc = Document(io.BytesIO(data))
+    odd_even = bool(doc.settings.odd_and_even_pages_header_footer)
+    headers: list[str] = []
+    footers: list[str] = []
+    for section in doc.sections:
+        kinds = [("header", "footer")]
+        if section.different_first_page_header_footer:
+            kinds.append(("first_page_header", "first_page_footer"))
+        if odd_even:
+            kinds.append(("even_page_header", "even_page_footer"))
+        for header_kind, footer_kind in kinds:
+            for part, found in ((getattr(section, header_kind), headers), (getattr(section, footer_kind), footers)):
+                if part.is_linked_to_previous:  # no definition of its own: it repeats an earlier one (or is empty)
+                    continue
+                text = "\n".join(_block_lines(part._element, part))
+                if text and text not in found:
+                    found.append(text)
+    return headers, footers
+
+
+def eml_html_extra(data: bytes) -> str:
+    """Text of an e-mail's HTML body when the message also has a plain-text body (the one ``extract`` reads) and the
+    HTML one has words the plain one lacks; "" otherwise."""
+    msg = BytesParser(policy=policy.default).parsebytes(data)
+    plain = msg.get_body(preferencelist=("plain",))
+    html = msg.get_body(preferencelist=("html",))
+    if plain is None or html is None or plain is html:
+        return ""
+    text = html_to_text(html.get_content())
+    words = set(re.findall(r"\w+", plain.get_content().lower()))
+    return text if set(re.findall(r"\w+", text.lower())) - words else ""
+
+
+def xlsx_tables(data: bytes) -> list[tuple[str, list[list[str]]]]:
+    """Each non-empty sheet of a .xlsx as (title, rows): cell texts as in ``extract`` (dates ISO, whole numbers
+    without ".0"), from cell A1 to the last non-empty row and column, every row the same length — so line N of a CSV
+    written from it is row N of the sheet."""
+    from openpyxl import load_workbook
+
+    wb = load_workbook(io.BytesIO(data), data_only=True, read_only=True)
+    tables = []
+    for ws in wb.worksheets:
+        rows = [[_cell(v) for v in row] for row in ws.iter_rows(values_only=True)]
+        while rows and not any(rows[-1]):
+            rows.pop()
+        width = max((max((i + 1 for i, c in enumerate(r) if c), default=0) for r in rows), default=0)
+        if width:
+            tables.append((ws.title, [(r + [""] * width)[:width] for r in rows]))
+    wb.close()
+    return tables

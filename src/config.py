@@ -184,6 +184,7 @@ class Settings:
     kb_max_upload_mb: int = 50
     kb_rescan_minutes: float = 5.0
     kb_trash_days: int = 30
+    agent_workspace_root: Optional[Path] = None  # v3 agent: per-conversation folders (src/agent_workspace.py)
 
     def profile(self, name: Optional[str] = None) -> Profile:
         name = name or self.default_profile
@@ -292,6 +293,7 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         kb_max_upload_mb=int(number("HAPILOT_KB_MAX_UPLOAD_MB", "50", 1, 1024)),
         kb_rescan_minutes=number("HAPILOT_KB_RESCAN_MINUTES", "5", 0, 1440),  # 0: no periodic re-check
         kb_trash_days=int(number("HAPILOT_KB_TRASH_DAYS", "30", 1, 3650)),
+        agent_workspace_root=path("HAPILOT_AGENT_WORKSPACE_DIR", data_dir / "agent_workspace"),
     )
 
 

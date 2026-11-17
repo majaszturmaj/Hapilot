@@ -132,6 +132,15 @@ list together, so the next `ingest` of the same folders does nothing. A list tha
 fingerprint (an index built by an older version) is rebuilt from the index's chunk metadata. The BM25 ranking is
 cached per collection and rebuilt whenever the set of chunk ids changes (ids carry a hash of the text).
 
+The same calls also write a text mirror of the listed documents ([src/text_mirror.py](../src/text_mirror.py)), for
+the v3 agent, which reads and greps files: `<collection>.tekst/<source path>.txt` next to the index (PDF pages marked
+`[strona N]`, OCR pages with their confidence, sheets `[arkusz NAME]`, a .docx with its header and footer, an e-mail
+with an HTML body that has more than the plain one, a .csv whole) and `<source path>.<sheet>.csv` per sheet of a
+.xlsx; `<collection>.tekst.json` records the content hash each was written from. The index never reads it. An
+unchanged corpus and the panel's folder re-check only bring it in step (`sync`: missing or stale documents written,
+documents no longer listed removed, the index untouched); `python -m src.text_mirror check --chunks` compares it with
+the document list and finds every chunk of the index in it.
+
 The embedded database takes one writer. While the UI runs, only the UI writes its knowledge base
 ([src/knowledge_admin.py](../src/knowledge_admin.py)): one background thread indexes documents changed in the agent
 panel's **📚 Baza wiedzy** tab (administrators: upload into `HAPILOT_DOCS_DIR`, replace, delete into a trash under

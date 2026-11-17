@@ -20,6 +20,9 @@ chunks, pages, pages read by OCR, or why it could not be read). ``index_entries`
 single documents (the agent panel's "📚 Baza wiedzy" and its folder re-check, src/knowledge_admin.py) and keep both
 files current, so the next ``ingest`` of an unchanged folder does not rebuild the index. A per-document list that
 does not belong to the current fingerprint (an index rebuilt by an older Hapilot) is rebuilt from the index.
+
+Each of these also writes the text mirror (src/text_mirror.py: one .txt per listed document, a CSV per sheet) from the
+same extraction; an unchanged corpus only brings the mirror in step. A mirror failure is reported, never fatal.
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ from typing import Optional
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from src import text_mirror
 from src.extractors import SUPPORTED, ExtractionError, extract
 from src.privacy import apply_offline_env
 
@@ -73,9 +77,11 @@ def split_documents(files: list[Path], docs_dir: Path) -> tuple[list, list[dict]
     return split_entries([(p, p.relative_to(docs_dir).as_posix()) for p in files])
 
 
-def split_entries(entries: list[tuple[Path, str]], facts: Optional[dict] = None) -> tuple[list, list[dict]]:
+def split_entries(entries: list[tuple[Path, str]], facts: Optional[dict] = None,
+                  texts: Optional[dict] = None) -> tuple[list, list[dict]]:
     """As split_documents, for (file, source path) pairs. ``facts``, if given, receives per source path what
-    went into the index: chunks, pages / sheets, pages read by OCR and their mean confidence, or the error."""
+    went into the index: chunks, pages / sheets, pages read by OCR and their mean confidence, or the error.
+    ``texts``, if given, receives the extracted segments (or the error message), for the text mirror."""
     from langchain_core.documents import Document
     from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -89,11 +95,15 @@ def split_entries(entries: list[tuple[Path, str]], facts: Optional[dict] = None)
             segments = extract(path)
         except ExtractionError as exc:
             skipped.append({"file": rel, "reason": str(exc)})
+            if texts is not None:
+                texts[rel] = str(exc)
             if facts is not None:
                 facts[rel] = {"chunks": 0, "pages": page_count(path), "sheets": None, "ocr_pages": 0,
                               "ocr_confidence": None, "error": str(exc)}
             print(f"❌ Pominięto {rel}: {exc}")
             continue
+        if texts is not None:
+            texts[rel] = segments
         index = 0
         ocr_pages = [seg.meta for seg in segments if seg.meta.get("ocr")]
         for seg in segments:
@@ -164,6 +174,7 @@ def ingest(docs_dir: Path, collection: str, path: Optional[Path] = None, force: 
             if read_files(collection, path) is None:  # index built by an older Hapilot: list its documents
                 _write_files(collection, path, signature["fingerprint"], _bootstrap(collection, path, entries, saved, True))
             print(f"✅ Korpus bez zmian ({len(entries)} plików) — pomijam ponowne indeksowanie.")
+            _mirror(lambda: _report_sync(text_mirror.sync(path, collection, docs_dir, added_dir)))
             return saved
     if not entries:
         print(f"⚠️ Brak dokumentów ({', '.join(SUPPORTED)}) w {docs_dir}")
@@ -172,7 +183,8 @@ def ingest(docs_dir: Path, collection: str, path: Optional[Path] = None, force: 
               "nie zostaną odczytane. Po zbudowaniu obrazu następne indeksowanie je odczyta.")
 
     facts: dict = {}
-    chunks, skipped = split_entries(entries, facts)
+    texts: dict = {}
+    chunks, skipped = split_entries(entries, facts, texts)
     client = knowledge_base.chroma_client(path)
     try:
         client.delete_collection(collection)
@@ -184,10 +196,16 @@ def ingest(docs_dir: Path, collection: str, path: Optional[Path] = None, force: 
              "docs_dir": str(docs_dir)}
     path.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps(stats, indent=2, ensure_ascii=False))
-    _write_files(collection, path, signature["fingerprint"],
-                 {rel: {**_disk_facts(p), **facts[rel], "indexed_at": _now()} for p, rel in entries})
+    listing = {rel: {**_disk_facts(p), **facts[rel], "indexed_at": _now()} for p, rel in entries}
+    _write_files(collection, path, signature["fingerprint"], listing)
     print(f"🎉 Zaindeksowano {len(chunks)} fragmentów z {len(entries) - len(skipped)} plików do kolekcji {collection!r}"
           + (f"; pominięto {len(skipped)}" if skipped else "") + ".")
+
+    def mirror_all() -> None:
+        written = text_mirror.write(path, collection, _docs(entries, listing, texts), exclusive=True)["written"]
+        print(f"📝 Kopia tekstowa: {written} dokumentów w {text_mirror.mirror_dir(path, collection)}")
+
+    _mirror(mirror_all)
     return stats
 
 
@@ -225,7 +243,8 @@ def add_documents(files: list[Path], *, docs_dir: Path, added_dir: Path, collect
             entries.append((target, f"{ADDED_PREFIX}/{target.name}"))
             present[digest] = entries[-1][1]
         facts: dict = {}
-        chunks, skipped = split_entries(entries, facts)
+        texts: dict = {}
+        chunks, skipped = split_entries(entries, facts, texts)
         for item in skipped:  # an unreadable file is not kept
             (added_dir / Path(item["file"]).name).unlink(missing_ok=True)
         _add_chunks(knowledge_base.vector_store(collection=collection, path=path), chunks)
@@ -236,6 +255,7 @@ def add_documents(files: list[Path], *, docs_dir: Path, added_dir: Path, collect
         listed = current_files(collection, path, docs_dir, added_dir)
         listed.update({rel: {**_disk_facts(p), **facts[rel], "indexed_at": _now()} for p, rel in kept})
         _save_state(collection, path, docs_dir, added_dir, listed)
+        _mirror(lambda: text_mirror.write(path, collection, _docs(kept, listed, texts)))
     return {"added": [rel for _p, rel in kept], "chunks": len(chunks), "skipped": skipped, "already": already}
 
 
@@ -252,7 +272,8 @@ def index_entries(entries: list[tuple[Path, str]], *, collection: str, docs_dir:
     path = Path(path or get_settings().chroma_path)
     disk = {rel: _disk_facts(p) for p, rel in entries}  # hashed before reading: a later change is seen again
     facts: dict = {}
-    chunks, _skipped = split_entries(entries, facts)
+    texts: dict = {}
+    chunks, _skipped = split_entries(entries, facts, texts)
     with knowledge_base.index_lock:
         listed = current_files(collection, path, docs_dir, added_dir)
         for _p, rel in entries:
@@ -261,6 +282,7 @@ def index_entries(entries: list[tuple[Path, str]], *, collection: str, docs_dir:
         for _p, rel in entries:
             listed[rel] = {**disk[rel], **facts[rel], "indexed_at": _now()}
         _save_state(collection, path, docs_dir, added_dir, listed)
+        _mirror(lambda: text_mirror.write(path, collection, _docs(entries, listed, texts)))
     return {rel: listed[rel] for _p, rel in entries}
 
 
@@ -277,6 +299,32 @@ def remove_sources(sources: list[str], *, collection: str, docs_dir: Path, added
             knowledge_base.delete_source(source, collection, path)
             listed.pop(source, None)
         _save_state(collection, path, docs_dir, added_dir, listed)
+        _mirror(lambda: text_mirror.write(path, collection, [], remove=sources))
+
+
+# --------------------------------------------------------------------------- text mirror
+
+def _docs(entries: list[tuple[Path, str]], listed: dict, texts: dict) -> list:
+    """The mirror's view of indexed documents: file, source path, content hash as listed, the extraction used."""
+    return [text_mirror.Doc(p, rel, (listed.get(rel) or {}).get("sha256"), texts.get(rel)) for p, rel in entries]
+
+
+def _mirror(action) -> None:
+    """Update the text mirror (src/text_mirror.py). The index does not depend on it: a failure is reported only."""
+    try:
+        action()
+    except Exception as exc:
+        print(f"⚠️ Kopia tekstowa (src/text_mirror.py) nie została zaktualizowana: {type(exc).__name__}: {exc}",
+              flush=True)
+
+
+def _report_sync(result: dict) -> None:
+    changed = result.get("written", 0) + result.get("removed", 0) + result.get("orphans_removed", 0)
+    if changed or result.get("pending") or result.get("originals_missing"):
+        print(f"📝 Kopia tekstowa: zapisano {result.get('written', 0)}, usunięto {result.get('removed', 0)}"
+              + (f"; czeka na indeksowanie: {len(result['pending'])}" if result.get("pending") else "")
+              + (f"; brak oryginału: {len(result['originals_missing'])}" if result.get("originals_missing") else "")
+              + ".", flush=True)
 
 
 # --------------------------------------------------------------------------- per-document list
