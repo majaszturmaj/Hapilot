@@ -4,7 +4,8 @@
  * The session is set up like the Cline CLI 3.0.74 in headless yolo mode (`cline -y --json -c <dir> -t <s>`), the
  * configuration that was measured on an office-task benchmark. The CLI 3.0.74 binary embeds the same @cline/* 0.2.0 source this
  * runner installs (release commits dab4823 and 071e1b2 of github.com/cline/cline: no source difference), and
- * package.json pins the AI SDK versions of the CLI build. Same as the CLI: yolo tool preset (read_files,
+ * package-lock.json is derived from the CLI build's bun.lock (bun2npm.py: same versions and integrity hashes for the
+ * SDK's whole dependency tree). Same as the CLI: yolo tool preset (read_files,
  * run_commands, editor, submit_and_exit), Cline's own yolo system prompt with workspace metadata, compaction on,
  * stop after 3 consecutive mistakes, loop detection 3/5, every tool auto-approved, no hooks, no subagents or teams.
  * Different from the CLI: no telemetry or feature-flag service is created (the CLI creates PostHog/OTel ones), no git
