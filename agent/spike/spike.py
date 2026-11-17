@@ -100,6 +100,12 @@ def load_harness(task_set: Path):
     return scoring
 
 
+def load_manifest(korpus: Path) -> dict:
+    """{document id: manifest entry}, as the task set's corpus.load_manifest builds it (without its extractor imports)."""
+    data = json.loads((korpus / "manifest.json").read_text(encoding="utf-8"))
+    return {d["id"]: d for d in data["dokumenty"]}
+
+
 def summarize_trace(trace_path: Path) -> dict:
     tools, errors, iterations, notices = {}, 0, 0, []
     if trace_path.is_file():
@@ -282,8 +288,6 @@ def score_rows(tasks: list[dict], rows: dict, scoring, manifest_index: dict) -> 
 def cmd_score(a) -> None:
     task_set = Path(a.set).expanduser()
     scoring = load_harness(task_set)
-    sys.path.insert(0, str(task_set / "harness"))
-    from corpus import load_manifest  # noqa: PLC0415
     out = Path(a.out).expanduser()
     rows = {}
     for line in (out / "results.jsonl").read_text(encoding="utf-8").splitlines():

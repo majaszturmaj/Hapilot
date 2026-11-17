@@ -91,6 +91,13 @@ def test_make_row_marks_missing_answer_and_keeps_run_details():
     assert ok["egress_blocked_node"] == 2 and ok["sources_used"] == []
 
 
+def test_load_manifest_indexes_documents_by_id(tmp_path):
+    (tmp_path / "manifest.json").write_text(json.dumps({"dokumenty": [
+        {"id": "D1", "sciezka": "a/umowa.pdf"}, {"id": "D2", "sciezka": "b/notatka.txt"}]}), encoding="utf-8")
+    assert spike.load_manifest(tmp_path) == {"D1": {"id": "D1", "sciezka": "a/umowa.pdf"},
+                                             "D2": {"id": "D2", "sciezka": "b/notatka.txt"}}
+
+
 def test_score_rows_uses_the_task_sets_scorer_and_counts_categories():
     calls = []
 
