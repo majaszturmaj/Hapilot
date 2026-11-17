@@ -1,0 +1,12 @@
+Hapilot agent runner (MIT, see LICENSE in the repository root)
+
+This directory installs and runs third-party software that is not part of Hapilot:
+
+  Cline SDK — @cline/sdk, @cline/core, @cline/agents, @cline/llms, @cline/shared, version 0.2.0
+  Copyright 2026 Cline Bot Inc.
+  Licensed under the Apache License, Version 2.0 (LICENSE-cline-sdk in this directory)
+  Source: https://github.com/cline/cline (tag sdk/core/v0.2.0)
+
+Hapilot does not modify the Cline SDK. The agent loop, Cline's system prompt and the built-in tools (read_files,
+run_commands, editor, submit_and_exit) are Cline's; run_task.mjs and egress_guard.mjs are Hapilot's.
+The npm dependencies of the SDK keep their own licences (node_modules/*/package.json, LICENSE files).

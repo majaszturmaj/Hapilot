@@ -50,3 +50,6 @@ Thumbs.db
 # coverage
 .coverage
 htmlcov/
+
+# v3 agent runner (npm installs happen in the image build)
+agent/runner/node_modules/

@@ -1,0 +1,28 @@
+{
+  "name": "hapilot-agent-runner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hapilot v3: one agent session on the Cline SDK inside the hapilot-agent container",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@cline/core": "0.2.0",
+    "@cline/sdk": "0.2.0"
+  },
+  "overrides": {
+    "@ai-sdk/gateway": "4.0.110",
+    "@ai-sdk/openai-compatible": "3.0.67",
+    "@ai-sdk/provider": "4.0.26",
+    "@ai-sdk/provider-utils": "5.0.58",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@streamparser/json": "0.0.21",
+    "ai": "7.0.136",
+    "eventsource-parser": "3.1.1",
+    "jsonrepair": "3.15.0",
+    "undici": "7.29.0",
+    "zod": "4.4.3"
+  }
+}
