@@ -13,7 +13,7 @@ measured: same SDK source, same session settings, same task prompt and document 
 | `runner/run_task.mjs` | one task, one SDK session, configured like `cline -y --json` 3.0.74; writes a result file and a JSONL trace of every tool call |
 | `runner/egress_guard.mjs` | loaded first: records every outbound connection of the runner and refuses all but the model endpoint |
 | `runner/package.json`, `package-lock.json` | SDK 0.2.0 with the dependency tree of the CLI 3.0.74 build: derived from its `bun.lock` (tag `cli-v3.0.74`) by `runner/bun2npm.py`, same versions and integrity hashes; the CLI build's patch of `ollama-ai-provider-v2` is not applied (not used with an OpenAI-compatible endpoint) |
-| `../sandbox/agent.Dockerfile` | image `hapilot-agent:0.1` = `hapilot-sandbox:0.2` + Node 22.23.4 + the runner |
+| `../sandbox/agent.Dockerfile` | image `hapilot-agent:0.2` = `hapilot-sandbox:0.2` + Node 22.23.4 + the runner |
 | `spike/spike.py` | runs a task set through the container (one fresh container per task) and scores it with the set's own scorer |
 | `spike/fake_openai.py` | scripted OpenAI-compatible server for a dry run without a model |
 
@@ -22,6 +22,6 @@ read-only root filesystem, no capabilities, read-only documents, memory/CPU/proc
 Telemetry: the runner creates no telemetry or feature-flag service; the SDK's Langfuse export is off for non-Cline
 providers unless explicitly configured (it is not); the egress log shows what was attempted.
 
-Tests: `node --test agent/runner/test/` (egress guard) and `pytest tests/unit/test_v3_spike.py` (driver).
+Tests: `node --test agent/runner/test/*.test.mjs` (egress guard) and `pytest tests/unit/test_v3_spike.py` (driver).
 
 The Cline SDK is third-party software: see `runner/NOTICE` and `runner/LICENSE-cline-sdk`.

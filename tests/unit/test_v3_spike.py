@@ -55,7 +55,7 @@ def test_public_connections_reads_ipv4_mapped_ipv6():
 
 
 def test_docker_command_isolates_the_container(tmp_path):
-    a = Namespace(network="hapilot-v3-izolowana", allow="model:8000", image="hapilot-agent:0.1")
+    a = Namespace(network="hapilot-v3-izolowana", allow="model:8000", image="hapilot-agent:0.2")
     cmd = spike.docker_command(a, "hapilot-v3-t01", tmp_path / "p", tmp_path / "d", tmp_path / "r",
                                tmp_path / "k", tmp_path / "t")
     joined = " ".join(cmd)

@@ -321,7 +321,7 @@ def main(argv=None) -> None:
     r.add_argument("--dzis", required=True)
     r.add_argument("--out", required=True)
     r.add_argument("--work", default="~/hapilot-v3-data/praca")
-    r.add_argument("--image", default="hapilot-agent:0.1")
+    r.add_argument("--image", default="hapilot-agent:0.2")
     r.add_argument("--network", default="hapilot-v3-izolowana")
     r.add_argument("--allow", default="model:8000", help="host:port the runner may reach")
     r.add_argument("--model", default="qwen3.6-27b-q4km")

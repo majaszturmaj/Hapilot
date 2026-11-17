@@ -8,6 +8,8 @@
  * SDK's whole dependency tree). Same as the CLI: yolo tool preset (read_files,
  * run_commands, editor, submit_and_exit), Cline's own yolo system prompt with workspace metadata, compaction on,
  * stop after 3 consecutive mistakes, loop detection 3/5, every tool auto-approved, no hooks, no subagents or teams.
+ * The CLI's prompt preprocessing (a slash command at the start, @/path file mentions) is not done; the trace records
+ * for every prompt whether it would have applied.
  * Different from the CLI: no telemetry or feature-flag service is created (the CLI creates PostHog/OTel ones), no git
  * checkpoints (they would write into the documents tree), no hub, the timeout covers the whole run, and every agent
  * event goes to a JSONL trace (tool name, input, output, error, duration: the basis for Tool Call Accuracy).
@@ -19,9 +21,10 @@
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 import {
-	buildClineSystemPrompt,
 	buildWorkspaceMetadata,
 	ClineCore,
+	// @cline/shared's buildClineSystemPrompt (the function the CLI imports), re-exported by core under this name
+	getClineDefaultSystemPrompt as buildClineSystemPrompt,
 	mergeRulesForSystemPrompt,
 	prewarmFileIndex,
 	SessionSource,
@@ -31,6 +34,14 @@ const MODE = "yolo";
 const MAX_CONSECUTIVE_MISTAKES = 3; // CLI_DEFAULT_MAX_CONSECUTIVE_MISTAKES
 const LOOP_DETECTION = { softThreshold: 3, hardThreshold: 5 }; // CLI_DEFAULT_LOOP_DETECTION
 const MAX_TRACE_TEXT = 200_000;
+// The CLI passes the prompt through buildUserInputMessage: a slash command at the start, @/path file mentions.
+const CLI_FILE_MENTION = /@(?:"(?:\/|~\/|\.{1,2}\/)[^"\r\n]+"|(?:\/|~\/|\.{1,2}\/)\S+)/i;
+
+// Reaching this line means every named import above exists (the image build runs this).
+if (process.argv[2] === "--self-check") {
+	console.log("run_task.mjs: imports ok");
+	process.exit(0);
+}
 
 const spec = JSON.parse(readFileSync(process.argv[2], "utf8"));
 const startedAt = Date.now();
@@ -122,6 +133,12 @@ try {
 		platform: process.platform,
 	});
 	trace({ type: "system_prompt", chars: systemPrompt.length, text: systemPrompt });
+	// passed as is; true here would mean the CLI had rewritten this prompt before sending it
+	trace({
+		type: "prompt",
+		chars: spec.prompt.length,
+		cli_preprocessing: spec.prompt.startsWith("/") || CLI_FILE_MENTION.test(spec.prompt),
+	});
 	const toolPolicies = { "*": { autoApprove: true } };
 	core = await ClineCore.create({
 		backendMode: "local",

@@ -1,9 +1,10 @@
-# Hapilot v3 agent image (hapilot-agent:0.1): the sandbox image (Python data tools, TeX Live, TeX Gyre) plus Node 22
+# Hapilot v3 agent image (hapilot-agent:0.2): the sandbox image (Python data tools, TeX Live, TeX Gyre) plus Node 22
 # and the agent runner on the pinned Cline SDK 0.2.0 (Apache-2.0, see agent/runner/NOTICE).
 # One container per agent run: internal network (only the model relay is reachable), non-root, documents read-only,
 # read-only root filesystem, no capabilities, resource limits (agent/spike/spike.py shows the flags).
-# Build from the repository root: docker build -f sandbox/agent.Dockerfile -t hapilot-agent:0.1 .
-# Existing tags are never rebuilt; a change gets a new tag.
+# Build from the repository root: docker build -f sandbox/agent.Dockerfile -t hapilot-agent:0.2 .
+# Existing tags are never rebuilt; a change gets a new tag (0.1: first build, its runner imported a name the SDK
+# does not export).
 
 # Node 22.23.4 from the official image, pinned by digest; npm only in this stage.
 FROM node:22-bookworm@sha256:7702d8aa4d5910871692af4480eb3ba86f23047a6417a44d857d06c95d060d3f AS runner
@@ -21,7 +22,7 @@ COPY --from=runner /usr/local/bin/node /usr/local/bin/node
 COPY --from=runner /opt/hapilot-agent/node_modules /opt/hapilot-agent/node_modules
 COPY agent/runner/package.json agent/runner/package-lock.json agent/runner/run_task.mjs agent/runner/egress_guard.mjs \
      agent/runner/NOTICE agent/runner/LICENSE-cline-sdk /opt/hapilot-agent/
-RUN node --version && HOME=/tmp node --input-type=module -e "import('/opt/hapilot-agent/node_modules/@cline/sdk/dist/index.js').then(m => { if (!m.ClineCore) process.exit(1); })"
+RUN node --version && HOME=/tmp node /opt/hapilot-agent/run_task.mjs --self-check
 ENV DO_NOT_TRACK=1 OTEL_SDK_DISABLED=true NODE_ENV=production
 WORKDIR /praca
 CMD ["node", "--version"]
