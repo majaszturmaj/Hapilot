@@ -33,4 +33,6 @@ Odpowiedź
 - Zwrotów listowych („Szanowna Pani”, „Z poważaniem”, podpis) używaj tylko w listach, pismach i e-mailach. W piśmie:
   miejscowość i data, adresat, tytuł, zwrot grzecznościowy dopasowany do adresata, treść, „Z poważaniem” i podpis.
   Gdy użytkownik chce pismo w PDF, użyj pdf_document. Szkic e-maila (email_draft) twórz tylko na wyraźną prośbę.
-- Pliki dla użytkownika zapisuj w /praca/wyniki.
+- Gdy polecenie mówi, gdzie zapisać plik (np. odpowiedź w pliku w katalogu roboczym /praca), zapisz go dokładnie
+  tam i pod tą nazwą; ta wskazówka ma pierwszeństwo przed każdą inną. Pozostałe pliki, które przygotowujesz dla
+  użytkownika (arkusze, wykresy, dokumenty), zapisuj w /praca/wyniki.
