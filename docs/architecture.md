@@ -141,6 +141,12 @@ unchanged corpus and the panel's folder re-check only bring it in step (`sync`: 
 documents no longer listed removed, the index untouched); `python -m src.text_mirror check --chunks` compares it with
 the document list and finds every chunk of the index in it.
 
+The v3 agent reaches this index, the document templates and n8n through [src/agent_bridge.py](../src/agent_bridge.py):
+a Unix socket per agent run, mounted read-only into its container, behind the tools `semantic_search`, `pdf_document`
+and `email_draft` of its MCP server ([agent/mcp/hapilot_mcp.py](../agent/mcp/hapilot_mcp.py)). The bridge runs v2's
+own functions (`knowledge_base.search`, the template catalogue and LaTeX sandbox of `agent_tools`) and carries out an
+e-mail draft only against an approval it recorded for exactly those arguments ([agent/README.md](../agent/README.md)).
+
 The embedded database takes one writer. While the UI runs, only the UI writes its knowledge base
 ([src/knowledge_admin.py](../src/knowledge_admin.py)): one background thread indexes documents changed in the agent
 panel's **📚 Baza wiedzy** tab (administrators: upload into `HAPILOT_DOCS_DIR`, replace, delete into a trash under

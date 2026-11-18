@@ -116,3 +116,28 @@ def test_score_rows_uses_the_task_sets_scorer_and_counts_categories():
     assert summary == {"tasks": 3, "success": 1, "mean_score": 0.5, "valid_json": 2,
                        "by_category": {"pisma": "0/1", "rozumowanie": "1/2"}}
     assert calls[0][2] == {"DOC": {}}
+
+
+def test_stage2_driver_mounts_the_bridge_read_only_and_lists_tools(tmp_path, monkeypatch):
+    import sys
+
+    monkeypatch.setenv("HAPILOT_DOCS_DIR", str(tmp_path / "dokumenty"))
+    (tmp_path / "dokumenty").mkdir()
+    monkeypatch.syspath_prepend(str(ROOT / "agent" / "spike"))
+    sys.modules.setdefault("spike", spike)
+    spec = importlib.util.spec_from_file_location("v3_tools_run", ROOT / "agent" / "spike" / "tools_run.py")
+    tools_run = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tools_run)
+    from src.agent_workspace import Workspace
+
+    ws = Workspace("t", root=tmp_path / "ws").prepare()
+    a = Namespace(network="izolowana", allow="model:8000", image="hapilot-agent:0.3", email=False)
+    cmd = tools_run.docker_command(a, "c", ws, tmp_path / "run", tmp_path / "dom", tmp_path / "hb")
+    assert f"type=bind,source={tmp_path / 'hb'},target=/hapilot,readonly" in cmd
+    assert "HAPILOT_TOOLS=semantic_search,pdf_document,working_days" in cmd
+    assert "HAPILOT_BRIDGE=/hapilot/most.sock" in cmd and cmd.count("--workdir") == 1
+    assert cmd[cmd.index("hapilot-agent:0.3") - 2:cmd.index("hapilot-agent:0.3")] == ["--workdir", "/praca"]
+    assert f"type=bind,source={ws.praca.resolve()},target=/praca" in cmd and "--read-only" in cmd
+    a.email = True
+    assert "HAPILOT_TOOLS=semantic_search,pdf_document,working_days,email_draft" in tools_run.docker_command(
+        a, "c", ws, tmp_path / "run", tmp_path / "dom", tmp_path / "hb")

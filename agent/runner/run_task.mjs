@@ -14,15 +14,25 @@
  * checkpoints (they would write into the documents tree), no hub, the timeout covers the whole run, and every agent
  * event goes to a JSONL trace (tool name, input, output, error, duration: the basis for Tool Call Accuracy).
  *
+ * Stage 2 adds Hapilot's domain tools (optional; without `mcp` in the spec the session is the stage 0 one): the MCP
+ * server agent/mcp/hapilot_mcp.py is started over stdio with the SDK's MCP client, and its tools join the session
+ * under their own names. A tool named in `approval.ask` (e-mail draft) is not auto-approved: the runner asks the host
+ * bridge (`approval.bridge`, a Unix socket), which asks the user or applies the run's policy; no bridge = refused.
+ *
  * Usage: node --import ./egress_guard.mjs run_task.mjs <spec.json>
- * spec.json: {prompt, cwd, providerId, modelId, apiKey, baseUrl, timeoutSeconds, tracePath, resultPath}
+ * spec.json: {prompt, cwd, providerId, modelId, apiKey, baseUrl, timeoutSeconds, tracePath, resultPath,
+ *             mcp?: {command, args, env, timeoutSeconds}, approval?: {ask: [tool names], bridge: socket path}}
  * Exit code 0 when the agent completed, 1 otherwise; the result file is written in every case.
  */
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import net from "node:net";
 import { basename } from "node:path";
 import {
 	buildWorkspaceMetadata,
 	ClineCore,
+	createDefaultMcpServerClientFactory,
+	createTool,
+	InMemoryMcpManager,
 	// @cline/shared's buildClineSystemPrompt (the function the CLI imports), re-exported by core under this name
 	getClineDefaultSystemPrompt as buildClineSystemPrompt,
 	mergeRulesForSystemPrompt,
@@ -110,8 +120,68 @@ function onEvent(event) {
 	}
 }
 
+const MCP_SERVER = "hapilot";
+
+/** Text of an MCP tool result for the model; an MCP error result becomes a tool error. */
+function mcpText(reply) {
+	const text = (reply?.content ?? [])
+		.filter((c) => c?.type === "text")
+		.map((c) => c.text)
+		.join("\n");
+	if (reply?.isError) throw new Error(text || "tool error");
+	return text;
+}
+
+/** Hapilot's MCP tools as session tools: the SDK's MCP client and manager, results passed on as plain text. */
+async function hapilotTools(cfg) {
+	const manager = new InMemoryMcpManager({
+		clientFactory: createDefaultMcpServerClientFactory({ clientName: "hapilot-agent", clientVersion: "0.3.0" }),
+	});
+	const timeoutSeconds = Number(cfg.timeoutSeconds || 300);
+	await manager.registerServer({
+		name: MCP_SERVER,
+		transport: { type: "stdio", command: cfg.command, args: cfg.args ?? [], cwd: cfg.cwd, env: cfg.env ?? {} },
+		timeoutSeconds,
+	});
+	const descriptors = await manager.listTools(MCP_SERVER);
+	const tools = descriptors.map((d) =>
+		createTool({
+			name: d.name,
+			description: d.description ?? "",
+			inputSchema: d.inputSchema ?? { type: "object", properties: {} },
+			timeoutMs: timeoutSeconds * 1000,
+			retryable: false,
+			execute: async (input, context) =>
+				mcpText(await manager.callTool({ serverName: MCP_SERVER, toolName: d.name, arguments: input ?? {}, context })),
+		}),
+	);
+	return { manager, tools };
+}
+
+/** One request to the host bridge (a JSON line each way). */
+function bridgeRequest(path, method, params, timeoutMs = 600_000) {
+	return new Promise((resolve, reject) => {
+		let data = "";
+		const socket = net.createConnection({ path });
+		socket.setTimeout(timeoutMs, () => socket.destroy(new Error("bridge timeout")));
+		socket.on("connect", () => socket.write(`${JSON.stringify({ method, params })}\n`));
+		socket.on("data", (chunk) => {
+			data += chunk;
+		});
+		socket.on("error", reject);
+		socket.on("close", () => {
+			try {
+				resolve(JSON.parse(data));
+			} catch {
+				reject(new Error("bridge: no valid reply"));
+			}
+		});
+	});
+}
+
 const result = { session_id: sessionId, status: "error", finish_reason: null, text: "", iterations: 0, usage: null, submitted: null, error: null, duration_ms: 0 };
 let core;
+let mcp;
 let timedOut = false;
 const timer = setTimeout(() => {
 	timedOut = true;
@@ -139,7 +209,29 @@ try {
 		chars: spec.prompt.length,
 		cli_preprocessing: spec.prompt.startsWith("/") || CLI_FILE_MENTION.test(spec.prompt),
 	});
+	const ask = new Set(spec.approval?.ask ?? []);
 	const toolPolicies = { "*": { autoApprove: true } };
+	for (const name of ask) toolPolicies[name] = { autoApprove: false };
+	let extraTools = [];
+	if (spec.mcp) {
+		mcp = await hapilotTools(spec.mcp);
+		extraTools = mcp.tools;
+		trace({ type: "mcp", server: MCP_SERVER, tools: extraTools.map((t) => t.name) });
+	}
+	const requestToolApproval = async (request) => {
+		if (!ask.has(request.toolName)) return { approved: true };
+		let answer = { approved: false, reason: "no approval channel" };
+		if (spec.approval?.bridge) {
+			try {
+				const reply = await bridgeRequest(spec.approval.bridge, "approve", { tool: request.toolName, input: request.input, call_id: request.toolCallId });
+				answer = reply?.ok ? { approved: Boolean(reply.result?.approved), reason: reply.result?.reason ?? undefined } : { approved: false, reason: String(reply?.error ?? "bridge error") };
+			} catch (error) {
+				answer = { approved: false, reason: `bridge unreachable: ${error?.message ?? error}` };
+			}
+		}
+		trace({ type: "approval", tool: request.toolName, id: request.toolCallId, approved: answer.approved, reason: answer.reason ?? null });
+		return answer;
+	};
 	core = await ClineCore.create({
 		backendMode: "local",
 		clientName: "hapilot-agent",
@@ -152,7 +244,7 @@ try {
 					return `Submission recorded (${verified ? "verified" : "unverified"}): ${summary}`;
 				},
 			},
-			requestToolApproval: async () => ({ approved: true }),
+			requestToolApproval,
 		},
 		toolPolicies,
 		logger,
@@ -172,6 +264,7 @@ try {
 			compaction: { enabled: true },
 			mode: MODE,
 			toolPolicies,
+			extraTools,
 			enableTools: true,
 			enableSpawnAgent: false,
 			enableAgentTeams: false,
@@ -211,5 +304,6 @@ try {
 	trace({ type: "result", status: result.status, finish_reason: result.finish_reason });
 	writeFileSync(spec.resultPath, JSON.stringify(result, null, 2));
 	await core?.dispose("hapilot_run_done").catch(() => {});
+	await mcp?.manager.dispose().catch(() => {});
 }
 process.exit(result.status === "ok" ? 0 : 1);

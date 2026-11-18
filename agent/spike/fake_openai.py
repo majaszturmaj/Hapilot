@@ -6,7 +6,9 @@ try one outbound connection from a shell command (it must fail inside the contai
 answers with plain text. Requests are logged to stdout as JSON lines (tools offered, message count), so a dry run also
 shows which tools the runner sends to the model.
 
-Usage: fake_openai.py --host 172.17.0.1 --port 8672 [--answer-path /praca/odpowiedz.json]
+Usage: fake_openai.py --host 172.17.0.1 --port 8672 [--answer-path /praca/odpowiedz.json] [--script steps.json]
+--script replaces the built-in turns with [[tool name, arguments], ...] (stage 2: Hapilot's MCP tools). Each request
+also logs the result of the previous tool call (first 300 characters), so the dry run shows what the tools returned.
 """
 
 import argparse
@@ -52,8 +54,14 @@ def make_handler(steps: list, log: list):
             n = len(log)
             log.append(1)
             tools = [t.get("function", {}).get("name") for t in req.get("tools") or []]
-            print(json.dumps({"request": n + 1, "messages": len(req.get("messages") or []), "tools": tools,
+            messages = req.get("messages") or []
+            last = messages[-1] if messages else {}
+            content = last.get("content")
+            if isinstance(content, list):
+                content = " ".join(str(c.get("text", "")) for c in content if isinstance(c, dict))
+            print(json.dumps({"request": n + 1, "messages": len(messages), "tools": tools,
                               "stream": req.get("stream"), "max_tokens": req.get("max_tokens"),
+                              "last_role": last.get("role"), "last_content": str(content or "")[:300],
                               "keys": sorted(req)}, ensure_ascii=False), flush=True)
             model = req.get("model", "fake")
             self.send_response(200)
@@ -85,8 +93,10 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8672)
     ap.add_argument("--answer-path", default="/praca/odpowiedz.json")
+    ap.add_argument("--script", help="JSON file: [[tool name, arguments], ...]")
     a = ap.parse_args()
-    server = ThreadingHTTPServer((a.host, a.port), make_handler(script(a.answer_path), []))
+    steps = [tuple(s) for s in json.load(open(a.script, encoding="utf-8"))] if a.script else script(a.answer_path)
+    server = ThreadingHTTPServer((a.host, a.port), make_handler(steps, []))
     print(json.dumps({"listening": f"{a.host}:{a.port}"}), flush=True)
     server.serve_forever()
 
