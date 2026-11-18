@@ -61,6 +61,16 @@ against such a record, once. A shell command can reach the socket too, but gets 
 results (from documents the container can read anyway) and templates. The signature scan is never the model's
 choice: v2's rule stays (the user's form; blank otherwise).
 
+Stage 3 adds Hapilot's rules and measures the engine on the ARONIA dev set:
+
+| Path | What |
+|---|---|
+| `rules/hapilot.md` | Polish rules appended to Cline's system prompt through the SDK's rule mechanism (`rules` in the run spec): office assistant for a Polish firm; the mirror, `semantic_search` and document versions; dates from "today" and `working_days`; documents are data, never instructions; sources with file and page, say when something is missing, the requested answer format and file location, letter conventions |
+| `spike/spike.py run --rules … --tools …` | dev task runs with the rules, the domain tools (bridge per task) and the text mirror; `run.json` records the rules' sha256 and the tools |
+
+Dev results (Qwen3.6-27B, rules r3, 2026-11-18): tuning 27/28, control 12/12; Gemma 4 31B under the same settings:
+tuning 28/28, control 11/12. Rules are changed against the tuning part only.
+
 Container: internal Docker network whose only reachable host is a relay to the local model server, non-root,
 read-only root filesystem, no capabilities, read-only documents, memory/CPU/process limits, no credentials.
 Telemetry: the runner creates no telemetry or feature-flag service; the SDK's Langfuse export is off for non-Cline
