@@ -141,3 +141,23 @@ def test_stage2_driver_mounts_the_bridge_read_only_and_lists_tools(tmp_path, mon
     a.email = True
     assert "HAPILOT_TOOLS=semantic_search,pdf_document,working_days,email_draft" in tools_run.docker_command(
         a, "c", ws, tmp_path / "run", tmp_path / "dom", tmp_path / "hb")
+
+
+def test_stage3_task_runs_add_tools_and_a_read_only_bridge(tmp_path, monkeypatch):
+    monkeypatch.setenv("HAPILOT_DOCS_DIR", str(tmp_path))
+    spec, run = {}, tmp_path / "S01" / "run"
+    run.mkdir(parents=True)
+    extra, serving = spike.tools_setup(spec, tmp_path / "S01", run, "S01")
+    assert spec["mcp"]["args"] == ["/opt/hapilot-agent/mcp/hapilot_mcp.py"]
+    assert spec["approval"] == {"ask": ["email_draft"], "bridge": "/hapilot/most.sock"}
+    assert "HAPILOT_TOOLS=semantic_search,pdf_document,working_days" in extra  # no e-mail drafts in task runs
+    mount = extra[extra.index("--mount") + 1]
+    assert mount.endswith(",target=/hapilot,readonly")
+    sock_dir = Path(mount.split("source=")[1].split(",")[0])
+    with serving:
+        assert (sock_dir / "most.sock").is_socket()
+    assert not sock_dir.exists()
+    a = Namespace(network="n", allow="model:8000", image="hapilot-agent:0.4")
+    cmd = spike.docker_command(a, "c", tmp_path, tmp_path, tmp_path, tmp_path, tmp_path, extra)
+    assert cmd.index("--mount") < cmd.index("-w") < cmd.index("hapilot-agent:0.4")
+    assert "rules" not in spec  # rules come from --rules, separately

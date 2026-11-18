@@ -21,7 +21,10 @@
  *
  * Usage: node --import ./egress_guard.mjs run_task.mjs <spec.json>
  * spec.json: {prompt, cwd, providerId, modelId, apiKey, baseUrl, timeoutSeconds, tracePath, resultPath,
- *             mcp?: {command, args, env, timeoutSeconds}, approval?: {ask: [tool names], bridge: socket path}}
+ *             mcp?: {command, args, env, timeoutSeconds}, approval?: {ask: [tool names], bridge: socket path},
+ *             rules?: [{name, instructions}]}
+ * Stage 3: `rules` go into the system prompt through the SDK's rule formatter, as the CLI adds a .clinerules file
+ * (a "# Rules" section, one "## <name>" each); Cline's own prompt is otherwise unchanged. Without rules: as before.
  * Exit code 0 when the agent completed, 1 otherwise; the result file is written in every case.
  */
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
@@ -32,6 +35,7 @@ import {
 	ClineCore,
 	createDefaultMcpServerClientFactory,
 	createTool,
+	formatRulesForSystemPrompt,
 	InMemoryMcpManager,
 	// @cline/shared's buildClineSystemPrompt (the function the CLI imports), re-exported by core under this name
 	getClineDefaultSystemPrompt as buildClineSystemPrompt,
@@ -122,6 +126,12 @@ function onEvent(event) {
 
 const MCP_SERVER = "hapilot";
 
+/** Hapilot's rules as the SDK formats rule records (undefined without rules: the stage 0 prompt). */
+function hapilotRules(rules) {
+	if (!Array.isArray(rules) || rules.length === 0) return undefined;
+	return formatRulesForSystemPrompt(rules.map((r) => ({ name: String(r.name), instructions: String(r.instructions), frontmatter: {} })));
+}
+
 /** Text of an MCP tool result for the model; an MCP error result becomes a tool error. */
 function mcpText(reply) {
 	const text = (reply?.content ?? [])
@@ -196,7 +206,7 @@ try {
 		workspaceRoot: cwd,
 		workspaceName: basename(cwd),
 		metadata: await buildWorkspaceMetadata(cwd),
-		rules: mergeRulesForSystemPrompt(undefined, undefined),
+		rules: mergeRulesForSystemPrompt(hapilotRules(spec.rules), undefined),
 		mode: MODE,
 		providerId: spec.providerId,
 		overridePrompt: undefined,

@@ -12,11 +12,17 @@ capabilities and a process limit.
   run      run tasks (resumable): results.jsonl, per task logi/<id>/{spec.json,result.json,trace.jsonl,egress.jsonl}
   score    deterministic scoring with the task set's harness/scoring.py: ocena.jsonl and summary.json
 
+Stage 3 options of `run`: --rules adds Hapilot's rules (agent/rules/hapilot.md) to the system prompt; --tools adds
+Hapilot's MCP tools (semantic_search, pdf_document, working_days) with the host bridge, which needs Hapilot's Python
+environment and the index in HAPILOT_DATA_DIR; --tekst can then point at Hapilot's own text mirror. Without them a
+run is the stage 0 one.
+
 The task set is a directory with harness/{scoring.py,corpus.py}, korpus/{dokumenty/,manifest.json} and YAML tasks
 (id, polecenie, format_odpowiedzi, sprawdzenia, ...). Nothing from it is copied into this repository.
 """
 
 import argparse
+import contextlib
 import hashlib
 import ipaddress
 import json
@@ -152,7 +158,8 @@ def prepare(a) -> None:
     print(f"{len(docs)} text copies in {out}")
 
 
-def docker_command(a, name: str, praca: Path, dom: Path, run: Path, korpus: Path, tekst: Path) -> list[str]:
+def docker_command(a, name: str, praca: Path, dom: Path, run: Path, korpus: Path, tekst: Path,
+                   extra: tuple = ()) -> list[str]:
     return ["docker", "run", "--rm", "--name", name, "--network", a.network,
             "--user", f"{os.getuid()}:{os.getgid()}", "--memory", "16g", "--cpus", "8", "--pids-limit", "1024",
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--read-only",
@@ -160,8 +167,39 @@ def docker_command(a, name: str, praca: Path, dom: Path, run: Path, korpus: Path
             "-e", "HOME=/dom", "-e", "DO_NOT_TRACK=1", "-e", "MPLCONFIGDIR=/tmp/mpl",
             "-e", "HAPILOT_EGRESS_LOG=/run/egress.jsonl", "-e", f"HAPILOT_EGRESS_ALLOW={a.allow}",
             "-v", f"{praca}:/praca", "-v", f"{korpus}:/praca/dokumenty:ro", "-v", f"{tekst}:/praca/tekst:ro",
-            "-v", f"{dom}:/dom", "-v", f"{run}:/run", "-w", "/praca", a.image,
+            "-v", f"{dom}:/dom", "-v", f"{run}:/run", *extra, "-w", "/praca", a.image,
             "node", "--import", f"{RUNNER}/egress_guard.mjs", f"{RUNNER}/run_task.mjs", "/run/spec.json"]
+
+
+BRIDGE_IN_CONTAINER = "/hapilot/most.sock"
+TOOLS = "semantic_search,pdf_document,working_days"  # no e-mail drafts in task runs
+
+
+def tools_setup(spec: dict, tdir: Path, run: Path, task_id: str) -> tuple[tuple, object]:
+    """Stage 3: Hapilot's MCP tools for a task run. Returns the extra `docker run` arguments and the host bridge
+    (src/agent_bridge.py; needs Hapilot's Python environment and HAPILOT_DATA_DIR of the index to search)."""
+    import tempfile
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from src.agent_bridge import Bridge  # noqa: PLC0415
+    from src.agent_workspace import Workspace  # noqa: PLC0415
+
+    spec["mcp"] = {"command": "python3", "args": [f"{RUNNER}/mcp/hapilot_mcp.py"], "timeoutSeconds": 300}
+    spec["approval"] = {"ask": ["email_draft"], "bridge": BRIDGE_IN_CONTAINER}
+    sock_dir = Path(tempfile.mkdtemp(prefix="hb-"))
+    bridge = Bridge(Workspace(task_id, root=tdir.parent), trace_path=run / "bridge.jsonl")
+    extra = ("-e", f"HAPILOT_TOOLS={TOOLS}", "-e", f"HAPILOT_BRIDGE={BRIDGE_IN_CONTAINER}",
+             "--mount", f"type=bind,source={sock_dir},target=/hapilot,readonly")
+
+    @contextlib.contextmanager
+    def serving():
+        try:
+            with bridge.serve(sock_dir / "most.sock"):
+                yield
+        finally:
+            shutil.rmtree(sock_dir, ignore_errors=True)
+
+    return extra, serving()
 
 
 def run_task(a, task: dict, prompt: str, logdir: Path, parse_answer) -> dict:
@@ -173,23 +211,29 @@ def run_task(a, task: dict, prompt: str, logdir: Path, parse_answer) -> dict:
     spec = {"prompt": prompt, "cwd": "/praca", "providerId": "openai-compatible", "modelId": a.model,
             "apiKey": "lokalny", "baseUrl": a.base_url, "timeoutSeconds": a.timeout,
             "tracePath": "/run/trace.jsonl", "resultPath": "/run/result.json"}
+    if getattr(a, "rules", None):
+        spec["rules"] = [{"name": "hapilot", "instructions": Path(a.rules).expanduser().read_text(encoding="utf-8")}]
+    extra, bridge_ctx = (), contextlib.nullcontext()
+    if getattr(a, "tools", False):
+        extra, bridge_ctx = tools_setup(spec, tdir, run, task["id"])
     (run / "spec.json").write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
     name = f"hapilot-v3-{task['id'].lower()}"
     korpus = Path(a.korpus).expanduser() / "dokumenty"
-    cmd = docker_command(a, name, praca, dom, run, korpus, Path(a.tekst).expanduser())
+    cmd = docker_command(a, name, praca, dom, run, korpus, Path(a.tekst).expanduser(), extra)
     stop = threading.Event()
     watcher = threading.Thread(target=watch_container, args=(name, run / "egress_proc.jsonl", stop), daemon=True)
     t0 = time.time()
     status, error, code = "ok", None, None
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    watcher.start()
-    try:
-        stdout, stderr = proc.communicate(timeout=a.timeout + GRACE_S)
-        code = proc.returncode
-    except subprocess.TimeoutExpired:
-        subprocess.run(["docker", "kill", name], capture_output=True)
-        stdout, stderr = proc.communicate()
-        status, error = "timeout", f"container killed after {a.timeout + GRACE_S} s"
+    with bridge_ctx:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        watcher.start()
+        try:
+            stdout, stderr = proc.communicate(timeout=a.timeout + GRACE_S)
+            code = proc.returncode
+        except subprocess.TimeoutExpired:
+            subprocess.run(["docker", "kill", name], capture_output=True)
+            stdout, stderr = proc.communicate()
+            status, error = "timeout", f"container killed after {a.timeout + GRACE_S} s"
     stop.set()
     watcher.join(timeout=10)
     duration = round(time.time() - t0, 2)
@@ -246,7 +290,10 @@ def cmd_run(a) -> None:
             "model": a.model, "base_url": a.base_url, "timeout_s": a.timeout, "tasks": str(Path(a.tasks).expanduser()),
             "n_tasks": len(tasks), "korpus": str(Path(a.korpus).expanduser()), "tekst": str(Path(a.tekst).expanduser()),
             "template": str(template_path), "template_sha256": sha256_file(template_path), "firma": a.firma,
-            "dzis": a.dzis, "commit": a.commit, "model_server": a.model_server, "start": time.strftime("%Y-%m-%dT%H:%M:%S")}
+            "dzis": a.dzis, "commit": a.commit, "model_server": a.model_server, "start": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "rules": str(Path(a.rules).expanduser()) if a.rules else None,
+            "rules_sha256": sha256_file(Path(a.rules).expanduser()) if a.rules else None,
+            "tools": TOOLS if a.tools else None}
     (out / "run.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     for t in tasks:
         if t["id"] in done:
@@ -330,6 +377,8 @@ def main(argv=None) -> None:
     r.add_argument("--commit", default="")
     r.add_argument("--model-server", default="", help="model server command line, recorded in run.json")
     r.add_argument("--only", help="comma-separated task ids")
+    r.add_argument("--rules", help="stage 3: Hapilot's rules file (agent/rules/hapilot.md) for the system prompt")
+    r.add_argument("--tools", action="store_true", help="stage 3: Hapilot's MCP tools with the host bridge")
     s = sub.add_parser("score")
     s.add_argument("--set", required=True)
     s.add_argument("--tasks", required=True)
