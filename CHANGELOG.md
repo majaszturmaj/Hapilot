@@ -34,6 +34,13 @@ Known limits of v3: no chat tool for adding a file to the knowledge base (use **
 signature place (the user's scan is not used yet); custom nodes and v2 prompt edits do not apply; one model request
 at a time.
 
+### Updater
+
+- `update` waits up to 90 s for its lock instead of giving up at once. The cron lines for `update` (every 10 min) and
+  `ui ensure` (every minute) start in the same second, and `ui ensure` usually took the lock first: on the pilot the
+  log shows 263 skipped updates ("another update is running"), and updates went through only when the updater won
+  the race.
+
 ### UI and v2
 
 UI changes, plus one agent fix in the document generator (below).

@@ -742,8 +742,15 @@ def update(branch: str, now: bool = False, idle_minutes: float = 10, retry: bool
     return 0
 
 
+UPDATE_LOCK_WAIT_S = 90  # `ui ensure` (cron, every minute) starts in the same second and holds the lock briefly
+
+
 def cmd_update(args) -> None:
     lock = update_lock()
+    deadline = time.monotonic() + UPDATE_LOCK_WAIT_S
+    while lock is None and time.monotonic() < deadline:  # wait out `ui ensure`; a real update holds it far longer
+        time.sleep(2)
+        lock = update_lock()
     if lock is None:
         say("another update is running")
         return

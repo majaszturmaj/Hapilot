@@ -129,6 +129,42 @@ def test_ensure_waits_while_an_update_runs(tmp_path, monkeypatch):
     assert started == [None]
 
 
+
+def test_update_waits_for_a_short_ui_ensure(tmp_path, monkeypatch):
+    """Both cron jobs start in the same second; the updater must not give up because `ui ensure` holds the lock
+    for a moment (on the pilot it lost that race at most ticks and updated only now and then)."""
+    import argparse
+
+    monkeypatch.setattr(hapilotctl, "run_dir", lambda: tmp_path)
+    held = [hapilotctl.update_lock()]  # as `ui ensure` holds it
+    ran = []
+
+    def sleep(seconds):
+        if held:
+            held.pop().close()  # `ui ensure` finishes
+
+    monkeypatch.setattr(hapilotctl.time, "sleep", sleep)
+    monkeypatch.setattr(hapilotctl, "update", lambda branch, **kw: ran.append(branch) or 0)
+    args = argparse.Namespace(branch="main", now=False, idle_minutes=10, retry=False, keep_running=False)
+    with pytest.raises(SystemExit) as done:
+        hapilotctl.cmd_update(args)
+    assert done.value.code == 0 and ran == ["main"]
+
+
+def test_update_gives_up_while_another_update_runs(tmp_path, monkeypatch, capsys):
+    import argparse
+
+    monkeypatch.setattr(hapilotctl, "run_dir", lambda: tmp_path)
+    held = hapilotctl.update_lock()  # a real update, longer than the wait
+    clock = iter(range(0, 10_000, 10))
+    monkeypatch.setattr(hapilotctl.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(hapilotctl.time, "sleep", lambda s: None)
+    monkeypatch.setattr(hapilotctl, "update", lambda *a, **kw: pytest.fail("must not update"))
+    hapilotctl.cmd_update(argparse.Namespace(branch="main", now=False, idle_minutes=10, retry=False, keep_running=False))
+    assert "another update is running" in capsys.readouterr().out
+    held.close()
+
+
 def test_make_cert(tmp_path):
     if not __import__("shutil").which("openssl"):
         pytest.skip("openssl not installed")
