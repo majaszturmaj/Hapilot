@@ -111,6 +111,19 @@ thousands separator, and the saved answers pass it ("re-scored": not yet a fresh
 contract as `.txt` instead of `.docx`; it is listed under `v3/gemma` in the baseline. Every dev answer was valid at
 the first `submit_and_exit`; the correction path was exercised with a scripted model. No egress attempts.
 
+Stage 6 (release 0.4.0) adds `hapilotctl agent up|down|status|egress-test` and the "Engine v3" section of
+[docs/deployment.md](../docs/deployment.md). On 2026-11-19 a LAN pilot install (company documents, outside this
+repository) was switched from v2 to v3 with Qwen3.6-27B on llama-server, back to v2 and to v3 again, each switch with
+a few seconds of UI downtime:
+
+| Check on the pilot install | Result |
+|---|---|
+| `agent status` (image, internal network, relay, model served) | all present |
+| `agent egress-test` | 11/11 |
+| a question about the documents' topics, through the install's own engine and settings | ok, 21 s; 3 documents named by file; read with the shell and `read_files` |
+| a question that asks for `semantic_search` | ok, 15 s; one search, 1 document named |
+| rollback to v2 (LM Studio model back, UI up) | model answering, UI up; then v3 again |
+
 Container: internal Docker network whose only reachable host is a relay to the local model server, non-root,
 read-only root filesystem, no capabilities, read-only documents, memory/CPU/process limits, no credentials.
 Telemetry: the runner creates no telemetry or feature-flag service; the SDK's Langfuse export is off for non-Cline
