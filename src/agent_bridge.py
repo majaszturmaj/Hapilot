@@ -17,6 +17,10 @@ e-mail request is carried out only against such a record, which it uses up. The 
 so a shell command could talk to it too: it gets search results (from documents the container can read anyway) and
 templates, never an unapproved e-mail.
 
+Questions (stage 4): the agent's ask_question comes here (`ask`) and the host's asker puts it to the user (the UI);
+without one the answer is the first option, as the Cline CLI answers without a terminal. A shell command could ask
+too; the user sees it like any question of the agent.
+
 Protocol: one request per connection, a JSON line {"method", "params"} → a JSON line {"ok", "result" | "error"}.
 """
 
@@ -44,6 +48,8 @@ MAX_K = 15
 EMAIL = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$")
 
 Approver = Callable[[str, dict], tuple[bool, str]]
+Asker = Callable[[str, list], str]
+MAX_QUESTION, MAX_OPTIONS, MAX_OPTION = 4000, 10, 500
 
 
 class BridgeError(Exception):
@@ -52,6 +58,10 @@ class BridgeError(Exception):
 
 def deny_all(tool: str, _input: dict) -> tuple[bool, str]:
     return False, "brak zgody użytkownika (uruchomienie bez użytkownika)"
+
+
+def first_option(_question: str, options: list) -> str:
+    return options[0] if options else ""
 
 
 def approval_key(tool: str, args: dict) -> str:
@@ -71,12 +81,14 @@ def _text(value, field: str, limit: int, required: bool = True) -> str:
 
 class Bridge:
     def __init__(self, workspace: Workspace, *, user: Optional[str] = None, signature: str = "blank",
-                 email: bool = False, approver: Optional[Approver] = None, trace_path: Optional[Path] = None):
+                 email: bool = False, approver: Optional[Approver] = None, asker: Optional[Asker] = None,
+                 trace_path: Optional[Path] = None):
         self.workspace = workspace
         self.user = user
         self.signature = signature if signature in ("blank", "scan") else "blank"
         self.email = email
         self.approver = approver or deny_all
+        self.asker = asker or first_option
         self.trace_path = Path(trace_path) if trace_path else None
         self._approved: Counter[str] = Counter()
         self._lock = threading.Lock()
@@ -90,7 +102,7 @@ class Bridge:
             if not isinstance(params, dict):
                 raise BridgeError("params muszą być obiektem JSON")
             fn = {"semantic_search": self.semantic_search, "pdf_document": self.pdf_document,
-                  "email_draft": self.email_draft, "approve": self.approve}.get(method)
+                  "email_draft": self.email_draft, "approve": self.approve, "ask": self.ask}.get(method)
             if fn is None:
                 raise BridgeError(f"nieznana metoda: {method}")
             return fn(params)
@@ -114,6 +126,8 @@ class Bridge:
                 entry["action"], entry["template_id"] = params.get("action"), params.get("template_id")
             elif method in ("email_draft", "approve"):  # no addresses or text in the trace
                 entry["tool"] = params.get("tool")
+            elif method == "ask":  # nor the question
+                entry["options"] = len(params.get("options") or [])
         if note:
             entry["note"] = note[:500]
         with self._lock, open(self.trace_path, "a", encoding="utf-8") as fh:
@@ -132,6 +146,14 @@ class Bridge:
             with self._lock:
                 self._approved[approval_key(tool, args)] += 1
         return {"approved": bool(approved), "reason": reason}
+
+    def ask(self, params: dict) -> dict:
+        question = _text(params.get("question"), "question", MAX_QUESTION)
+        options = params.get("options") or []
+        if not isinstance(options, list) or len(options) > MAX_OPTIONS:
+            raise BridgeError(f"pole options: lista do {MAX_OPTIONS} odpowiedzi")
+        options = [_text(o, "options", MAX_OPTION) for o in options]
+        return {"answer": str(self.asker(question, options) or "")}
 
     def _use_approval(self, tool: str, args: dict) -> None:
         key = approval_key(tool, args)

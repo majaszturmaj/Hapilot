@@ -9,6 +9,9 @@ shows which tools the runner sends to the model.
 Usage: fake_openai.py --host 172.17.0.1 --port 8672 [--answer-path /praca/odpowiedz.json] [--script steps.json]
 --script replaces the built-in turns with [[tool name, arguments], ...] (stage 2: Hapilot's MCP tools). Each request
 also logs the result of the previous tool call (first 300 characters), so the dry run shows what the tools returned.
+Stage 4 (the chat UI): a step may carry a third item, text the model writes before its tool call (a working note),
+and --final-text replaces "Gotowe." with an answer streamed in small pieces; a step ["__final__"] gives that answer
+in the middle of the script (several chat turns in one script).
 """
 
 import argparse
@@ -33,7 +36,15 @@ def chunk(model: str, delta: dict, finish=None) -> bytes:
     return f"data: {json.dumps(body, ensure_ascii=False)}\n\n".encode()
 
 
-def make_handler(steps: list, log: list):
+FINAL = "__final__"  # a script step that answers with the final text (one turn of a chat ends here)
+
+
+def pieces(text: str, size: int = 3) -> list[str]:
+    words = text.split(" ")
+    return [" ".join(words[i:i + size]) + (" " if i + size < len(words) else "") for i in range(0, len(words), size)]
+
+
+def make_handler(steps: list, log: list, final_text: str = "Gotowe."):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -69,13 +80,15 @@ def make_handler(steps: list, log: list):
             self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             out = [chunk(model, {"role": "assistant", "content": ""})]
-            if n < len(steps):
-                name, args = steps[n]
+            if n < len(steps) and steps[n][0] != FINAL:
+                name, args = steps[n][0], steps[n][1]
+                if len(steps[n]) > 2 and steps[n][2]:
+                    out.append(chunk(model, {"content": steps[n][2]}))
                 out.append(chunk(model, {"tool_calls": [{"index": 0, "id": f"call_{n + 1}", "type": "function",
                                                          "function": {"name": name, "arguments": json.dumps(args, ensure_ascii=False)}}]}))
                 out.append(chunk(model, {}, "tool_calls"))
             else:
-                out.append(chunk(model, {"content": "Gotowe."}))
+                out += [chunk(model, {"content": piece}) for piece in pieces(final_text)]
                 out.append(chunk(model, {}, "stop"))
             usage = {"id": "fake-1", "object": "chat.completion.chunk", "created": int(time.time()), "model": model,
                      "choices": [], "usage": {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110}}
@@ -84,6 +97,7 @@ def make_handler(steps: list, log: list):
             for part in out:
                 self.wfile.write(part)
                 self.wfile.flush()
+                time.sleep(0.05)  # streamed, as a model writes
 
     return Handler
 
@@ -93,10 +107,11 @@ def main():
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8672)
     ap.add_argument("--answer-path", default="/praca/odpowiedz.json")
-    ap.add_argument("--script", help="JSON file: [[tool name, arguments], ...]")
+    ap.add_argument("--script", help="JSON file: [[tool name, arguments(, text before the call)], ...]")
+    ap.add_argument("--final-text", default="Gotowe.", help="the answer after the script, streamed in pieces")
     a = ap.parse_args()
     steps = [tuple(s) for s in json.load(open(a.script, encoding="utf-8"))] if a.script else script(a.answer_path)
-    server = ThreadingHTTPServer((a.host, a.port), make_handler(steps, []))
+    server = ThreadingHTTPServer((a.host, a.port), make_handler(steps, [], a.final_text))
     print(json.dumps({"listening": f"{a.host}:{a.port}"}), flush=True)
     server.serve_forever()
 

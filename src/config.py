@@ -50,6 +50,11 @@ def assert_local_url(url: str) -> None:
         )
 
 
+# The v3 agent container reaches its model only through a relay on its internal network, under this host name; the
+# relay itself forwards to the local model server (agent/README.md).
+AGENT_RELAY_HOST = "model"
+
+
 # --------------------------------------------------------------------------- profiles
 
 @dataclass(frozen=True)
@@ -185,6 +190,16 @@ class Settings:
     kb_rescan_minutes: float = 5.0
     kb_trash_days: int = 30
     agent_workspace_root: Optional[Path] = None  # v3 agent: per-conversation folders (src/agent_workspace.py)
+    # v3 engine in the UI (src/agent_engine.py); "v2" (default) keeps the LangGraph agent
+    engine: str = "v2"
+    agent_image: str = "hapilot-agent:0.5"
+    agent_network: str = "hapilot-v3-izolowana"
+    agent_model_url: str = "http://model:8000/v1"  # as the container sees it: the relay on its internal network
+    agent_model: str = "qwen3.6-27b-q4km"
+    agent_allow: str = "model:8000"
+    agent_timeout: int = 900
+    agent_email: bool = False
+    agent_rules: Optional[Path] = None
 
     def profile(self, name: Optional[str] = None) -> Profile:
         name = name or self.default_profile
@@ -257,6 +272,19 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
             raise ConfigError(f"{name}={value:g}: use a value between {low:g} and {high:g}")
         return value
 
+    engine = get("HAPILOT_ENGINE", "v2").strip().lower()
+    if engine not in ("v2", "v3"):
+        raise ConfigError("HAPILOT_ENGINE must be v2 (LangGraph agent) or v3 (agent container)")
+    agent_url = get("HAPILOT_AGENT_MODEL_URL", "http://model:8000/v1").strip()
+    if (urlparse(agent_url).hostname or "") != AGENT_RELAY_HOST:
+        assert_local_url(agent_url)
+
+    def flag(name: str, default: str) -> bool:
+        value = get(name, default).strip().lower()
+        if value not in ("on", "off"):
+            raise ConfigError(f"{name} must be on or off")
+        return value == "on"
+
     return Settings(
         data_dir=data_dir,
         workspace_root=path("HAPILOT_WORKSPACE_DIR", data_dir / "workspace"),
@@ -294,6 +322,15 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         kb_rescan_minutes=number("HAPILOT_KB_RESCAN_MINUTES", "5", 0, 1440),  # 0: no periodic re-check
         kb_trash_days=int(number("HAPILOT_KB_TRASH_DAYS", "30", 1, 3650)),
         agent_workspace_root=path("HAPILOT_AGENT_WORKSPACE_DIR", data_dir / "agent_workspace"),
+        engine=engine,
+        agent_image=get("HAPILOT_AGENT_IMAGE", "hapilot-agent:0.5").strip(),
+        agent_network=get("HAPILOT_AGENT_NETWORK", "hapilot-v3-izolowana").strip(),
+        agent_model_url=agent_url,
+        agent_model=get("HAPILOT_AGENT_MODEL", "qwen3.6-27b-q4km").strip(),
+        agent_allow=get("HAPILOT_AGENT_ALLOW", "model:8000").strip(),
+        agent_timeout=int(number("HAPILOT_AGENT_TIMEOUT", "900", 60, 7200)),
+        agent_email=flag("HAPILOT_AGENT_EMAIL", "off"),
+        agent_rules=path("HAPILOT_AGENT_RULES", PROJECT_ROOT / "agent" / "rules" / "hapilot.md"),
     )
 
 

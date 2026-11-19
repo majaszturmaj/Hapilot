@@ -163,3 +163,14 @@ def test_deleting_a_chat_removes_its_workspace_only():
     for bad in ("..", ".", "a/b", ""):                  # rewritten ids never select a workspace
         assert delete_chat_files(bad) == []
     assert default.is_dir() and b.is_dir()
+
+
+def test_deleting_a_chat_removes_its_v3_agent_folder():
+    from src.agent_workspace import Workspace
+    from src.chat_store import delete_chat_files
+
+    mine = Workspace("chat-v3").prepare()
+    (mine.results_dir / "raport.pdf").write_bytes(b"%PDF")
+    other = Workspace("chat-v3-inny").prepare()
+    assert str(mine.dir.resolve()) in delete_chat_files("chat-v3")
+    assert not mine.dir.exists() and other.results_dir.is_dir()

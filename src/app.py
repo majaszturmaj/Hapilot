@@ -13,6 +13,9 @@ the chat's workspace and side panel are the same as before. Workspaces are keyed
 and their own private ones (src/admin.py). Handlers are counted while they run (src/ui_activity.py), so the
 updater never restarts the UI in the middle of an answer. While the UI runs it alone writes the knowledge base: a
 background thread indexes documents changed in the agent panel or in the documents folder (src/knowledge_admin.py).
+
+With HAPILOT_ENGINE=v3 a user message goes to the v3 engine instead of the graph (src/ui_agent.py: the agent
+container, its steps, questions, approvals and files, the GPU queue, the stop button); everything else stays.
 """
 
 import json
@@ -32,7 +35,7 @@ import chainlit as cl  # noqa: E402
 from chainlit.input_widget import Select  # noqa: E402
 from langchain_core.messages import AIMessage, HumanMessage, messages_from_dict, messages_to_dict  # noqa: E402
 
-from src import attachments, branding, run_context, ui_activity, ui_panel  # noqa: E402
+from src import attachments, branding, run_context, ui_activity, ui_agent, ui_panel  # noqa: E402
 from src.agent_graph import get_app  # noqa: E402
 from src.config import get_settings  # noqa: E402
 from src.graph_runner import (display_text, extract_hitl_request, final_text, generated_file_names,  # noqa: E402
@@ -184,6 +187,10 @@ async def _send_settings() -> None:
     ]).send()
 
 
+def _v3() -> bool:
+    return get_settings().engine == "v3"
+
+
 @cl.on_chat_start
 @ui_activity.tracked
 async def start():
@@ -191,6 +198,9 @@ async def start():
     _state()
     cl.user_session.set("last_generated_file", "")
     cl.user_session.set("profile", settings.default_profile)
+    if _v3():  # one model for the agent (HAPILOT_AGENT_MODEL); no per-chat profiles
+        await cl.Message(content=ui_agent.welcome(_author()), author=_author()).send()
+        return
     await _send_settings()
     profile = settings.profile(settings.default_profile)
     await cl.Message(
@@ -233,6 +243,8 @@ async def resume(thread: dict):
     ui_panel.import_tokens(_chat(), saved.get("panel_tokens") or {})
     if cl.user_session.get("profile") not in settings.profiles:
         cl.user_session.set("profile", settings.default_profile)
+    if _v3():  # the agent's history is read per message (src/ui_agent.py)
+        return
     await _send_settings()
     for turn in state.panel_turns:  # buttons are not stored with the messages; put them back
         if turn.get("message_id"):
@@ -244,6 +256,13 @@ async def resume(thread: dict):
 @cl.on_chat_end
 async def end():
     ui_panel.forget_session(_chat())
+
+
+@cl.on_stop
+async def stop():
+    """The stop button: Chainlit cancels the running handler; with v3 the agent container is told to stop too."""
+    if _v3():
+        ui_agent.on_stop(_chat())
 
 
 def _agent():
@@ -410,6 +429,9 @@ def _attach(message: cl.Message) -> str:
 @cl.on_message
 @ui_activity.tracked
 async def main(message: cl.Message):
+    if _v3():
+        await ui_agent.on_message(message, chat_id=_chat(), user=_user(), author=_author(), store=_STORE)
+        return
     history = _state().messages
     block = await cl.make_async(_attach)(message)
     cl.user_session.set("panel_pending", await cl.make_async(ui_panel.start_turn)(_chat(), message.content))

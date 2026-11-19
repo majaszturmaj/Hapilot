@@ -13,7 +13,7 @@ measured: same SDK source, same session settings, same task prompt and document 
 | `runner/run_task.mjs` | one task, one SDK session, configured like `cline -y --json` 3.0.74; writes a result file and a JSONL trace of every tool call |
 | `runner/egress_guard.mjs` | loaded first: records every outbound connection of the runner and refuses all but the model endpoint |
 | `runner/package.json`, `package-lock.json` | SDK 0.2.0 with the dependency tree of the CLI 3.0.74 build: derived from its `bun.lock` (tag `cli-v3.0.74`) by `runner/bun2npm.py`, same versions and integrity hashes; the CLI build's patch of `ollama-ai-provider-v2` is not applied (not used with an OpenAI-compatible endpoint) |
-| `../sandbox/agent.Dockerfile` | image `hapilot-agent:0.4` = `hapilot-sandbox:0.2` + Node 22.23.4 + the runner + the MCP server (0.2: stage 0; 0.3: stage 2, without rules) |
+| `../sandbox/agent.Dockerfile` | image `hapilot-agent:0.5` = `hapilot-sandbox:0.2` + Node 22.23.4 + the runner + the MCP server (0.2: stage 0; 0.3: stage 2, without rules; 0.4: stage 3, without the chat mode; 0.5: stage 4) |
 | `spike/spike.py` | runs a task set through the container (one fresh container per task) and scores it with the set's own scorer |
 | `spike/fake_openai.py` | scripted OpenAI-compatible server for a dry run without a model |
 
@@ -71,6 +71,20 @@ Stage 3 adds Hapilot's rules and measures the engine on the ARONIA dev set:
 Dev results (Qwen3.6-27B, rules r3, 2026-11-18): tuning 27/28, control 12/12; Gemma 4 31B under the same settings:
 tuning 28/28, control 11/12. Rules are changed against the tuning part only.
 
+Stage 4 puts the engine behind the chat UI (`HAPILOT_ENGINE=v3`; v2 stays the default):
+
+| Path | What |
+|---|---|
+| `../src/agent_engine.py` | one container per turn, events as JSON lines on stdout, a GPU queue with one slot (the user sees their place), one turn per chat at a time, questions and approvals routed to the user, stop (SIGTERM, then `docker kill`), timeout, the chat's SDK messages in and out, new files in `/praca/wyniki` |
+| `../src/ui_agent.py` | Chainlit side: "kroki zadania" with one step per tool call, working notes, queue note, question and approval buttons, files with the answer; history in the chat's state |
+| `runner/run_task.mjs` | `mode: "act"` for the chat (Cline's interactive mode: the answer is text, `ask_question` on; web fetch and skills off), `events: "stdout"`, `ask.bridge`, `initialMessagesPath` / `messagesPath`, abort on SIGTERM |
+| `spike/engine_run.py` | the engine without the UI against a scripted model (question, approval, history, queue, stop) |
+
+Settings: `HAPILOT_AGENT_IMAGE` (`hapilot-agent:0.5`), `HAPILOT_AGENT_NETWORK`, `HAPILOT_AGENT_MODEL_URL` (local
+address or the relay host `model`), `HAPILOT_AGENT_MODEL`, `HAPILOT_AGENT_ALLOW`, `HAPILOT_AGENT_TIMEOUT` (60–7200 s),
+`HAPILOT_AGENT_EMAIL` (on/off), `HAPILOT_AGENT_RULES`. The eval runs keep the non-interactive mode; on the tuning set
+the chat mode scored 28/28 (2026-11-19).
+
 Container: internal Docker network whose only reachable host is a relay to the local model server, non-root,
 read-only root filesystem, no capabilities, read-only documents, memory/CPU/process limits, no credentials.
 Telemetry: the runner creates no telemetry or feature-flag service; the SDK's Langfuse export is off for non-Cline
@@ -78,7 +92,7 @@ providers unless explicitly configured (it is not); the egress log shows what wa
 
 Tests: `node --test agent/runner/test/*.test.mjs` (egress guard), `pytest tests/unit/test_v3_spike.py` (driver),
 `tests/unit/test_text_mirror.py` and `tests/unit/test_agent_workspace.py` (documents), `tests/unit/test_working_days.py`,
-`tests/unit/test_agent_mcp.py` (the MCP server over stdio, with a bridge on a real socket) and
+`tests/unit/test_agent_mcp.py` (the MCP server over stdio, with a bridge on a real socket), `tests/unit/test_agent_engine.py`, `tests/unit/test_ui_agent.py` and
 `tests/unit/test_agent_bridge.py` (tools and approvals).
 
 The Cline SDK is third-party software: see `runner/NOTICE` and `runner/LICENSE-cline-sdk`.

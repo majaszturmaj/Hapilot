@@ -160,3 +160,18 @@ def test_socket_protocol(ws, tmp_path, monkeypatch):
             s.sendall(b"not json\n")
             assert json.loads(s.makefile().readline()) == {"ok": False, "error": "niepoprawny JSON"}
     assert not sock.exists()
+
+
+def test_questions_go_to_the_asker_and_stay_out_of_the_trace(ws, tmp_path):
+    headless = Bridge(ws)
+    assert headless.handle("ask", {"question": "Który?", "options": ["A", "B"]}) == {"answer": "A"}
+    assert headless.handle("ask", {"question": "Który?"}) == {"answer": ""}
+    asked = []
+    bridge = Bridge(ws, asker=lambda q, o: asked.append((q, o)) or "B", trace_path=tmp_path / "t.jsonl")
+    assert bridge.handle("ask", {"question": "Tajne pytanie", "options": ["A", "B"]}) == {"answer": "B"}
+    assert asked == [("Tajne pytanie", ["A", "B"])]
+    for bad in ({}, {"question": " "}, {"question": "x", "options": "A"}, {"question": "x", "options": ["A"] * 11},
+                {"question": "x", "options": [1]}, {"question": "x" * 5000}):
+        with pytest.raises(BridgeError):
+            bridge.handle("ask", bad)
+    assert "Tajne" not in (tmp_path / "t.jsonl").read_text(encoding="utf-8")

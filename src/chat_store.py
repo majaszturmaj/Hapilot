@@ -246,7 +246,7 @@ class ChatStore:
 
 
 def delete_chat_files(chat_id: str) -> list[str]:
-    """Remove a deleted chat's workspace and its attachment collection; returns what was removed."""
+    """Remove a deleted chat's workspace, its v3 agent folder and its attachment collection; returns what was removed."""
     from src import attachments, knowledge_base, run_context
     from src.config import get_settings
 
@@ -261,6 +261,13 @@ def delete_chat_files(chat_id: str) -> list[str]:
     if workspace.parent == root and workspace.is_dir():  # never anything outside the workspace root
         shutil.rmtree(workspace)
         removed.append(str(workspace))
+    from src.agent_workspace import Workspace, workspace_root  # the v3 agent's folder of the chat
+
+    agent_root = workspace_root().resolve()
+    agent = Workspace(chat_id, root=agent_root).dir.resolve()
+    if agent.parent == agent_root and agent.is_dir():
+        shutil.rmtree(agent)
+        removed.append(str(agent))
     index = settings.data_dir / "attachments_index"
     if index.is_dir():
         name = attachments.collection_name(sid)

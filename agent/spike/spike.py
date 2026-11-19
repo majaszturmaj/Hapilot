@@ -15,7 +15,8 @@ capabilities and a process limit.
 Stage 3 options of `run`: --rules adds Hapilot's rules (agent/rules/hapilot.md) to the system prompt; --tools adds
 Hapilot's MCP tools (semantic_search, pdf_document, working_days) with the host bridge, which needs Hapilot's Python
 environment and the index in HAPILOT_DATA_DIR; --tekst can then point at Hapilot's own text mirror. Without them a
-run is the stage 0 one.
+run is the stage 0 one. Stage 4: --mode act runs the tasks in the chat configuration of the UI (Cline's interactive
+act mode, ask_question answered as the CLI does without a terminal); the default is the measured headless mode.
 
 The task set is a directory with harness/{scoring.py,corpus.py}, korpus/{dokumenty/,manifest.json} and YAML tasks
 (id, polecenie, format_odpowiedzi, sprawdzenia, ...). Nothing from it is copied into this repository.
@@ -211,6 +212,8 @@ def run_task(a, task: dict, prompt: str, logdir: Path, parse_answer) -> dict:
     spec = {"prompt": prompt, "cwd": "/praca", "providerId": "openai-compatible", "modelId": a.model,
             "apiKey": "lokalny", "baseUrl": a.base_url, "timeoutSeconds": a.timeout,
             "tracePath": "/run/trace.jsonl", "resultPath": "/run/result.json"}
+    if getattr(a, "mode", "yolo") == "act":
+        spec["mode"] = "act"
     if getattr(a, "rules", None):
         spec["rules"] = [{"name": "hapilot", "instructions": Path(a.rules).expanduser().read_text(encoding="utf-8")}]
     extra, bridge_ctx = (), contextlib.nullcontext()
@@ -293,7 +296,7 @@ def cmd_run(a) -> None:
             "dzis": a.dzis, "commit": a.commit, "model_server": a.model_server, "start": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "rules": str(Path(a.rules).expanduser()) if a.rules else None,
             "rules_sha256": sha256_file(Path(a.rules).expanduser()) if a.rules else None,
-            "tools": TOOLS if a.tools else None}
+            "tools": TOOLS if a.tools else None, "mode": a.mode}
     (out / "run.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     for t in tasks:
         if t["id"] in done:
@@ -379,6 +382,8 @@ def main(argv=None) -> None:
     r.add_argument("--only", help="comma-separated task ids")
     r.add_argument("--rules", help="stage 3: Hapilot's rules file (agent/rules/hapilot.md) for the system prompt")
     r.add_argument("--tools", action="store_true", help="stage 3: Hapilot's MCP tools with the host bridge")
+    r.add_argument("--mode", choices=["yolo", "act"], default="yolo",
+                   help="stage 4: act = the UI's chat mode; yolo = the measured headless mode (default)")
     s = sub.add_parser("score")
     s.add_argument("--set", required=True)
     s.add_argument("--tasks", required=True)

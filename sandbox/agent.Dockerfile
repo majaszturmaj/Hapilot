@@ -1,11 +1,12 @@
-# Hapilot v3 agent image (hapilot-agent:0.4): the sandbox image (Python data tools, TeX Live, TeX Gyre) plus Node 22
+# Hapilot v3 agent image (hapilot-agent:0.5): the sandbox image (Python data tools, TeX Live, TeX Gyre) plus Node 22
 # and the agent runner on the pinned Cline SDK 0.2.0 (Apache-2.0, see agent/runner/NOTICE).
 # One container per agent run: internal network (only the model relay is reachable), non-root, documents read-only,
 # read-only root filesystem, no capabilities, resource limits (agent/spike/spike.py shows the flags).
-# Build from the repository root: docker build -f sandbox/agent.Dockerfile -t hapilot-agent:0.4 .
+# Build from the repository root: docker build -f sandbox/agent.Dockerfile -t hapilot-agent:0.5 .
 # Existing tags are never rebuilt; a change gets a new tag (0.1: first build, its runner imported a name the SDK
 # does not export; 0.2: stage 0 runner; 0.3: stage 2, Hapilot's MCP server agent/mcp/hapilot_mcp.py with
-# src/working_days.py next to it; 0.4: stage 3, the runner adds Hapilot's rules to the system prompt).
+# src/working_days.py next to it; 0.4: stage 3, the runner adds Hapilot's rules to the system prompt; 0.5: stage 4,
+# the chat mode for the UI: act mode, events on stdout, the chat's messages in and out, questions, abort).
 
 # Node 22.23.4 from the official image, pinned by digest; npm only in this stage.
 FROM node:22-bookworm@sha256:7702d8aa4d5910871692af4480eb3ba86f23047a6417a44d857d06c95d060d3f AS runner
