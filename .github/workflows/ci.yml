@@ -60,7 +60,7 @@ jobs:
       - name: Syntax
         run: for f in *.mjs test/*.mjs; do node --check "$f"; done
       - name: Runner tests
-        run: node --test test/
+        run: node --test test/*.test.mjs   # Node 22 reads the arguments as file patterns (a directory fails)
       - name: Pinned SDK installs and every import resolves
         run: |
           npm ci --ignore-scripts --no-audit --no-fund

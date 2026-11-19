@@ -38,7 +38,7 @@ which is exercised on the GPU host by the integration suite.
 [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs on every push and pull request, on Python 3.10
 and 3.12: lint (including `agent/`), unit tests with the coverage gate, and a load check of the extension manifests
 (`python -m src.core.extension_manager`, also for `examples/extensions`). A second job checks v3's agent runner on
-Node 22: syntax of every `.mjs`, the runner's own tests (`node --test agent/runner/test/`), and `npm ci` from the
+Node 22: syntax of every `.mjs`, the runner's own tests (`node --test agent/runner/test/*.test.mjs`), and `npm ci` from the
 lockfile followed by `run_task.mjs --self-check` (every import of the pinned Cline SDK resolves). It never starts a
 model or a container.
 
