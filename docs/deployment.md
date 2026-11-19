@@ -84,6 +84,49 @@ database takes one writer, and the UI is it. To rebuild the whole index: `ui dow
 Indexing counts as activity for the updater, so it never restarts the UI in the middle of it; a re-check that finds
 nothing to do does not.
 
+## Engine v3 (agent container)
+
+`HAPILOT_ENGINE=v3` in `.env` runs the chat on the second engine ([agent/README.md](../agent/README.md)): each
+message is one model loop on the Cline SDK in a fresh container. The container works on the company documents as
+files (read-only), has no network except one relay to the model, and runs as the install's user with no
+capabilities. Without the setting, or with `v2`, the LangGraph engine runs as before. Evaluation runs pick their
+engine themselves (`--engine`).
+
+What v3 needs besides the v2 setup:
+
+- an OpenAI-compatible model server that the Docker bridge can reach, by default at `172.17.0.1:8000`
+  (`HAPILOT_AGENT_UPSTREAM`; local or LAN addresses only). Bind it to the bridge address, not to `0.0.0.0`. A host
+  firewall must let the bridge reach that port. The served model name must equal `HAPILOT_AGENT_MODEL` (default
+  `qwen3.6-27b-q4km`). The measured settings are in [config/agent_profiles.yaml](../config/agent_profiles.yaml)
+  (llama-server: context 65,536, KV cache q8_0, flash attention, `--jinja`, thinking on, `-n 16000`, one slot);
+- the agent image, its internal network and the relay container, set up by `hapilotctl agent up`.
+
+```bash
+.venv/bin/python scripts/hapilotctl.py agent up            # image (built once), internal network, relay → the model server
+.venv/bin/python scripts/hapilotctl.py agent status        # image, network, relay, model served (exit code 1 if not)
+.venv/bin/python scripts/hapilotctl.py agent egress-test   # nothing leaves the container but the model relay
+.venv/bin/python scripts/hapilotctl.py ui restart          # after setting HAPILOT_ENGINE=v3 in .env
+```
+
+The relay restarts with Docker (`--restart unless-stopped`); after a reboot, start the model server, then
+`agent up` and `ui ensure`, in that order. `agent down` removes the relay and leaves the image and network.
+
+Settings (all optional): `HAPILOT_AGENT_MODEL`, `HAPILOT_AGENT_UPSTREAM`, `HAPILOT_AGENT_IMAGE` (`hapilot-agent:0.6`),
+`HAPILOT_AGENT_NETWORK` (`hapilot-v3-izolowana`), `HAPILOT_AGENT_RELAY` (`hapilot-v3-przekaznik`),
+`HAPILOT_AGENT_TIMEOUT` (900 s per message), `HAPILOT_AGENT_EMAIL` (`off`; `on` offers e-mail drafts through n8n,
+each one approved in the chat), `HAPILOT_AGENT_RULES` (the rules file, default `agent/rules/hapilot.md`),
+`HAPILOT_AGENT_WORKSPACE_DIR` (per-conversation folders, default `<data folder>/agent_workspace`). Two installs on one
+machine need their own network and relay names.
+
+Switching back is the same in reverse: `HAPILOT_ENGINE=v2` (or remove the line), `ui restart`, and the v2 model setup
+if the v3 model server took the GPU. Chats, accounts, templates and the knowledge base are shared by both engines; a
+chat started under one engine continues under the other with its messages on screen, but the model does not see the
+other engine's earlier turns.
+
+Under v3 the chat has no tool for adding a file to the knowledge base (administrators use **📚 Baza wiedzy**), PDFs
+get a blank signature place (the user's scan is not used yet), and custom nodes and v2 prompts have no effect: the
+agent panel shows the v3 engine and its rules instead of the graph and refuses those edits.
+
 ## Updates
 
 ```bash

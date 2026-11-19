@@ -1,6 +1,40 @@
 # Changelog
 
-## Unreleased
+## v0.4.0 — 2026-11-19 (engine v3, opt-in; UI changes)
+
+### Engine v3 (`HAPILOT_ENGINE=v3`; v2 stays the default and is unchanged)
+
+A second agent engine: each chat message is one model loop on the Cline SDK (`@cline/sdk` 0.2.0, Apache-2.0,
+licence and NOTICE in `agent/runner/`) with native tool calls, in a fresh container per message. The agent reads the
+company documents as files instead of answering from retrieved chunks ([agent/README.md](agent/README.md)).
+
+- Container (`hapilot-agent:0.6`, `sandbox/agent.Dockerfile`): internal network whose only way out is a relay to the
+  local model server; read-only root and documents, no capabilities, `no-new-privileges`, memory/CPU/process limits;
+  a Node guard refuses and logs any other connection. Telemetry off.
+- Documents: a text mirror next to the index (`src/text_mirror.py`; page and sheet markers, a CSV per sheet), kept in
+  step by ingest and the knowledge base's re-checks; per-conversation workspace `/praca` (`src/agent_workspace.py`).
+- Tools: Cline's own (read files, search, shell and Python in the container, editor, questions to the user) and
+  Hapilot's over MCP through a host bridge (`src/agent_bridge.py`): `semantic_search`, `pdf_document` (the template
+  catalogue, users' own templates included), `working_days` (Polish holidays), `email_draft` (optional, approved in
+  the chat). Polish rules in `agent/rules/hapilot.md`, including the handling of instructions planted in documents.
+- Chat UI (`src/agent_engine.py`, `src/ui_agent.py`): streamed answer, tool steps, questions with buttons, approvals,
+  files from `/praca/wyniki`, stop, resume, a one-slot queue with the user's place shown.
+- Evaluation: `python -m src.eval run --engine v3` (same output files and schema ids; additive fields, documented in
+  `docs/EVALUATION_INTERFACE.md` §9); the answer is checked at submit and refused once with the reason.
+- Tests: `scripts/egress_v3.py`, `scripts/smoke_v3.py`, `integration.py --engine v3` (baseline keys `v3/<profile>`),
+  agent profiles in `config/agent_profiles.yaml`; CI lints `agent/` and runs the runner's Node tests and self-check.
+- Operation: `hapilotctl agent up|down|status|egress-test` (image, internal network, relay with
+  `HAPILOT_AGENT_UPSTREAM`; [docs/deployment.md](docs/deployment.md), "Engine v3"); `hapilotctl status` shows it.
+- Agent panel: under v3 the first tab shows the engine (loop, tools, limits) instead of v2's graph, the prompts tab
+  shows the rules read-only, and custom-node and prompt edits, which would have no effect, are refused.
+- Measured on the fictional dev set (ARONIA): Qwen3.6-27B tuning 27/28 and control 12/12, Gemma 4 31B 28/28 and
+  11/12; integration dev tasks 10/10 on both; egress test 11/11.
+
+Known limits of v3: no chat tool for adding a file to the knowledge base (use **📚 Baza wiedzy**); PDFs get a blank
+signature place (the user's scan is not used yet); custom nodes and v2 prompt edits do not apply; one model request
+at a time.
+
+### UI and v2
 
 UI changes, plus one agent fix in the document generator (below).
 

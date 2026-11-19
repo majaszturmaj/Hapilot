@@ -10,6 +10,7 @@
     .venv/bin/python scripts/hapilotctl.py add-user NAME | tunnel
     .venv/bin/python scripts/hapilotctl.py make-cert --ip ADDRESS     # self-signed HTTPS certificate for the UI
     .venv/bin/python scripts/hapilotctl.py update [--keep-running]    # follow a git branch: test, switch, roll back
+    .venv/bin/python scripts/hapilotctl.py agent up|down|status|egress-test  # engine v3: image, network, model relay
 
 Safety rules built in:
 - every process it starts is recorded in var/run/<name>.json and stopped by its own process group,
@@ -18,7 +19,8 @@ Safety rules built in:
   HAPILOT_UI_HOST (local network access, docs/deployment.md); model servers always stay on 127.0.0.1;
 - the model proxy is not started while another process uses the GPU;
 - Docker is used only to build the sandbox and OCR images (setup, build-images) and, from Hapilot itself, for sandbox
-  and OCR runs.
+  and OCR runs; with engine v3 (HAPILOT_ENGINE=v3) also for the agent image, its internal network and the model
+  relay (``agent up``: one container of ours, by name; the model server itself is the operator's, docs/deployment.md).
 """
 
 from __future__ import annotations
@@ -433,6 +435,8 @@ def cmd_status(args) -> None:
     ours = our_pids()
     for pid, mib in gpu_users():
         say(f"GPU: pid {pid} uses {mib} MiB {'(Hapilot)' if pid in ours else '(other process)'}")
+    if get_settings().engine == "v3":
+        agent_status()
     update = read_update_status()
     if update:
         say(f"update   : {update['state']} (checked {update['time']}), commit {update['commit'][:8]} — {update['message']}")
@@ -786,6 +790,105 @@ def git_state() -> dict:
             "dirty": bool(run("status", "--porcelain", "--untracked-files=no"))}
 
 
+# --------------------------------------------------------------------------- engine v3: agent container
+
+RELAY_IMAGE = "alpine/socat:1.8.0.3"
+
+
+def docker_ok(*args: str) -> bool:
+    return subprocess.run(["docker", *args], capture_output=True).returncode == 0
+
+
+def relay_address() -> tuple[str, int]:
+    """(alias, port) the agent containers use for the model: HAPILOT_AGENT_ALLOW, e.g. model:8000."""
+    alias, _, port = get_settings().agent_allow.rpartition(":")
+    return alias, int(port or 8000)
+
+
+def upstream_models() -> list[str] | str:
+    """Model ids the local model server behind the relay serves, or why it could not be asked."""
+    try:
+        data = json.loads(fetch(f"http://{get_settings().agent_upstream}/v1/models", timeout=5))
+        return [m.get("id") for m in data.get("data", [])]
+    except Exception as exc:
+        return f"not answering ({exc})"
+
+
+def agent_up() -> None:
+    """The agent image (built once if missing; an existing tag is never rebuilt), the internal network and the relay
+    container that gives the network one way out: to the model server (HAPILOT_AGENT_UPSTREAM)."""
+    s = get_settings()
+    if not docker_ok("image", "inspect", s.agent_image):
+        say(f"building image {s.agent_image} from sandbox/agent.Dockerfile (downloads Node and the pinned SDK once)")
+        subprocess.run(["docker", "build", "-t", s.agent_image, "-f", str(ROOT / "sandbox" / "agent.Dockerfile"),
+                        str(ROOT)], check=True)
+    internal = subprocess.run(["docker", "network", "inspect", "--format", "{{.Internal}}", s.agent_network],
+                              capture_output=True, text=True)
+    if internal.returncode != 0:
+        subprocess.run(["docker", "network", "create", "--internal", s.agent_network], check=True, capture_output=True)
+        say(f"network {s.agent_network} created (internal: no way out except the relay)")
+    elif internal.stdout.strip() != "true":
+        raise SystemExit(f"[hapilotctl] network {s.agent_network} exists but is not internal — refusing to use it")
+    alias, port = relay_address()
+    subprocess.run(["docker", "rm", "-f", s.agent_relay], capture_output=True)  # ours, by its own name
+    subprocess.run(["docker", "run", "-d", "--name", s.agent_relay, "--network", "bridge", "--restart", "unless-stopped",
+                    RELAY_IMAGE, f"tcp-listen:{port},fork,reuseaddr", f"tcp-connect:{s.agent_upstream}"],
+                   check=True, capture_output=True)
+    subprocess.run(["docker", "network", "connect", "--alias", alias, s.agent_network, s.agent_relay],
+                   check=True, capture_output=True)
+    say(f"relay {s.agent_relay}: {alias}:{port} on {s.agent_network} → {s.agent_upstream}")
+    models = upstream_models()
+    if isinstance(models, str) or s.agent_model not in models:
+        say(f"warning: the model server at {s.agent_upstream} does not serve {s.agent_model} yet: {models}")
+
+
+def agent_down() -> None:
+    """Remove the relay (the agents lose their model); the network and the image stay."""
+    s = get_settings()
+    subprocess.run(["docker", "rm", "-f", s.agent_relay], capture_output=True)
+    say(f"relay {s.agent_relay} removed")
+
+
+def agent_status() -> bool:
+    s = get_settings()
+    image = docker_ok("image", "inspect", s.agent_image)
+    net = subprocess.run(["docker", "network", "inspect", "--format", "{{.Internal}}", s.agent_network],
+                         capture_output=True, text=True).stdout.strip()
+    relay = subprocess.run(["docker", "inspect", "--format", "{{.State.Status}}", s.agent_relay],
+                           capture_output=True, text=True).stdout.strip()
+    models = upstream_models()
+    served = not isinstance(models, str) and s.agent_model in models
+    say(f"engine   : {s.engine}")
+    say(f"image    : {s.agent_image} {'present' if image else 'MISSING'}")
+    say(f"network  : {s.agent_network} {'internal' if net == 'true' else ('NOT internal' if net else 'MISSING')}")
+    say(f"relay    : {s.agent_relay} {relay or 'MISSING'} → {s.agent_upstream}")
+    say(f"model    : {s.agent_model} {'served' if served else f'NOT served: {models}'}")
+    return image and net == "true" and relay == "running" and served
+
+
+def cmd_agent(args) -> None:
+    if args.action == "up":
+        agent_up()
+    elif args.action == "down":
+        agent_down()
+    elif args.action == "status":
+        raise SystemExit(0 if agent_status() else 1)
+    else:  # egress-test: scripts/egress_v3.py against this install's agent model
+        from src.config import load_agent_profiles
+
+        model = get_settings().agent_model
+        profiles, _default = load_agent_profiles()
+        names = [name for name, p in profiles.items() if p["model"] == model]
+        if not names:
+            raise SystemExit(f"[hapilotctl] no agent profile in config/agent_profiles.yaml uses {model}")
+        out = var_dir() / "egress" / f"v3_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        code = subprocess.run([str(PY), str(ROOT / "scripts" / "egress_v3.py"), "--profile", names[0], "--report", str(out)],
+                              cwd=ROOT).returncode
+        say(f"egress test (engine v3) {'passed' if code == 0 else 'FAILED'}; report {out}")
+        raise SystemExit(code)
+
+
 def cmd_egress_test(args) -> None:
     strace = shutil.which("strace")
     if not strace:
@@ -887,6 +990,9 @@ def main() -> None:
     p.add_argument("--keep-running", action="store_true", help="afterwards start the UI if it is not running "
                    "(unless stopped with 'ui down')")
     p.set_defaults(func=cmd_update)
+    p = sub.add_parser("agent", help="engine v3: agent image, internal network and model relay; their status; egress test")
+    p.add_argument("action", choices=["up", "down", "status", "egress-test"])
+    p.set_defaults(func=cmd_agent)
     args, rest = parser.parse_known_args()
     if args.command == "integration":
         args.rest = rest  # options belong to scripts/integration.py

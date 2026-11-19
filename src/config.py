@@ -200,6 +200,10 @@ class Settings:
     agent_timeout: int = 900
     agent_email: bool = False
     agent_rules: Optional[Path] = None
+    # the relay container (hapilotctl agent up) and where it forwards: the local model server, as the Docker bridge
+    # reaches it (agent/README.md, docs/deployment.md)
+    agent_relay: str = "hapilot-v3-przekaznik"
+    agent_upstream: str = "172.17.0.1:8000"
 
     def profile(self, name: Optional[str] = None) -> Profile:
         name = name or self.default_profile
@@ -276,6 +280,8 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
     if engine not in ("v2", "v3"):
         raise ConfigError("HAPILOT_ENGINE must be v2 (LangGraph agent) or v3 (agent container)")
     agent_url = get("HAPILOT_AGENT_MODEL_URL", "http://model:8000/v1").strip()
+    upstream = get("HAPILOT_AGENT_UPSTREAM", "172.17.0.1:8000").strip()
+    assert_local_url(f"http://{upstream}/")
     if (urlparse(agent_url).hostname or "") != AGENT_RELAY_HOST:
         assert_local_url(agent_url)
 
@@ -331,6 +337,8 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         agent_timeout=int(number("HAPILOT_AGENT_TIMEOUT", "900", 60, 7200)),
         agent_email=flag("HAPILOT_AGENT_EMAIL", "off"),
         agent_rules=path("HAPILOT_AGENT_RULES", PROJECT_ROOT / "agent" / "rules" / "hapilot.md"),
+        agent_relay=get("HAPILOT_AGENT_RELAY", "hapilot-v3-przekaznik").strip(),
+        agent_upstream=upstream,
     )
 
 

@@ -12,6 +12,9 @@ local language models, on your own hardware.
 - **Extensible.** Capabilities are extensions: a folder with a JSON manifest and Python nodes. The planner, router
   and graph are built from the manifests; a new tool needs no change to the core (example:
   [examples/extensions/vat_calculator](examples/extensions/vat_calculator)).
+- **Second engine, opt-in (v3).** `HAPILOT_ENGINE=v3` runs each message as one model loop on the Cline SDK in an
+  isolated container that reads the documents as files ([agent/README.md](agent/README.md),
+  [docs/deployment.md](docs/deployment.md)). The LangGraph engine stays the default.
 
 > Status: under active development. See [CHANGELOG.md](CHANGELOG.md). A scripted 10-minute demo is in
 > [docs/demo.md](docs/demo.md).

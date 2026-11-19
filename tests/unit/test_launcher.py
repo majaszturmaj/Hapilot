@@ -80,3 +80,77 @@ def test_port_free_detects_listeners_only():
     client.close()
     server.close()
     assert hapilotctl.port_free(port) is True
+
+
+# --------------------------------------------------------------------------- engine v3: agent up / down / status
+
+class FakeDocker:
+    """Records docker commands; answers inspect calls from a small state (no Docker needed)."""
+
+    def __init__(self, image=True, network=None, relay="running"):
+        self.calls, self.image, self.network, self.relay = [], image, network, relay
+
+    def __call__(self, cmd, **kwargs):
+        import subprocess
+
+        self.calls.append(cmd)
+        ok, out = True, ""
+        if cmd[:3] == ["docker", "image", "inspect"]:
+            ok = self.image
+        elif cmd[:3] == ["docker", "network", "inspect"]:
+            ok, out = self.network is not None, self.network or ""
+        elif cmd[:2] == ["docker", "inspect"]:
+            ok, out = bool(self.relay), self.relay or ""
+        return subprocess.CompletedProcess(cmd, 0 if ok else 1, out + "\n" if out else "", "")
+
+
+def test_agent_up_builds_once_and_starts_an_internal_network_and_relay(monkeypatch):
+    from src.config import get_settings
+
+    s = get_settings()
+    docker = FakeDocker(image=False, network=None)
+    monkeypatch.setattr(hapilotctl.subprocess, "run", docker)
+    monkeypatch.setattr(hapilotctl, "upstream_models", lambda: [s.agent_model])
+    hapilotctl.agent_up()
+    joined = [" ".join(c) for c in docker.calls]
+    assert any(c.startswith(f"docker build -t {s.agent_image} -f ") for c in joined)
+    assert f"docker network create --internal {s.agent_network}" in joined
+    assert f"docker rm -f {s.agent_relay}" in joined  # only our relay, by name
+    run = next(c for c in docker.calls if c[:3] == ["docker", "run", "-d"])
+    assert run[run.index("--name") + 1] == s.agent_relay and run[run.index("--restart") + 1] == "unless-stopped"
+    assert run[-2:] == ["tcp-listen:8000,fork,reuseaddr", f"tcp-connect:{s.agent_upstream}"]
+    assert f"docker network connect --alias model {s.agent_network} {s.agent_relay}" in joined
+
+
+def test_agent_up_reuses_the_image_and_refuses_an_open_network(monkeypatch):
+    import pytest
+
+    docker = FakeDocker(image=True, network="false")
+    monkeypatch.setattr(hapilotctl.subprocess, "run", docker)
+    with pytest.raises(SystemExit, match="not internal"):
+        hapilotctl.agent_up()
+    assert not any(c[:2] == ["docker", "build"] or c[:2] == ["docker", "run"] for c in docker.calls)
+
+
+def test_agent_status_needs_every_part(monkeypatch):
+    from src.config import get_settings
+
+    model = get_settings().agent_model
+    monkeypatch.setattr(hapilotctl, "upstream_models", lambda: [model])
+    monkeypatch.setattr(hapilotctl.subprocess, "run", FakeDocker(network="true"))
+    assert hapilotctl.agent_status()
+    monkeypatch.setattr(hapilotctl.subprocess, "run", FakeDocker(network="true", relay="exited"))
+    assert not hapilotctl.agent_status()
+    monkeypatch.setattr(hapilotctl.subprocess, "run", FakeDocker(network="true"))
+    monkeypatch.setattr(hapilotctl, "upstream_models", lambda: "not answering (refused)")
+    assert not hapilotctl.agent_status()
+
+
+def test_agent_upstream_must_be_local():
+    import pytest
+
+    from src.config import NotLocalEndpoint, load_settings
+
+    assert load_settings({"HAPILOT_AGENT_UPSTREAM": "172.17.0.1:8000"}).agent_upstream == "172.17.0.1:8000"
+    with pytest.raises(NotLocalEndpoint):
+        load_settings({"HAPILOT_AGENT_UPSTREAM": "8.8.8.8:8000"})

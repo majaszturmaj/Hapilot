@@ -1,9 +1,12 @@
-# Hapilot v3 agent (work in progress, branch `v3`)
+# Hapilot v3 agent (engine v3, opt-in since 0.4.0)
 
 Hapilot v3 adds a second agent engine next to the existing one. The existing engine (planner → router → nodes on
 LangGraph, "v2") stays as it is and remains the default; nothing in it is removed. The v3 engine runs one
 model-driven loop with native tool calls on the Cline SDK (`@cline/sdk` 0.2.0, Apache-2.0), inside an isolated
 container, and reads whole documents as files instead of answering from retrieved chunks.
+
+Switch it on with `HAPILOT_ENGINE=v3` and set it up with `hapilotctl agent up` ([docs/deployment.md](../docs/deployment.md),
+"Engine v3"). The sections below follow the stages it was built in (0–6).
 
 Stage 0 (this directory so far) checks that the SDK, embedded as a library, does what the Cline CLI did when it was
 measured: same SDK source, same session settings, same task prompt and document layout.
