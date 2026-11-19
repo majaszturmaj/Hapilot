@@ -66,7 +66,7 @@ TOOLS = {
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["list", "create"]},
-                "template_id": {"type": "string", "description": "for create: a template id from list"},
+                "template_id": {"type": "string", "description": "REQUIRED for create: the id of a template from list"},
                 "parameters": {"type": "object", "additionalProperties": {"type": "string"},
                                "description": "for create: parameter name → text, names exactly as in list"},
                 "file_name": {"type": "string", "description": "optional PDF file name, without folders"},

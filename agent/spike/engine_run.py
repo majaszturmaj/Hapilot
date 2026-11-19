@@ -13,7 +13,7 @@ shows what the UI would get. Four scenarios, in this order (the fake model's scr
 Run with Hapilot's Python environment and the test settings (HAPILOT_DATA_DIR of a knowledge base copy, documents),
 with the fake model and the relay up (window.sh fake). Writes <out>/wynik.json and <out>/<scenario>.events.jsonl.
 
-  engine_run.py --out DIR [--email --fake-n8n] [--answer TEXT] [--approve yes|no] [--image hapilot-agent:0.5]
+  engine_run.py --out DIR [--email --fake-n8n] [--answer TEXT] [--approve yes|no] [--image hapilot-agent:0.6]
 """
 
 from __future__ import annotations
@@ -117,7 +117,7 @@ async def scenarios(a, engine_mod, settings) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", required=True)
-    ap.add_argument("--image", default="hapilot-agent:0.5")
+    ap.add_argument("--image", default="hapilot-agent:0.6")
     ap.add_argument("--answer", default="Tak, proszę")
     ap.add_argument("--approve", choices=["yes", "no"], default="yes")
     ap.add_argument("--email", action="store_true", help="enable email_draft (needs n8n or --fake-n8n)")

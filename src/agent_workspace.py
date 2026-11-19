@@ -88,8 +88,11 @@ def _safe_name(name: str) -> str:
 
 
 class Workspace:
-    def __init__(self, conversation_id: str, root: Optional[Path] = None):
+    """``settings`` replaces the configured documents, mirror and added documents (an evaluation run's corpus)."""
+
+    def __init__(self, conversation_id: str, root: Optional[Path] = None, settings=None):
         self.conversation_id = conversation_id
+        self._settings = settings
         self.dir = Path(root or workspace_root()) / folder_name(conversation_id)
         self.praca = self.dir / "praca"
         self.uploads = self.dir / UPLOADS
@@ -97,7 +100,7 @@ class Workspace:
 
     def prepare(self) -> "Workspace":
         """Create the conversation's folders and the mount points; the documents folder must exist."""
-        s = get_settings()
+        s = self.settings
         if not Path(s.docs_dir).is_dir():
             raise WorkspaceError(f"documents folder not found: {s.docs_dir}")
         for folder in (self.uploads, self.results_dir, *(self.praca / name for name in (DOCS, ADDED, TEXT, UPLOADS)),
@@ -105,8 +108,12 @@ class Workspace:
             folder.mkdir(parents=True, exist_ok=True)
         return self
 
+    @property
+    def settings(self):
+        return self._settings or get_settings()
+
     def mounts(self) -> list[Mount]:
-        s = get_settings()
+        s = self.settings
         return [Mount(self.praca.resolve(), ROOT, False),
                 Mount(Path(s.docs_dir).resolve(), f"{ROOT}/{DOCS}", True),
                 Mount(Path(s.added_docs_dir).resolve(), f"{ROOT}/{ADDED}", True),

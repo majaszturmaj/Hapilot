@@ -229,3 +229,28 @@ bumps its schema id (`/2`).
 4. `task_timeout_s` = 900 by default.
 5. Traces keep full chunk texts and full prompts (`blobs/`).
 6. Attachments are inlined up to 20,000 characters in total; longer ones get a per-task index.
+
+## 9. Engine v3 (`--engine v3`, branch `v3`)
+
+The same interface runs Hapilot's second engine, the agent container on the Cline SDK ([agent/README.md](../agent/README.md),
+[src/eval/agent.py](../src/eval/agent.py)). Inputs, output files and schema ids do not change; `RunConfig.engine`
+(`v2` by default) selects the engine, and `--profile` then names an agent profile
+([config/agent_profiles.yaml](../config/agent_profiles.yaml)). Only additions: `run.json` has `config.engine` and an
+`agent` block (image and its id, model, network, sha256 of the rules, mode, SDK version); each result line has an
+`agent` block (tool calls, tokens, the SDK's finish reason, the run folder). The configuration hash of v2 runs is
+unchanged.
+
+What the fields mean under v3:
+
+| Field | v3 |
+|---|---|
+| `answer_text` | the agent's final answer (the summary it gives `submit_and_exit`) |
+| `answer_json` | with an answer format the agent writes one JSON object to `/praca/odpowiedz.json` before `submit_and_exit`. The bridge checks it (it parses, the format's fields are there) when the agent submits; an invalid answer is refused once with the reason and the agent corrects it in the same run. There is no separate formatter call: `answer_mode` does not apply. The `answer_format` trace event has `mode: "submit"` and the number of attempts |
+| `plan_tools` | v3 has no plan: the tools the agent called, in order of first call |
+| `sources_used` | corpus files whose text reached the model: chunks returned by `semantic_search`, files read with `read_files`, files named in shell commands, files listed by `search_codebase`; plus attachments |
+| `llm_calls`, tokens | per model call as the SDK reports it (`llm_call` events); the full prompt and response texts are in the runner's own trace (`workspaces/<task>/run/trace.jsonl`), not in `blobs/` |
+| trace | `tool_call` for every tool call with its arguments and result summary, `retrieval` (with chunk texts) for every `semantic_search`, `file_created` for every file the task left in its workspace |
+
+Each task runs in a fresh container with its own workspace and its own index of the corpus; nobody answers during a
+run, so e-mail drafts are off and any approval is refused. Connections refused by the runner's egress guard go to
+the run's `egress.jsonl` like the host guard's.

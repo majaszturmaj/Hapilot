@@ -23,7 +23,9 @@ def _number(value):
         return None
 
 
-def check(result: dict, exp: dict) -> list[str]:
+def check(result: dict, exp: dict, engine: str = "v2") -> list[str]:
+    """Failed checks of one result. The tools a task needs are named per engine: v2 plan tools (``plan_tools``), v3
+    agent tools (``tools_v3``, matched against the tools the agent called)."""
     failed = []
     if result["status"] != "ok":
         return [f"status {result['status']}: {result['error']}"]
@@ -39,13 +41,21 @@ def check(result: dict, exp: dict) -> list[str]:
     for name in exp.get("sources_used", []):
         if not any(s.endswith(name) for s in result["sources_used"]):
             failed.append(f"source {name} not used")
-    for tool in exp.get("plan_tools", []):
+    for tool in exp.get("tools_v3" if engine == "v3" else "plan_tools", []):
         if tool not in result["plan_tools"]:
-            failed.append(f"tool {tool} not in plan {result['plan_tools']}")
+            failed.append(f"tool {tool} not in {'tools called' if engine == 'v3' else 'plan'} {result['plan_tools']}")
     suffix = exp.get("files_created_suffix")
     if suffix and not any(f["path"].endswith(suffix) for f in result["files_created"]):
         failed.append(f"no {suffix} file created")
     return failed
+
+
+def run_engine(out_dir: Path) -> str:
+    """The engine of an evaluation run (run.json; runs before v3 record none: v2)."""
+    try:
+        return json.loads((out_dir / "run.json").read_text(encoding="utf-8"))["config"].get("engine", "v2")
+    except (OSError, ValueError, KeyError):
+        return "v2"
 
 
 def main() -> int:
@@ -55,10 +65,11 @@ def main() -> int:
     args = parser.parse_args()
     expected = json.loads(args.expected.read_text(encoding="utf-8"))
     results = {json.loads(l)["task_id"]: json.loads(l) for l in (args.out_dir / "results.jsonl").read_text().splitlines() if l.strip()}
+    engine = run_engine(args.out_dir)
     passed = 0
     for task_id, exp in expected.items():
         result = results.get(task_id)
-        failed = ["not run"] if result is None else check(result, exp)
+        failed = ["not run"] if result is None else check(result, exp, engine)
         passed += not failed
         extra = f"{result['duration_s']:6.1f}s llm={result['llm_calls']:2d} tools={result['plan_tools']}" if result else ""
         print(f"{'PASS' if not failed else 'FAIL'}  {task_id}  {extra}  {'; '.join(failed)}")

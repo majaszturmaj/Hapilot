@@ -192,7 +192,7 @@ class Settings:
     agent_workspace_root: Optional[Path] = None  # v3 agent: per-conversation folders (src/agent_workspace.py)
     # v3 engine in the UI (src/agent_engine.py); "v2" (default) keeps the LangGraph agent
     engine: str = "v2"
-    agent_image: str = "hapilot-agent:0.5"
+    agent_image: str = "hapilot-agent:0.6"
     agent_network: str = "hapilot-v3-izolowana"
     agent_model_url: str = "http://model:8000/v1"  # as the container sees it: the relay on its internal network
     agent_model: str = "qwen3.6-27b-q4km"
@@ -323,7 +323,7 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         kb_trash_days=int(number("HAPILOT_KB_TRASH_DAYS", "30", 1, 3650)),
         agent_workspace_root=path("HAPILOT_AGENT_WORKSPACE_DIR", data_dir / "agent_workspace"),
         engine=engine,
-        agent_image=get("HAPILOT_AGENT_IMAGE", "hapilot-agent:0.5").strip(),
+        agent_image=get("HAPILOT_AGENT_IMAGE", "hapilot-agent:0.6").strip(),
         agent_network=get("HAPILOT_AGENT_NETWORK", "hapilot-v3-izolowana").strip(),
         agent_model_url=agent_url,
         agent_model=get("HAPILOT_AGENT_MODEL", "qwen3.6-27b-q4km").strip(),
@@ -332,6 +332,26 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         agent_email=flag("HAPILOT_AGENT_EMAIL", "off"),
         agent_rules=path("HAPILOT_AGENT_RULES", PROJECT_ROOT / "agent" / "rules" / "hapilot.md"),
     )
+
+
+def load_agent_profiles(path: Optional[Path] = None) -> tuple[dict[str, dict], str]:
+    """The v3 agent's model profiles (config/agent_profiles.yaml, or HAPILOT_AGENT_PROFILES_FILE): ({name: {"model",
+    "description"}}, default name)."""
+    if path is None:
+        raw_path = os.environ.get("HAPILOT_AGENT_PROFILES_FILE")
+        path = Path(raw_path).expanduser() if raw_path else PROJECT_ROOT / "config" / "agent_profiles.yaml"
+    if not path.is_file():
+        raise ConfigError(f"Agent profiles file not found: {path}")
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    profiles = {}
+    for name, body in (raw.get("profiles") or {}).items():
+        if not isinstance(body, dict) or not str(body.get("model") or "").strip():
+            raise ConfigError(f"Agent profile {name!r}: 'model' is required")
+        profiles[str(name)] = {"model": str(body["model"]).strip(), "description": str(body.get("description") or "")}
+    default = str(raw.get("default") or next(iter(profiles), ""))
+    if default not in profiles:
+        raise ConfigError(f"Agent profiles: default {default!r} is not defined")
+    return profiles, default
 
 
 @lru_cache(maxsize=1)

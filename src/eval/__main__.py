@@ -19,6 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--out", type=Path)
     run.add_argument("--today")
     run.add_argument("--profile")
+    run.add_argument("--engine", choices=["v2", "v3"], help="v2 (default): the LangGraph agent; v3: the agent container")
     run.add_argument("--config", type=Path, help="run.yaml with the same settings (flags win)")
     run.add_argument("--seed", type=int)
     run.add_argument("--timeout", type=float, dest="task_timeout_s")
@@ -46,7 +47,8 @@ def main(argv: list[str] | None = None) -> int:
 
         settings = load_run_yaml(args.config) if args.config else {}
         for key, value in {"corpus_dir": args.corpus, "out_dir": args.out, "today": args.today, "profile": args.profile,
-                           "seed": args.seed, "task_timeout_s": args.task_timeout_s, "answer_mode": args.answer_mode}.items():
+                           "seed": args.seed, "task_timeout_s": args.task_timeout_s, "answer_mode": args.answer_mode,
+                           "engine": args.engine}.items():
             if value is not None:
                 settings[key] = value
         if args.no_resume:

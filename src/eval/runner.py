@@ -125,6 +125,7 @@ class EvalSession:
         self.meta: dict = {}
         self.done: dict[str, dict] = {}
         self.app = None
+        self.agent = None  # engine v3: src/eval/agent.py
         self.corpus: dict = {}
         self.corpus_files: list[str] = []
 
@@ -148,7 +149,8 @@ class EvalSession:
         (self.out / "egress.jsonl").touch()
 
         settings = get_settings()
-        profile = settings.profile(self.cfg.profile)
+        v3 = self.cfg.engine == "v3"
+        profile = None if v3 else settings.profile(self.cfg.profile)
         self.corpus = index_corpus(self.cfg.corpus_dir)
         self.corpus_files = [p.relative_to(self.cfg.corpus_dir).as_posix() for p in corpus_files(self.cfg.corpus_dir)]
         from src import ocr
@@ -157,12 +159,23 @@ class EvalSession:
 
         retrieval = {"method": "hybrid", "k": settings.rag_top_k, "rrf_k": RRF_K, "index_version": INDEX_VERSION}
         chunking = {"size": CHUNK_SIZE, "overlap": CHUNK_OVERLAP}
-        hashed = {"run": self.cfg.public(), "profile": {"name": profile.name, "models": {k: m.__dict__ for k, m in profile.models.items()},
-                                                         "roles": profile.roles},
-                  "retrieval": retrieval, "chunking": chunking, "embedding_model": settings.embedding_model,
-                  "sandbox_image": settings.sandbox_image, "sandbox_image_id": _sandbox_image_id(),
-                  "ocr": ocr.signature(), "ocr_image_id": _sandbox_image_id(settings.ocr_image) if settings.ocr_enabled else None,
-                  "prompts": _prompts_digest(), "corpus": self.corpus["fingerprint"]}
+        if v3:
+            from src.eval.agent import AgentTaskRunner
+
+            self.agent = AgentTaskRunner(corpus_dir=self.cfg.corpus_dir, corpus=self.corpus, corpus_files=self.corpus_files,
+                                         out_dir=self.out, profile=self.cfg.profile, timeout_s=self.cfg.task_timeout_s)
+            hashed = {"run": self.cfg.public(), "agent": self.agent.describe(), "retrieval": retrieval, "chunking": chunking,
+                      "embedding_model": settings.embedding_model, "sandbox_image": settings.sandbox_image,
+                      "sandbox_image_id": _sandbox_image_id(), "ocr": ocr.signature(),
+                      "ocr_image_id": _sandbox_image_id(settings.ocr_image) if settings.ocr_enabled else None,
+                      "templates": _prompts_digest(), "corpus": self.corpus["fingerprint"]}
+        else:
+            hashed = {"run": self.cfg.public(), "profile": {"name": profile.name, "models": {k: m.__dict__ for k, m in profile.models.items()},
+                                                             "roles": profile.roles},
+                      "retrieval": retrieval, "chunking": chunking, "embedding_model": settings.embedding_model,
+                      "sandbox_image": settings.sandbox_image, "sandbox_image_id": _sandbox_image_id(),
+                      "ocr": ocr.signature(), "ocr_image_id": _sandbox_image_id(settings.ocr_image) if settings.ocr_enabled else None,
+                      "prompts": _prompts_digest(), "corpus": self.corpus["fingerprint"]}
         config_hash = "sha256:" + hashlib.sha256(json.dumps(hashed, sort_keys=True, default=str).encode()).hexdigest()
 
         previous = json.loads((self.out / "run.json").read_text()) if (self.out / "run.json").is_file() else None
@@ -173,12 +186,15 @@ class EvalSession:
         if previous and previous.get("hapilot", {}).get("commit") != git["commit"]:
             raise ConfigError(f"{self.out} holds a run made with Hapilot {previous.get('hapilot', {}).get('describe')}; "
                               "results of two code versions are never mixed — use another output directory")
-        server = _model_server_info(profile.default_model().base_url)
-        served = server.get("models", {})
         models = []
-        for m in profile.models.values():
-            info = served.get(m.model, {})
-            models.append({"name": m.model, "file": info.get("file"), "bytes": info.get("bytes"), "server": server.get("server")})
+        if v3:  # the model server is the operator's (config/agent_profiles.yaml); run.json["agent"] has the rest
+            models.append({"name": self.agent.settings.agent_model, "file": None, "bytes": None, "server": None})
+        else:
+            server = _model_server_info(profile.default_model().base_url)
+            served = server.get("models", {})
+            for m in profile.models.values():
+                info = served.get(m.model, {})
+                models.append({"name": m.model, "file": info.get("file"), "bytes": info.get("bytes"), "server": server.get("server")})
         self.meta = {
             "schema": RUN_SCHEMA,
             "run_id": (previous or {}).get("run_id") or f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}",
@@ -194,13 +210,16 @@ class EvalSession:
             "egress_guard": self.cfg.egress_guard,
             "tasks": {"total": 0, "ok": 0, "error": 0, "timeout": 0},
         }
+        if v3:
+            self.meta["agent"] = hashed["agent"]
         if (self.out / "results.jsonl").is_file():
             for line in (self.out / "results.jsonl").read_text(encoding="utf-8").splitlines():
                 if line.strip():
                     rec = json.loads(line)
                     self.done[rec["task_id"]] = rec
         self._write_meta()
-
+        if v3:
+            return
         from src.agent_graph import get_app
 
         self.app = get_app()
@@ -234,6 +253,8 @@ class EvalSession:
         if self._should_skip(task):
             print(f"[eval] skip {task.id} (already {self.done[task.id]['status']})", flush=True)
             return self.done[task.id]
+        if self.agent is not None:
+            return self._run_task_agent(task)
         run_id = self.meta["run_id"]
         workspace_root = self.out / "workspaces"
         trace_path = self.out / "traces" / f"{task.id}.jsonl"
@@ -305,6 +326,37 @@ class EvalSession:
         self._append_result(result)
         self.done[task.id] = result
         print(f"[eval] {status:7s} {task.id} {duration:7.1f}s  llm={recorder.llm_calls}" + (f"  {error}" if error else ""), flush=True)
+        return result
+
+    def _run_task_agent(self, task: Task) -> dict:
+        """Engine v3: the task in an agent container (src/eval/agent.py); same result and trace format."""
+        run_id = self.meta["run_id"]
+        trace_path = self.out / "traces" / f"{task.id}.jsonl"
+        trace_path.unlink(missing_ok=True)
+        recorder = tracing.TraceRecorder(trace_path, self.out / "blobs", run_id, task.id)
+        started = time.monotonic()
+        recorder.emit("task_start", session_id=task.id, instruction=task.instruction, answer_format=task.answer_format,
+                      attachments=[{"name": p.name, "bytes": p.stat().st_size,
+                                    "sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in task.attachments])
+        try:
+            fields = self.agent.run(task, self.cfg.today, recorder, self.cfg.task_timeout_s)
+        except Exception as exc:  # report and go on with the next task
+            fields = {"status": "error", "error": f"{type(exc).__name__}: {exc}", "answer_text": "", "answer_json": None,
+                      "answer_json_valid": None, "answer_json_error": None, "sources_used": [], "sources_cited": [],
+                      "files_created": [], "plan_tools": [], "llm_calls": recorder.llm_calls,
+                      "prompt_tokens": recorder.prompt_tokens, "completion_tokens": recorder.completion_tokens}
+        duration = round(time.monotonic() - started, 2)
+        fields["sources_cited"] = _cited(fields.get("answer_json"), self.corpus_files)
+        result = {"schema": RESULT_SCHEMA, "run_id": run_id, "task_id": task.id, **fields, "duration_s": duration,
+                  "trace": f"traces/{task.id}.jsonl"}
+        recorder.emit("task_end", status=result["status"], error=result["error"], duration_s=duration,
+                      llm_calls=result["llm_calls"], prompt_tokens=result["prompt_tokens"],
+                      completion_tokens=result["completion_tokens"])
+        recorder.close()
+        self._append_result(result)
+        self.done[task.id] = result
+        print(f"[eval] {result['status']:7s} {task.id} {duration:7.1f}s  llm={result['llm_calls']}"
+              + (f"  {result['error'][:200]}" if result["error"] else ""), flush=True)
         return result
 
     def _append_result(self, result: dict) -> None:

@@ -1,6 +1,7 @@
 # Unit tests and lint on every push and pull request. No model, no GPU, no network access
 # from the tests themselves (the egress guard in tests/conftest.py blocks it).
-# The integration suite with real models runs on the GPU host instead (scripts/integration.py, docs/testing.md).
+# The integration suite with real models runs on the GPU host instead (scripts/integration.py, docs/testing.md),
+# for both engines (v2: the LangGraph agent; v3: the agent container on the Cline SDK, --engine v3).
 name: ci
 
 on:
@@ -31,7 +32,7 @@ jobs:
           cache-dependency-path: requirements-test.txt
       - run: pip install -r requirements-test.txt
       - name: Lint
-        run: ruff check src extensions examples tests scripts tools
+        run: ruff check src extensions examples tests scripts tools agent
       - name: Unit tests (coverage gate in pyproject.toml)
         run: |
           coverage run -m pytest -q
@@ -40,3 +41,27 @@ jobs:
         run: |
           python -m src.core.extension_manager
           python -m src.core.extension_manager examples/extensions
+
+  # v3's agent runner (agent/runner, Node in the hapilot-agent image): syntax, its own tests, and that every import
+  # of the pinned Cline SDK resolves (the image build runs the same self-check). npm ci installs from the lockfile.
+  agent-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: agent/runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: agent/runner/package-lock.json
+      - name: Syntax
+        run: for f in *.mjs test/*.mjs; do node --check "$f"; done
+      - name: Runner tests
+        run: node --test test/
+      - name: Pinned SDK installs and every import resolves
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          node run_task.mjs --self-check

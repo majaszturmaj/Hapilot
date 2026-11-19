@@ -21,6 +21,11 @@ Questions (stage 4): the agent's ask_question comes here (`ask`) and the host's 
 without one the answer is the first option, as the Cline CLI answers without a terminal. A shell command could ask
 too; the user sees it like any question of the agent.
 
+Evaluation runs (stage 5, src/eval/agent.py): the index searched is the run's own corpus (``search_targets``), every
+search keeps its chunks for the run's trace (``record_chunks``), and the agent's final answer is checked here
+(``answer``): the runner sends the JSON answer when the agent calls submit_and_exit, and an answer that is not a JSON
+object with the task's fields (and its schema, if given) is refused once with the reason, so the agent can correct it.
+
 Protocol: one request per connection, a JSON line {"method", "params"} → a JSON line {"ok", "result" | "error"}.
 """
 
@@ -82,7 +87,8 @@ def _text(value, field: str, limit: int, required: bool = True) -> str:
 class Bridge:
     def __init__(self, workspace: Workspace, *, user: Optional[str] = None, signature: str = "blank",
                  email: bool = False, approver: Optional[Approver] = None, asker: Optional[Asker] = None,
-                 trace_path: Optional[Path] = None):
+                 trace_path: Optional[Path] = None, search_targets: Optional[list] = None,
+                 answer_format: Optional[dict] = None, record_chunks: bool = False):
         self.workspace = workspace
         self.user = user
         self.signature = signature if signature in ("blank", "scan") else "blank"
@@ -90,6 +96,11 @@ class Bridge:
         self.approver = approver or deny_all
         self.asker = asker or first_option
         self.trace_path = Path(trace_path) if trace_path else None
+        self.search_targets = search_targets
+        self.answer_format = answer_format
+        self.record_chunks = record_chunks
+        self.retrievals: list[dict] = []  # with record_chunks: {"query", "k", "chunks", "ms"} per search
+        self.answers: list[dict] = []  # every answer check: {"valid", "error", "json"}
         self._approved: Counter[str] = Counter()
         self._lock = threading.Lock()
 
@@ -102,7 +113,8 @@ class Bridge:
             if not isinstance(params, dict):
                 raise BridgeError("params muszą być obiektem JSON")
             fn = {"semantic_search": self.semantic_search, "pdf_document": self.pdf_document,
-                  "email_draft": self.email_draft, "approve": self.approve, "ask": self.ask}.get(method)
+                  "email_draft": self.email_draft, "approve": self.approve, "ask": self.ask,
+                  "answer": self.answer}.get(method)
             if fn is None:
                 raise BridgeError(f"nieznana metoda: {method}")
             return fn(params)
@@ -128,6 +140,8 @@ class Bridge:
                 entry["tool"] = params.get("tool")
             elif method == "ask":  # nor the question
                 entry["options"] = len(params.get("options") or [])
+            elif method == "answer" and self.answers:
+                entry["valid"], entry["error"] = self.answers[-1]["valid"], self.answers[-1]["error"]
         if note:
             entry["note"] = note[:500]
         with self._lock, open(self.trace_path, "a", encoding="utf-8") as fh:
@@ -155,6 +169,22 @@ class Bridge:
         options = [_text(o, "options", MAX_OPTION) for o in options]
         return {"answer": str(self.asker(question, options) or "")}
 
+    def answer(self, params: dict) -> dict:
+        """Check the agent's final answer against the task's format: {"valid", "error", "json"}."""
+        from src.core.tools_common import extract_json_object
+        from src.eval.formatter import check
+
+        text = _text(params.get("text"), "text", 200_000, required=False)
+        if self.answer_format is None:
+            verdict = {"valid": True, "error": None, "json": None}
+        else:
+            obj = extract_json_object(text) if text.strip() else None
+            error = check(obj, self.answer_format)
+            verdict = {"valid": error is None, "error": error, "json": obj if isinstance(obj, dict) else None}
+        with self._lock:
+            self.answers.append(verdict)
+        return verdict
+
     def _use_approval(self, tool: str, args: dict) -> None:
         key = approval_key(tool, args)
         with self._lock:
@@ -172,7 +202,13 @@ class Bridge:
         if isinstance(k, bool) or not isinstance(k, int) or not 1 <= k <= MAX_K:
             raise BridgeError(f"pole k: liczba od 1 do {MAX_K}")
         s = get_settings()
-        chunks = knowledge_base.search(query, k=k, targets=[(Path(s.chroma_path), s.collection)])
+        started = time.monotonic()
+        chunks = knowledge_base.search(query, k=k, targets=self.search_targets or [(Path(s.chroma_path), s.collection)])
+        if self.record_chunks:
+            with self._lock:
+                self.retrievals.append({"query": query, "k": k, "ms": round((time.monotonic() - started) * 1000),
+                                        "chunks": [{"rank": c.rank, "file": c.file, "chunk_id": c.chunk_id,
+                                                    "score": c.score, "page": c.page, "text": c.text} for c in chunks]})
         if not chunks:
             return "Brak wyników."
         lines = []

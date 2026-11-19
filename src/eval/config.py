@@ -79,6 +79,7 @@ class RunConfig:
     retry_failed: bool = False
     egress_guard: bool = True
     inline_limit: int = 20_000
+    engine: str = "v2"  # v2: the LangGraph agent; v3: the agent container (src/eval/agent.py)
 
     def __post_init__(self) -> None:
         self.corpus_dir, self.out_dir = Path(self.corpus_dir).resolve(), Path(self.out_dir).resolve()
@@ -88,8 +89,15 @@ class RunConfig:
             date.fromisoformat(self.today)
         except (TypeError, ValueError) as exc:
             raise ConfigError(f"today must be YYYY-MM-DD, got {self.today!r}") from exc
-        self.profile = self.profile or get_settings().default_profile
-        get_settings().profile(self.profile)  # raises for an unknown profile
+        if self.engine not in ("v2", "v3"):
+            raise ConfigError("engine must be 'v2' or 'v3'")
+        if self.engine == "v3":  # the agent's own profiles (config/agent_profiles.yaml)
+            from src.eval.agent import agent_model
+
+            self.profile = agent_model(self.profile)[0]
+        else:
+            self.profile = self.profile or get_settings().default_profile
+            get_settings().profile(self.profile)  # raises for an unknown profile
         if self.approval_policy != "auto":
             raise ConfigError("Evaluation runs use approval_policy 'auto' (nobody answers questions during a run)")
         if self.answer_mode not in ("formatter", "parse"):
@@ -98,7 +106,8 @@ class RunConfig:
             raise ConfigError("task_timeout_s must be positive")
 
     def public(self) -> dict:
-        return {"profile": self.profile, "today": self.today, "seed": self.seed, "temperature": self.temperature,
+        engine = {"engine": "v3"} if self.engine == "v3" else {}  # v2 runs keep their configuration (and hash) as before
+        return {**engine, "profile": self.profile, "today": self.today, "seed": self.seed, "temperature": self.temperature,
                 "approval_policy": self.approval_policy, "task_timeout_s": self.task_timeout_s,
                 "answer_mode": self.answer_mode, "inline_limit": self.inline_limit}
 

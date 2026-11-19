@@ -228,9 +228,9 @@ def test_spec_and_container_command(tmp_path):
     joined = " ".join(cmd)
     for flag in ("--network hapilot-v3-izolowana", "--read-only", "--cap-drop ALL", "target=/hapilot,readonly",
                  "target=/run", "target=/dom", "target=/praca/dokumenty,readonly", "HAPILOT_EGRESS_ALLOW=model:8000",
-                 "HAPILOT_TOOLS=semantic_search,pdf_document,working_days,email_draft", "hapilot-agent:0.5"):
+                 "HAPILOT_TOOLS=semantic_search,pdf_document,working_days,email_draft", "hapilot-agent:0.6"):
         assert flag in joined
-    assert cmd[cmd.index("hapilot-agent:0.5") - 2:cmd.index("hapilot-agent:0.5")] == ["--workdir", "/praca"]
+    assert cmd[cmd.index("hapilot-agent:0.6") - 2:cmd.index("hapilot-agent:0.6")] == ["--workdir", "/praca"]
 
 
 def test_chat_prompt_has_today_and_uploads():

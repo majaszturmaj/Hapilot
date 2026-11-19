@@ -1,0 +1,17 @@
+# Model profiles of the v3 agent engine (src/agent_engine.py, evaluation runs with --engine v3).
+#
+# The agent runs as one model-driven loop: one model per profile, served by an OpenAI-compatible server that the
+# agent container reaches through the relay on its internal network (HAPILOT_AGENT_MODEL_URL, default
+# http://model:8000/v1). The server is started by the operator; `model` must match the name it serves.
+# Server settings of the dev-set measurements (llama-server, stages 0-5): context 65,536, KV cache q8_0, flash
+# attention, --jinja, seed 42, thinking on (enable_thinking), output cap 16,000 (-n 16000), one slot.
+
+default: best-local
+
+profiles:
+  best-local:
+    description: "Qwen3.6-27B (Q4_K_M) — the measured configuration"
+    model: qwen3.6-27b-q4km
+  gemma:
+    description: "Gemma 4 31B (QAT Q4_0) — the pilot's model, compared on the dev set"
+    model: gemma-4-31b-qat

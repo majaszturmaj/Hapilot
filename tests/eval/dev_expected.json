@@ -66,6 +66,9 @@
   },
   "plan_tools": [
    "python"
+  ],
+  "tools_v3": [
+   "run_commands"
   ]
  },
  "D07": {

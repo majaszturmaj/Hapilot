@@ -38,14 +38,16 @@ def test_smoke_scenarios_have_unique_ids_and_checks():
 
 
 def test_baseline_names_existing_profiles_suites_and_items():
-    from src.config import get_settings
+    from src.config import get_settings, load_agent_profiles
 
     baseline = integration.load_baseline()
-    assert set(baseline) <= set(get_settings().profiles)
+    v3 = {k for k in baseline if k.startswith("v3/")}
+    assert set(baseline) - v3 <= set(get_settings().profiles)
+    assert {k[3:] for k in v3} <= set(load_agent_profiles()[0])
     dev_ids = set(json.loads(integration.DEV_EXPECTED.read_text(encoding="utf-8")))
     planner_ids = {sc["id"] for sc in planner_check.load_scenarios()}
-    for suites in baseline.values():
-        assert set(suites) <= set(integration.SUITES)
+    for key, suites in baseline.items():
+        assert set(suites) <= set(integration.SUITES_V3 if key in v3 else integration.SUITES)
         assert suites.get("dev", set()) <= dev_ids and suites.get("planner", set()) <= planner_ids
 
 
@@ -165,7 +167,7 @@ def test_run_dev_reads_results_and_compares(tmp_path, monkeypatch):
         return 0
 
     monkeypatch.setattr(integration, "_run", fake_run)
-    monkeypatch.setattr(dev_eval_check, "check", lambda result, exp: [] if result["status"] == "ok" else ["wrong"])
+    monkeypatch.setattr(dev_eval_check, "check", lambda result, exp, engine="v2": [] if result["status"] == "ok" else ["wrong"])
     r = integration.run_dev("reference", tmp_path, Path(sys.executable), "http://127.0.0.1:1/v1", {"D03"})
     assert r["valid"] and r["egress_attempts"] == [] and r["seconds"] == 9.0
     assert r["comparison"]["known_failures"] == ["D03"] and r["comparison"]["regressions"] == ["D10"]
@@ -217,3 +219,82 @@ def test_planner_scenario_with_attachments_lists_them(llm):
     tools, _ = planner_check.plan_once({"id": "f", "prompt": "Streść to.", "attachments": ["raport.pdf"]}, "best-local", "pc-3")
     assert tools == ["file_summary"]
     assert "Załączone pliki (dostępne też w katalogu roboczym dla kodu Python): raport.pdf" in llm.prompts_for("task_planner")[0]
+
+
+# --------------------------------------------------------------------------- engine v3
+
+def test_baseline_key_keeps_engines_apart():
+    assert integration.baseline_key("v2", "best-local") == "best-local"
+    assert integration.baseline_key("v3", "best-local") == "v3/best-local"
+
+
+def test_v3_suites_run_the_v3_scripts(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_run(cmd, log, env=None):
+        calls.append((cmd, env))
+        if "scripts/egress_v3.py" in cmd:
+            Path(cmd[cmd.index("--report") + 1]).write_text(json.dumps({"image_id": "sha256:x", "checks": [
+                {"check": "agent network is internal", "ok": True, "detail": "true"},
+                {"check": "model relay model:8000 serves m", "ok": True, "detail": ["m"]},
+                {"check": "no way out: tcp 1.1.1.1:443", "ok": False, "detail": "connected"}]}))
+        if "scripts/smoke_v3.py" in cmd:
+            Path(cmd[cmd.index("--report") + 1]).write_text(json.dumps({
+                "summary": {"seconds_total": 3.0}, "egress_guard_attempts": [],
+                "results": [{"id": "s1", "ok": True, "failed": []}]}))
+        return 0
+
+    monkeypatch.setattr(integration, "_run", fake_run)
+    monkeypatch.setattr(integration, "run_dev", lambda *a, **k: {"engine": k.get("engine"),
+                                                                  "comparison": integration.compare({}, set())})
+    r = integration.run_profile_v3("best-local", "m", tmp_path, Path(sys.executable), {}, [])
+    assert r["models"] == ["m"] and r["egress"]["model_served"] and r["dev"]["engine"] == "v3"
+    assert r["egress"]["comparison"]["regressions"] == ["no way out: tcp 1.1.1.1:443"]
+    assert r["egress"]["failures"] == {"no way out: tcp 1.1.1.1:443": ["connected"]}
+    assert r["smoke"]["comparison"]["passed"] == 1 and integration.suite_ok(r["smoke"])
+    smoke_cmd = next(c for c, _ in calls if "scripts/smoke_v3.py" in c)
+    assert "--egress-guard" in smoke_cmd and "--model-url" not in smoke_cmd and "--work" in smoke_cmd
+
+
+def test_v3_without_the_model_skips_the_other_suites(tmp_path, monkeypatch):
+    def fake_run(cmd, log, env=None):
+        Path(cmd[cmd.index("--report") + 1]).write_text(json.dumps({"checks": [
+            {"check": "model relay model:8000 serves m", "ok": False, "detail": "unreachable (URLError)"}]}))
+        return 1
+
+    monkeypatch.setattr(integration, "_run", fake_run)
+    r = integration.run_profile_v3("gemma", "m", tmp_path, Path(sys.executable), {}, [])
+    assert not r["egress"]["model_served"] and r["smoke"]["skipped"] and r["dev"]["skipped"]
+    assert not integration.suite_ok(r["smoke"])
+    report = {"date": "2026-11-19T12:00:00", "engine": "v3", "passed": False,
+              "git": {"describe": "v3", "commit": "abc123def4567890", "dirty": True}, "profiles": {"gemma": r}}
+    text = integration.render_markdown(report)
+    assert "(engine v3)" in text and "| gemma | smoke | skipped: m not served at the agent relay |" in text
+
+
+def test_run_dev_v3_passes_the_engine(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, log, env=None):
+        seen["cmd"], seen["env"] = cmd, env
+        return 2
+
+    monkeypatch.setattr(integration, "_run", fake_run)
+    r = integration.run_dev("best-local", tmp_path, Path(sys.executable), None, set(), engine="v3")
+    assert r["error"] == "no results (exit 2)" and seen["env"] is None
+    assert seen["cmd"][seen["cmd"].index("--engine") + 1] == "v3"
+
+
+def test_main_v3_writes_the_report(tmp_path, monkeypatch):
+    import hapilotctl
+
+    monkeypatch.setattr(hapilotctl, "git_state", lambda: {"describe": "v3", "commit": "0" * 40, "dirty": False})
+    monkeypatch.setattr(hapilotctl, "say", lambda msg: None)
+    monkeypatch.setattr(hapilotctl, "models_up", lambda *a: pytest.fail("v3 does not start models"))
+    monkeypatch.setattr(integration, "run_profile_v3", lambda profile, model, out, py, known, skip: {
+        "models": [model], "egress": {"comparison": integration.compare({"x": True}, set()), "model_served": True}})
+    code = integration.main(["--engine", "v3", "--profile", "gemma", "--skip", "unit", "--out", str(tmp_path)])
+    report = json.loads((tmp_path / "integration_report.json").read_text(encoding="utf-8"))
+    assert code == 0 and report["engine"] == "v3" and report["profiles"]["gemma"]["models"] == ["gemma-4-31b-qat"]
+    with pytest.raises(SystemExit):
+        integration.main(["--engine", "v3", "--profile", "reference", "--out", str(tmp_path)])

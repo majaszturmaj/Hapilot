@@ -36,8 +36,11 @@ which is exercised on the GPU host by the integration suite.
 ## Continuous integration
 
 [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs on every push and pull request, on Python 3.10
-and 3.12: lint, unit tests with the coverage gate, and a load check of the extension manifests
-(`python -m src.core.extension_manager`, also for `examples/extensions`). It never starts a model.
+and 3.12: lint (including `agent/`), unit tests with the coverage gate, and a load check of the extension manifests
+(`python -m src.core.extension_manager`, also for `examples/extensions`). A second job checks v3's agent runner on
+Node 22: syntax of every `.mjs`, the runner's own tests (`node --test agent/runner/test/`), and `npm ci` from the
+lockfile followed by `run_task.mjs --self-check` (every import of the pinned Cline SDK resolves). It never starts a
+model or a container.
 
 ## Integration suite (GPU host)
 
@@ -75,6 +78,26 @@ Output (default `var/integration/<timestamp>/`): `integration_report.md` (table 
 (`planner_traces/`, `hapilot.trace/1`), the evaluation run directory (`dev_eval/`) and the logs. The run
 stops the model proxy it started; it refuses to start while Hapilot is already running.
 
+### Engine v3 (the agent container)
+
+```bash
+.venv/bin/python scripts/hapilotctl.py integration --engine v3 --profile best-local   # the model must be served
+.venv/bin/python scripts/egress_v3.py --profile best-local                            # the egress test alone
+```
+
+The profiles are those of [config/agent_profiles.yaml](../config/agent_profiles.yaml) (`best-local`: Qwen3.6-27B,
+`gemma`: Gemma 4 31B). v3 does not start the model: the operator serves it, with the relay of the agent network
+(`model:8000`), one model at a time. The suites:
+
+| Suite | Input | Checks |
+|---|---|---|
+| egress | [scripts/egress_v3.py](../scripts/egress_v3.py): a probe in a container started with the agent's own flags | the agent network is internal; a public DNS name, public addresses (TCP, UDP) and the Docker host bypassing the relay are all unreachable; the relay serves the profile's model; the runner's guard refuses and logs a Node connection. Without the model the other suites are not run |
+| smoke | the same smoke scenarios through the chat engine (act mode, one container per turn, history carried), [scripts/smoke_v3.py](../scripts/smoke_v3.py); the two scenarios marked `engines: [v2]` (v2's own knowledge-base tools) are skipped | as for v2, on the answer and the files left in `/praca/wyniki`; no connection refused by either guard |
+| dev | the development tasks through the evaluation interface with `--engine v3` | as for v2; the tools a task needs are named for v3 separately (`tools_v3` in [tests/eval/dev_expected.json](../tests/eval/dev_expected.json)) |
+
+Known failures of v3 profiles are listed under `v3/<profile>` in the baseline. Output: `var/integration/v3_<timestamp>/`,
+with each profile's egress and smoke reports, the smoke chats' run folders (`smoke_work/`) and the evaluation run.
+
 **Last integration run: passed on 2026-10-19, commit `c668641` (sandbox image 0.2), both profiles** (RTX 4090):
 
 | Profile | Smoke | Planner | Dev tasks | Time (s, sum of suites) |
@@ -84,4 +107,5 @@ stops the model proxy it started; it refuses to start while Hapilot is already r
 
 Unit tests in the deployed checkout 222/222; both evaluation runs schema-valid; no egress attempts. The same day the
 suite also passed at `ad9fa98` and `v0.3.0` (fresh installation, [measurements/](measurements/)) with the same counts;
-the UI walk-through (`scripts/ui_demo.py`) passed 9/9 at `25a14c6`.
+the UI walk-through (`scripts/ui_demo.py`) passed 9/9 at `25a14c6`. (v2; for v3 see
+[agent/README.md](../agent/README.md).)

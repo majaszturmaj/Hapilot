@@ -13,7 +13,7 @@ measured: same SDK source, same session settings, same task prompt and document 
 | `runner/run_task.mjs` | one task, one SDK session, configured like `cline -y --json` 3.0.74; writes a result file and a JSONL trace of every tool call |
 | `runner/egress_guard.mjs` | loaded first: records every outbound connection of the runner and refuses all but the model endpoint |
 | `runner/package.json`, `package-lock.json` | SDK 0.2.0 with the dependency tree of the CLI 3.0.74 build: derived from its `bun.lock` (tag `cli-v3.0.74`) by `runner/bun2npm.py`, same versions and integrity hashes; the CLI build's patch of `ollama-ai-provider-v2` is not applied (not used with an OpenAI-compatible endpoint) |
-| `../sandbox/agent.Dockerfile` | image `hapilot-agent:0.5` = `hapilot-sandbox:0.2` + Node 22.23.4 + the runner + the MCP server (0.2: stage 0; 0.3: stage 2, without rules; 0.4: stage 3, without the chat mode; 0.5: stage 4) |
+| `../sandbox/agent.Dockerfile` | image `hapilot-agent:0.6` = `hapilot-sandbox:0.2` + Node 22.23.4 + the runner + the MCP server (0.2: stage 0; 0.3: stage 2, without rules; 0.4: stage 3, without the chat mode; 0.5: stage 4; 0.6: stage 5, the answer check) |
 | `spike/spike.py` | runs a task set through the container (one fresh container per task) and scores it with the set's own scorer |
 | `spike/fake_openai.py` | scripted OpenAI-compatible server for a dry run without a model |
 
@@ -80,17 +80,41 @@ Stage 4 puts the engine behind the chat UI (`HAPILOT_ENGINE=v3`; v2 stays the de
 | `runner/run_task.mjs` | `mode: "act"` for the chat (Cline's interactive mode: the answer is text, `ask_question` on; web fetch and skills off), `events: "stdout"`, `ask.bridge`, `initialMessagesPath` / `messagesPath`, abort on SIGTERM |
 | `spike/engine_run.py` | the engine without the UI against a scripted model (question, approval, history, queue, stop) |
 
-Settings: `HAPILOT_AGENT_IMAGE` (`hapilot-agent:0.5`), `HAPILOT_AGENT_NETWORK`, `HAPILOT_AGENT_MODEL_URL` (local
+Settings: `HAPILOT_AGENT_IMAGE` (`hapilot-agent:0.6`), `HAPILOT_AGENT_NETWORK`, `HAPILOT_AGENT_MODEL_URL` (local
 address or the relay host `model`), `HAPILOT_AGENT_MODEL`, `HAPILOT_AGENT_ALLOW`, `HAPILOT_AGENT_TIMEOUT` (60–7200 s),
 `HAPILOT_AGENT_EMAIL` (on/off), `HAPILOT_AGENT_RULES`. The eval runs keep the non-interactive mode; on the tuning set
 the chat mode scored 28/28 (2026-11-19).
+
+Stage 5 brings v3 into the evaluation interface and the integration suite:
+
+| Path | What |
+|---|---|
+| `../src/eval/agent.py` | `python -m src.eval run --engine v3`: one container per task in the measured headless mode, results and traces in the same formats as v2 (`docs/EVALUATION_INTERFACE.md` §9) |
+| `runner/answer.mjs` | the answer check at `submit_and_exit`: the bridge checks `/praca/odpowiedz.json` against the answer format; an invalid answer is refused once with the reason (a refused submit does not end the run) |
+| `../config/agent_profiles.yaml` | agent profiles: `best-local` (Qwen3.6-27B), `gemma` (Gemma 4 31B) |
+| `../scripts/egress_v3.py` | the container's egress test |
+| `../scripts/smoke_v3.py` | the smoke scenarios through the chat engine |
+| `../scripts/integration.py --engine v3` | egress, smoke and the development tasks per agent profile (`docs/testing.md`) |
+
+Integration run on the RTX 4090, 2026-11-19 (image 0.6, same server settings as stage 3):
+
+| Profile | Egress | Smoke | Dev tasks | Time (s: smoke, dev) |
+|---|---|---|---|---|
+| best-local | 11/11 | 8/9 → 9/9 re-scored | 10/10 | 197, 338 |
+| gemma | 11/11 | 7/9 → 8/9 re-scored (file_edit: known) | 10/10 | 214, 652 |
+
+The `python_sum` check required "338350"; both models wrote the right number as "338 350". The check now allows a
+thousands separator, and the saved answers pass it ("re-scored": not yet a fresh run). Gemma saved the corrected
+contract as `.txt` instead of `.docx`; it is listed under `v3/gemma` in the baseline. Every dev answer was valid at
+the first `submit_and_exit`; the correction path was exercised with a scripted model. No egress attempts.
 
 Container: internal Docker network whose only reachable host is a relay to the local model server, non-root,
 read-only root filesystem, no capabilities, read-only documents, memory/CPU/process limits, no credentials.
 Telemetry: the runner creates no telemetry or feature-flag service; the SDK's Langfuse export is off for non-Cline
 providers unless explicitly configured (it is not); the egress log shows what was attempted.
 
-Tests: `node --test agent/runner/test/*.test.mjs` (egress guard), `pytest tests/unit/test_v3_spike.py` (driver),
+Tests: `node --test agent/runner/test/*.test.mjs` (egress guard, answer check; also in CI with the SDK's self-check),
+`tests/unit/test_eval_agent.py` (evaluation runs against a fake runner), `tests/unit/test_v3_scripts.py`, `pytest tests/unit/test_v3_spike.py` (driver),
 `tests/unit/test_text_mirror.py` and `tests/unit/test_agent_workspace.py` (documents), `tests/unit/test_working_days.py`,
 `tests/unit/test_agent_mcp.py` (the MCP server over stdio, with a bridge on a real socket), `tests/unit/test_agent_engine.py`, `tests/unit/test_ui_agent.py` and
 `tests/unit/test_agent_bridge.py` (tools and approvals).
