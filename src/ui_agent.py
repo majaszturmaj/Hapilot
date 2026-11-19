@@ -22,25 +22,14 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from src.agent_engine import NO_ANSWER, QUESTION_TIMEOUT_S, EngineBusy, Turn, TurnResult, chat_prompt, engine
+from src.agent_engine import (NO_ANSWER, QUESTION_TIMEOUT_S, TOOL_LABELS, EngineBusy, Turn, TurnResult, chat_prompt,
+                              engine)
 from src.agent_workspace import ROOT, Workspace
 
 STATE_KEY = "v3_messages"
 SHOW_INPUT, SHOW_OUTPUT, SHOW_NOTE = 1500, 1500, 4000
 IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
-TOOL_LABELS = {
-    "read_files": "📖 Czytam pliki",
-    "search_codebase": "🔎 Szukam w plikach",
-    "run_commands": "🐍 Uruchamiam polecenia",
-    "editor": "✏️ Zapisuję plik",
-    "apply_patch": "✏️ Zmieniam plik",
-    "ask_question": "❓ Pytanie do Ciebie",
-    "semantic_search": "🧠 Szukam w bazie wiedzy",
-    "pdf_document": "📄 Dokument PDF",
-    "working_days": "📅 Dni robocze i terminy",
-    "email_draft": "📧 Szkic e-maila",
-}
 STATUS_NOTES = {
     "timeout": "⚠️ Przekroczony czas na odpowiedź — zadanie przerwane. Spróbuj podzielić je na mniejsze kroki.",
     "error": "⚠️ Nie udało mi się dokończyć zadania",

@@ -163,6 +163,10 @@ custom nodes are private: they take part only in that user's chats. Administrato
 edit the prompts of the built-in nodes, with version history and restore; other users can read those prompts.
 Changes are recorded in `var/admin_audit.jsonl` and apply to the UI only — evaluation runs use the repository's
 extensions and prompts ([src/admin.py](src/admin.py), [src/ui_admin.py](src/ui_admin.py)).
+With `HAPILOT_ENGINE=v3` there is no graph: the first tab (🤖 Agent v3) shows that engine instead — one model loop
+in a container, its tools (Cline's and Hapilot's, the e-mail draft marked as needing approval), the container
+limits — and the prompts tab (📝 Reguły) shows the rules file read-only. Custom nodes and prompt edits would have
+no effect on v3, so the panel refuses them; existing custom nodes are listed as inactive and can be deleted.
 
 The panel's **📄 Szablony** tab manages PDF document templates the same way: users build their own private
 templates — with a block builder (title, sender, recipient, place and date, paragraphs, lists, tables, signature,

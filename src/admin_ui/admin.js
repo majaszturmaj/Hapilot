@@ -752,21 +752,91 @@
     } catch (err) { toast(err.message, "error"); }
   }
 
+  // ------------------------------------------------------------------ engine v3 (no graph)
+  // With HAPILOT_ENGINE=v3 /api/graph describes that engine (src/admin.py v3_data): one model loop in a container,
+  // its tools, limits and rules. The graph canvas and the prompt editor give way to a read-only description.
+  const isV3 = () => Boolean(state.graph && state.graph.engine === "v3");
+
+  function renderV3() {
+    const d = state.graph;
+    $("#canvas").hidden = true;
+    $("#inspector").hidden = true;
+    $("#graph-tab").textContent = "🤖 Agent v3";
+    $("#prompts-tab").textContent = "📝 Reguły";
+    const cline = d.tools.filter((t) => t.group === "cline"), own = d.tools.filter((t) => t.group === "hapilot");
+    const tool = (t) => h("div", { class: `v3-tool ${t.group}` },
+      h("div", { class: "row" }, h("b", {}, t.label), t.approval ? h("span", { class: "chip approval" }, "wymaga Twojej zgody") : null),
+      h("code", {}, t.name), h("p", {}, t.description));
+    const step = (title, ...lines) => h("div", { class: "v3-step" }, h("b", {}, title), lines.map((l) => h("span", {}, l)));
+    const nodes = d.inactive_nodes || [];
+    $("#v3-view").replaceChildren(
+      h("h2", {}, "Agent Hapilota — silnik v3"),
+      h("p", { class: "muted v3-lead" }, "W tej wersji nie ma grafu węzłów (planera, routera, węzłów narzędzi). Każda wiadomość to "
+        + "jedna pętla jednego modelu: model czyta Twoją prośbę i reguły, sam wybiera narzędzie, ogląda jego wynik i powtarza "
+        + "to, aż może odpowiedzieć. Działa w osobnym kontenerze bez dostępu do sieci; jedyne połączenie prowadzi do modelu."),
+      h("div", { class: "v3-flow", role: "img", "aria-label": "Ty → kontener: model i narzędzia w pętli → odpowiedź" },
+        step("👤 Ty", "wiadomość i załączniki"),
+        h("div", { class: "v3-arrow", "aria-hidden": "true" }, "→"),
+        h("div", { class: "v3-box" }, h("div", { class: "v3-box-title" }, "🔒 Kontener tej rozmowy · bez sieci"),
+          h("div", { class: "v3-loop" },
+            step("🤖 Model", d.model, "reguły: " + (d.rules.name || "—")),
+            h("div", { class: "v3-cycle" }, h("div", { "aria-hidden": "true" }, "⇄"), "wywołanie narzędzia", h("br"), "i jego wynik"),
+            h("div", { class: "v3-step tools" }, h("b", {}, "🧰 Narzędzia"), h("span", {}, `${cline.length} Cline'a w kontenerze`),
+              h("span", {}, `${own.length} Hapilota przez most do serwera`)))),
+        h("div", { class: "v3-arrow", "aria-hidden": "true" }, "→"),
+        step("💬 Odpowiedź", "tekst i pliki z /praca/wyniki")),
+      h("h3", {}, "Narzędzia Cline'a (w kontenerze)"), h("div", { class: "v3-tools" }, cline.map(tool)),
+      h("h3", {}, "Narzędzia Hapilota (przez most do serwera)"), h("div", { class: "v3-tools" }, own.map(tool)),
+      h("h3", {}, "Ustawienia"),
+      h("dl", { class: "v3-facts" },
+        h("dt", {}, "Model"), h("dd", {}, h("code", {}, d.model)),
+        h("dt", {}, "Limit czasu"), h("dd", {}, `${Math.round(d.timeout_s / 60)} min na jedną wiadomość`),
+        h("dt", {}, "Kontener"), h("dd", {}, h("code", {}, d.image),
+          ` · pamięć ${d.limits.memory}, CPU ${d.limits.cpus}, procesy do ${d.limits.pids}; jeden kontener na wiadomość`),
+        h("dt", {}, "Sieć"), h("dd", {}, h("code", {}, d.network), " (wewnętrzna) · jedyne połączenie: ", h("code", {}, d.allow)),
+        h("dt", {}, "Reguły"), h("dd", {}, h("code", {}, d.rules.name || "—"), " — zakładka 📝 Reguły (tylko do odczytu)")),
+      h("h3", {}, "Co z tego panelu działa w v3"),
+      h("div", { class: "v3-note" }, "📄 Szablony, 📚 Baza wiedzy, 🎨 Wygląd i 📜 Dziennik zmian działają tak samo jak w v2. "
+        + "Węzły własne i prompty grafu v2 nie mają wpływu na silnik v3, dlatego nie można ich tu dodawać ani zmieniać. "
+        + "Skan podpisu (✍️ Mój podpis) nie jest jeszcze używany przez v3: dokumenty PDF mają puste miejsce na podpis odręczny."),
+      ...(nodes.length ? [h("h3", {}, `Węzły własne — nieaktywne w v3 (${nodes.length})`),
+        h("ul", { class: "v3-nodes" }, nodes.map((n) => h("li", {},
+          h("span", {}, h("b", {}, n.label), " ", h("code", {}, n.id), " ",
+            h("span", { class: "chip" }, n.global ? "🌐 globalny" : "🔒 prywatny"), n.owner ? h("span", { class: "muted" }, " · " + n.owner) : null),
+          n.editable ? h("button", { class: "btn small danger-ghost", onclick: () => deleteNode(n) }, "🗑️ Usuń") : null)))] : []));
+    $("#v3-view").hidden = false;
+    $("#graph-loading").hidden = true;
+  }
+
+  function renderV3Rules() {
+    const d = state.graph;
+    $("#prompts-layout").hidden = true;
+    $("#v3-rules").replaceChildren(
+      h("h2", {}, "Reguły agenta v3"),
+      h("p", { class: "muted v3-lead" }, `Silnik v3 używa systemowego promptu Cline'a i dopisuje do niego te reguły (plik ${d.rules.name || "—"}). `
+        + "Tutaj są tylko do odczytu: zmienia je administrator w repozytorium, a po każdej zmianie trzeba powtórzyć testy "
+        + "strojenia i kontrolne. Prompty węzłów v2 nie mają wpływu na v3."),
+      h("pre", { class: "v3-rules-text" }, d.rules.text || "(brak pliku reguł)"));
+    $("#v3-rules").hidden = false;
+  }
+
   // ------------------------------------------------------------------ tabs, theme, start
   function switchTab(tab) {
     for (const b of document.querySelectorAll(".tab")) b.classList.toggle("active", b.dataset.tab === tab);
     for (const v of document.querySelectorAll(".view")) v.classList.toggle("active", v.dataset.view === tab);
     if (location.hash !== "#" + tab) history.replaceState(null, "", "#" + tab);
-    if (tab === "prompts" && !state.promptsLoaded) loadPrompts().catch((err) => toast(err.message, "error"));
+    if (tab === "prompts" && isV3()) renderV3Rules();
+    else if (tab === "prompts" && !state.promptsLoaded) loadPrompts().catch((err) => toast(err.message, "error"));
     if (tab === "audit") loadAudit();
     if (tab === "templates" && window.HapilotTemplates) window.HapilotTemplates.open();
     if (tab === "branding" && window.HapilotBranding) window.HapilotBranding.open();
     if (tab === "knowledge" && window.HapilotKnowledge) window.HapilotKnowledge.open();
-    if (tab === "graph") setTimeout(() => fit(), 0);
+    if (tab === "graph" && !isV3()) setTimeout(() => fit(), 0);
   }
 
   async function loadGraph(keepView = false) {
     state.graph = await api("/graph");
+    if (isV3()) { renderV3(); return; }
     if (!state.promptsLoaded) await loadPrompts().catch(() => {});
     const view = { ...state.view };
     renderGraph();

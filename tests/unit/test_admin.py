@@ -205,3 +205,67 @@ def test_evaluation_runs_never_see_custom_nodes():
 
     eval_code = "".join(p.read_text(encoding="utf-8") for p in (PROJECT_ROOT / "src" / "eval").glob("*.py"))
     assert "enable_for_ui" not in eval_code and "src.admin" not in eval_code and "agent_for" not in eval_code
+
+
+# --------------------------------------------------------------------------- engine v3
+
+@pytest.fixture
+def v3(panel, monkeypatch, tmp_path):
+    """The panel with HAPILOT_ENGINE=v3 and a small rules file; settings reset before and after."""
+    from src.config import reset_settings
+
+    rules = tmp_path / "reguly.md"
+    rules.write_text("Jesteś Hapilotem. Pisz po polsku.\n", encoding="utf-8")
+    monkeypatch.setenv("HAPILOT_ENGINE", "v3")
+    monkeypatch.setenv("HAPILOT_AGENT_RULES", str(rules))
+    monkeypatch.delenv("HAPILOT_AGENT_EMAIL", raising=False)
+    reset_settings()
+    yield panel
+    monkeypatch.delenv("HAPILOT_ENGINE")
+    reset_settings()
+
+
+def test_v3_panel_describes_the_engine_not_the_graph(v3, monkeypatch):
+    from src import agent_engine
+    from src.config import reset_settings
+
+    data = admin.graph_data("uzytkownik")
+    assert data["engine"] == "v3" and "edges" not in data and "nodes" not in data
+    assert data["user"] == "uzytkownik" and data["admin"] is False
+    groups = {t["name"]: t["group"] for t in data["tools"]}
+    assert [n for n, g in groups.items() if g == "cline"] == list(agent_engine.CLINE_TOOLS)
+    assert [n for n, g in groups.items() if g == "hapilot"] == list(agent_engine.TOOLS)  # e-mail off by default
+    assert all(t["label"] and t["description"] for t in data["tools"])
+    assert data["rules"] == {"name": "reguly.md", "text": "Jesteś Hapilotem. Pisz po polsku.\n"}
+    assert data["limits"] == agent_engine.LIMITS and data["model"] == agent_engine.get_settings().agent_model
+    assert not admin._agents  # no LangGraph graph built for it
+    monkeypatch.setenv("HAPILOT_AGENT_EMAIL", "on")
+    reset_settings()
+    email = [t for t in admin.graph_data("admin")["tools"] if t["name"] == "email_draft"]
+    assert email and email[0]["approval"] and email[0]["group"] == "hapilot"
+
+
+def test_v3_refuses_changes_that_would_do_nothing_and_lists_old_nodes(panel, monkeypatch):
+    from src.config import reset_settings
+
+    admin.create_custom_node(NODE, "uzytkownik")  # made under v2
+    monkeypatch.setenv("HAPILOT_ENGINE", "v3")
+    reset_settings()
+    try:
+        for call in (lambda: admin.create_custom_node({**NODE, "name": "notatnik"}, "uzytkownik"),
+                     lambda: admin.update_custom_node("streszczacz", {**NODE, "label": "Inny"}, "uzytkownik"),
+                     lambda: admin.set_global("streszczacz", True, "admin"),
+                     lambda: admin.save_prompt("writer", "Nowy prompt redaktora, wystarczająco długi.", "admin"),
+                     lambda: admin.restore_prompt("writer", "admin")):
+            with pytest.raises(admin.AdminError, match="Silnik v3"):
+                call()
+        assert admin.graph_data("anna")["inactive_nodes"] == []  # a private node stays private
+        [node] = admin.graph_data("uzytkownik")["inactive_nodes"]
+        assert node == {"id": "streszczacz", "label": NODE["label"], "owner": "uzytkownik", "global": False,
+                        "editable": True}
+        admin.delete_custom_node("streszczacz", "uzytkownik")  # clearing up still works
+        assert admin.graph_data("uzytkownik")["inactive_nodes"] == []
+        assert [e["action"] for e in admin.audit_log("uzytkownik")] == ["node_deleted", "node_created"]
+    finally:
+        monkeypatch.delenv("HAPILOT_ENGINE")
+        reset_settings()

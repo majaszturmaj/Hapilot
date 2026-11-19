@@ -45,6 +45,23 @@ BRIDGE_DIR = "/hapilot"
 SOCKET = "most.sock"
 TOOLS = ("semantic_search", "pdf_document", "working_days")
 NEEDS_APPROVAL = ("email_draft",)
+# Cline's own tools in act mode (the SDK's "act" preset): read_files, search_codebase, run_commands, editor and
+# ask_question; its web fetch and skills are switched off by the runner (run_task.mjs ACT_DISABLED), apply_patch is
+# off in that preset, subagents and teams stay off. Shown in the agent panel (src/admin.py v3_data).
+CLINE_TOOLS = ("read_files", "search_codebase", "run_commands", "editor", "ask_question")
+LIMITS = {"memory": "16g", "cpus": "8", "pids": "1024", "tmp": "2g"}  # per container (one per chat turn)
+TOOL_LABELS = {  # what the chat shows while a tool runs (src/ui_agent.py), also the panel's names
+    "read_files": "📖 Czytam pliki",
+    "search_codebase": "🔎 Szukam w plikach",
+    "run_commands": "🐍 Uruchamiam polecenia",
+    "editor": "✏️ Zapisuję plik",
+    "apply_patch": "✏️ Zmieniam plik",
+    "ask_question": "❓ Pytanie do Ciebie",
+    "semantic_search": "🧠 Szukam w bazie wiedzy",
+    "pdf_document": "📄 Dokument PDF",
+    "working_days": "📅 Dni robocze i terminy",
+    "email_draft": "📧 Szkic e-maila",
+}
 GRACE_S = 60
 STOP_WAIT_S = 20
 QUESTION_TIMEOUT_S = 900
@@ -180,9 +197,9 @@ class AgentEngine:
         s = self.settings
         tools = ",".join(TOOLS + (NEEDS_APPROVAL if s.agent_email else ()))
         return ["docker", "run", "--rm", "--name", name, "--network", s.agent_network,
-                "--user", f"{os.getuid()}:{os.getgid()}", "--memory", "16g", "--cpus", "8", "--pids-limit", "1024",
-                "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--read-only",
-                "--tmpfs", "/tmp:rw,nosuid,size=2g",
+                "--user", f"{os.getuid()}:{os.getgid()}", "--memory", LIMITS["memory"], "--cpus", LIMITS["cpus"],
+                "--pids-limit", LIMITS["pids"], "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--read-only",
+                "--tmpfs", f"/tmp:rw,nosuid,size={LIMITS['tmp']}",
                 "-e", "HOME=/dom", "-e", "DO_NOT_TRACK=1", "-e", "MPLCONFIGDIR=/tmp/mpl",
                 "-e", "HAPILOT_EGRESS_LOG=/run/egress.jsonl", "-e", f"HAPILOT_EGRESS_ALLOW={s.agent_allow}",
                 "-e", f"HAPILOT_TOOLS={tools}", "-e", f"HAPILOT_BRIDGE={BRIDGE_DIR}/{SOCKET}",

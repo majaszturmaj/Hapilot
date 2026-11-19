@@ -18,8 +18,8 @@
       <span class="brand-text"><b id="brand-name">Hapilot</b><span>Panel agenta</span></span>
     </a>
     <nav class="tabs" role="tablist">
-      <button role="tab" data-tab="graph" class="tab active">🕸️ Graf agenta</button>
-      <button role="tab" data-tab="prompts" class="tab">📝 Prompty</button>
+      <button role="tab" data-tab="graph" class="tab active" id="graph-tab">🕸️ Graf agenta</button>
+      <button role="tab" data-tab="prompts" class="tab" id="prompts-tab">📝 Prompty</button>
       <button role="tab" data-tab="templates" class="tab">📄 Szablony</button>
       <button role="tab" data-tab="knowledge" class="tab" id="knowledge-tab" hidden>📚 Baza wiedzy</button>
       <button role="tab" data-tab="branding" class="tab" id="branding-tab" hidden>🎨 Wygląd</button>
@@ -70,6 +70,7 @@
         </div>
         <div class="empty-hint" id="graph-loading">Wczytuję graf agenta…</div>
       </div>
+      <div class="v3-wrap" id="v3-view" hidden></div>
       <aside class="inspector" id="inspector" aria-hidden="true">
         <button class="icon-btn close" id="inspector-close" title="Zamknij">✕</button>
         <div id="inspector-body"></div>
@@ -78,7 +79,8 @@
 
     <!-- ======================= prompts ======================= -->
     <section class="view" data-view="prompts">
-      <div class="prompts-layout">
+      <div class="v3-wrap" id="v3-rules" hidden></div>
+      <div class="prompts-layout" id="prompts-layout">
         <div class="prompt-list-pane">
           <input class="search" id="prompt-search" type="search" placeholder="Szukaj promptu…" autocomplete="off">
           <div class="prompt-list" id="prompt-list"></div>

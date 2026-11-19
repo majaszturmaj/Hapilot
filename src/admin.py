@@ -20,6 +20,12 @@ Storage (under the data directory; the UI only — evaluation runs never load an
 
 Each user's chats run on their own compiled graph (``agent_for``): the built-in extensions plus the custom nodes
 that user may use. It is cached and rebuilt when one of those nodes changes on disk.
+
+Engine v3 (``HAPILOT_ENGINE=v3``, src/agent_engine.py) has no graph: one model loop in a container with Cline's
+tools and Hapilot's. The panel then describes that engine instead (``v3_data``: model, tools, container limits,
+the rules file, read-only), and refuses what would have no effect on it: new or changed custom nodes, sharing
+them, prompt edits. Existing custom nodes are listed as inactive and can still be deleted; templates, the
+knowledge base, the company look and the audit log work as with v2.
 """
 
 from __future__ import annotations
@@ -51,6 +57,20 @@ _lock = threading.RLock()
 _agents: dict[str, tuple] = {}   # user -> (signature, manager, compiled graph)
 
 
+V3_TOOLS = {  # what each v3 tool does, for the panel (names: src/agent_engine.py)
+    "read_files": "Czyta pliki w /praca: dokumenty firmy, ich tekst, załączniki z czatu",
+    "search_codebase": "Szuka plików i dokładnych słów w /praca",
+    "run_commands": "Uruchamia polecenia i Pythona w kontenerze (bez dostępu do sieci)",
+    "editor": "Tworzy i poprawia pliki; pliki dla Ciebie trafiają do /praca/wyniki",
+    "ask_question": "Zadaje Ci pytanie w czacie i czeka na odpowiedź",
+    "semantic_search": "Szuka fragmentów w bazie wiedzy firmy (ten sam indeks co w zakładce 📚 Baza wiedzy)",
+    "pdf_document": "Tworzy dokument PDF z szablonu (zakładka 📄 Szablony, także Twoje własne)",
+    "working_days": "Liczy dni robocze i terminy (polskie święta)",
+    "email_draft": "Przygotowuje szkic e-maila; wysłanie wymaga Twojej zgody w czacie",
+}
+V3_REFUSED = "Silnik v3 nie korzysta z węzłów ani promptów grafu v2 — ta zmiana nie miałaby żadnego skutku."
+
+
 class AdminError(ValueError):
     """A request the panel must refuse; the message is shown to the user (Polish)."""
 
@@ -79,6 +99,16 @@ def admins() -> set[str]:
     value = os.environ.get("HAPILOT_UI_ADMINS")
     names = value if value is not None else "admin"
     return {n.strip() for n in names.split(",") if n.strip()}
+
+
+def v3_engine() -> bool:
+    """True when the chat runs on the v3 engine (no graph, no custom nodes, no v2 prompts)."""
+    return get_settings().engine == "v3"
+
+
+def _refuse_on_v3() -> None:
+    if v3_engine():
+        raise AdminError(V3_REFUSED)
 
 
 def is_admin(identifier: Optional[str]) -> bool:
@@ -180,6 +210,7 @@ def _require_admin(user: str) -> None:
 
 
 def save_prompt(role: str, text: str, user: str) -> dict:
+    _refuse_on_v3()
     with _lock:
         _require_admin(user)
         _known_role(role)
@@ -197,6 +228,7 @@ def save_prompt(role: str, text: str, user: str) -> dict:
 
 
 def restore_prompt(role: str, user: str) -> dict:
+    _refuse_on_v3()
     with _lock:
         _require_admin(user)
         _known_role(role)
@@ -414,6 +446,7 @@ def create_custom_node(data: dict, user: str) -> dict:
     """A new node of ``user`` (private; an administrator may create it global). Nothing is left behind on failure."""
     from src.core.extension_manager import validate_manifest
 
+    _refuse_on_v3()
     with _lock:
         draft = NodeDraft.from_dict(data)
         make_global = bool(data.get("global"))
@@ -442,6 +475,7 @@ def update_custom_node(name: str, data: dict, user: str) -> dict:
     """Change a node's label, descriptions, prompt, model or temperature (the name stays)."""
     from src.core.extension_manager import validate_manifest
 
+    _refuse_on_v3()
     with _lock:
         folder, old = _node(name, user)
         if not can_edit(user, old):
@@ -468,6 +502,7 @@ def update_custom_node(name: str, data: dict, user: str) -> dict:
 
 def set_global(name: str, value: bool, user: str) -> dict:
     """An administrator shares their node with everyone (or takes it back)."""
+    _refuse_on_v3()
     with _lock:
         _require_admin(user)
         folder, data = _node(name, user)
@@ -547,7 +582,10 @@ def graph_nodes(user: str) -> list[dict]:
 
 
 def graph_data(user: str) -> dict:
-    """Nodes and edges of the user's agent, plus the edges of its compiled LangGraph graph (to check against)."""
+    """Nodes and edges of the user's agent, plus the edges of its compiled LangGraph graph (to check against).
+    Under engine v3: the description of that engine instead (``v3_data``)."""
+    if v3_engine():
+        return v3_data(user)
     manager, app = agent_for(user)
     nodes = _nodes(manager, user)
     workers = [n for n in nodes if n["id"] not in ("task_planner", "router")]
@@ -572,3 +610,28 @@ def graph_data(user: str) -> dict:
     compiled = sorted({(e.source, e.target) for e in app.get_graph().edges})
     return {"nodes": nodes, "edges": edges, "compiled_edges": [list(e) for e in compiled],
             "user": user, "admin": is_admin(user), "model_roles": MODEL_ROLES}
+
+
+# --------------------------------------------------------------------------- engine v3
+
+def v3_data(user: str) -> dict:
+    """What the v3 engine is for this user: the model, its tools (Cline's and Hapilot's), the container limits, the
+    rules file (read-only), and the custom nodes the user may use, which do nothing under v3."""
+    from src.agent_engine import CLINE_TOOLS, LIMITS, NEEDS_APPROVAL, TOOL_LABELS, TOOLS
+
+    s = get_settings()
+
+    def tool(name: str, group: str) -> dict:
+        return {"name": name, "label": TOOL_LABELS.get(name, name), "description": V3_TOOLS.get(name, ""),
+                "group": group, "approval": name in NEEDS_APPROVAL}
+
+    hapilot = TOOLS + (NEEDS_APPROVAL if s.agent_email else ())
+    rules_path = Path(s.agent_rules) if s.agent_rules else None
+    rules = rules_path.read_text(encoding="utf-8") if rules_path and rules_path.is_file() else ""
+    inactive = [{"id": name, "label": data.get("name") or name, "owner": _owner(data), "global": _is_global(data),
+                 "editable": can_edit(user, data)}
+                for name, (_folder, data) in _custom_index().items() if can_use(user, data)]
+    return {"engine": "v3", "user": user, "admin": is_admin(user), "model": s.agent_model, "image": s.agent_image,
+            "network": s.agent_network, "allow": s.agent_allow, "timeout_s": s.agent_timeout, "limits": dict(LIMITS),
+            "tools": [tool(n, "cline") for n in CLINE_TOOLS] + [tool(n, "hapilot") for n in hapilot],
+            "rules": {"name": rules_path.name if rules_path else "", "text": rules}, "inactive_nodes": inactive}
