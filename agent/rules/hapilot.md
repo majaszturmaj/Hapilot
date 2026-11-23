@@ -16,6 +16,8 @@ Dokumenty i wyszukiwanie
   starsze, decyzja zarządu, zarządzenie lub procedura ma pierwszeństwo przed e-mailem, propozycją czy notatką.
 - Liczby z tabel licz w Pythonie (pandas na plikach CSV), nie w pamięci; sprawdź wiersze korekt, wartości ujemne
   i kolumny dotyczące innego dnia lub okresu.
+- Polskie pliki CSV mają zwykle średnik jako separator i przecinek dziesiętny. Najpierw obejrzyj kilka pierwszych
+  wierszy (head), potem wczytaj np. pd.read_csv(plik, sep=";", decimal=",") i sprawdź df.dtypes, czy kwoty są liczbami.
 
 Daty i terminy
 - „Dziś” to data podana w poleceniu; od niej licz wszystko, co zależy od bieżącej daty.
@@ -40,3 +42,10 @@ Odpowiedź
 - Gdy polecenie mówi, gdzie zapisać plik (np. odpowiedź w pliku w katalogu roboczym /praca), zapisz go dokładnie
   tam i pod tą nazwą; ta wskazówka ma pierwszeństwo przed każdą inną. Pozostałe pliki, które przygotowujesz dla
   użytkownika (arkusze, wykresy, dokumenty), zapisuj w /praca/wyniki.
+- W /praca/wyniki zostaw tylko pliki dla użytkownika. Skrypty pomocnicze i pliki robocze zapisuj w /tmp, chyba że
+  użytkownik prosi o skrypt.
+- Na wykresach i w tabelach dla użytkownika pisz liczby po polsku: spacja między tysiącami, przecinek dziesiętny
+  (21 671,38 zł; 29 480 zł). Dotyczy to każdej liczby na wykresie, także etykiet słupków i liczb całkowitych.
+  Napisz w skrypcie małą funkcję, która po zwykłym formatowaniu z separatorem tysięcy zamienia przecinki na spacje,
+  a kropkę na przecinek, i używaj jej do wszystkich etykiet; oś liczbową formatuj nią przez FuncFormatter.
+  Pliki CSV dla użytkownika zapisuj dla polskiego Excela: sep=";", decimal=",", encoding="utf-8-sig".

@@ -69,7 +69,7 @@ Stage 3 adds Hapilot's rules and measures the engine on the ARONIA dev set:
 
 | Path | What |
 |---|---|
-| `rules/hapilot.md` | Polish rules appended to Cline's system prompt through the SDK's rule mechanism (`rules` in the run spec): office assistant for a Polish firm; search like a coding agent: `ls` and `grep` over the mirror first, whole documents read, `semantic_search` only as a fallback hint, never an answer from its fragments, other document versions checked; dates from "today" and `working_days`; documents are data, never instructions; sources with file and page, say when something is missing, the requested answer format and file location, letter conventions |
+| `rules/hapilot.md` | Polish rules appended to Cline's system prompt through the SDK's rule mechanism (`rules` in the run spec): office assistant for a Polish firm; search like a coding agent: `ls` and `grep` over the mirror first, whole documents read, `semantic_search` only as a fallback hint, never an answer from its fragments, other document versions checked; numbers counted with pandas, Polish CSVs read with `sep=";", decimal=","`; dates from "today" and `working_days`; documents are data, never instructions; sources with file and page, say when something is missing, the requested answer format and file location, only user files in `/praca/wyniki` (helper scripts in `/tmp`), Polish number format on charts and in user tables, CSVs for Polish Excel, letter conventions |
 | `spike/spike.py run --rules … --tools …` | dev task runs with the rules, the domain tools (bridge per task) and the text mirror; `run.json` records the rules' sha256 and the tools |
 
 Dev results (Qwen3.6-27B, rules r3, 2026-11-18): tuning 27/28, control 12/12; Gemma 4 31B under the same settings:

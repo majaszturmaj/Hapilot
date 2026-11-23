@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.4 — 2026-11-23 (engine v3: data analysis in Polish formats)
+
+- Rules (`agent/rules/hapilot.md`): Polish CSV files are read with `sep=";", decimal=","` after a look at the first
+  rows and the column types; numbers on charts and in tables for the user are written the Polish way (21 671,38 zł);
+  CSV files for the user open in Polish Excel (`;`, decimal comma, UTF-8 with BOM); helper scripts go to `/tmp`, so
+  `/praca/wyniki` holds only the user's files. Found in three data-analysis checks on fictional CSV files: the numbers
+  were right, but each test first read the CSV with the wrong decimal sign, chart labels read "29,480 zł" and a
+  helper script was listed among the results.
+
 ## v0.4.3 — 2026-11-23 (engine v3: PDF form before generating; PDFs open on the right)
 
 - A PDF the v3 agent prepares is a draft, as under v2: after the answer the document form shows the template and the
