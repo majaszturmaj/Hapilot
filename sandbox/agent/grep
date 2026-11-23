@@ -1,0 +1,23 @@
+#!/bin/sh
+# Hapilot v3 agent image: grep with a clear message when the search pattern is missing.
+# Found in the dev-set check of 2026-11-23: some of the agent's grep calls reached the container cut off
+# ("grep -ril " without a pattern). grep's usage text did not tell the model what went wrong, it sent the same call
+# again, and the SDK stopped the task as a loop after five identical calls. Everything else goes to the real grep.
+pattern=0
+skip=0
+for arg in "$@"; do
+  if [ "$skip" = 1 ]; then pattern=1; skip=0; continue; fi
+  case "$arg" in
+    -e|-f|--regexp|--file) skip=1 ;;
+    -e?*|--regexp=*|-f?*|--file=*) pattern=1 ;;
+    --) ;;
+    -*) ;;
+    *) pattern=1 ;;
+  esac
+done
+if [ "$pattern" = 0 ]; then
+  echo "grep: polecenie dotarło bez wzorca (obcięte?). Podaj słowa osobno przez -e, bez cudzysłowów i ukośników," \
+       "np.: grep -ril -e przejazd -e kilometr /praca/tekst" >&2
+  exit 2
+fi
+exec /usr/bin/grep "$@"

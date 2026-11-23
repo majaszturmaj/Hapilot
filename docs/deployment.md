@@ -111,7 +111,7 @@ What v3 needs besides the v2 setup:
 The relay restarts with Docker (`--restart unless-stopped`); after a reboot, start the model server, then
 `agent up` and `ui ensure`, in that order. `agent down` removes the relay and leaves the image and network.
 
-Settings (all optional): `HAPILOT_AGENT_MODEL`, `HAPILOT_AGENT_UPSTREAM`, `HAPILOT_AGENT_IMAGE` (`hapilot-agent:0.9`),
+Settings (all optional): `HAPILOT_AGENT_MODEL`, `HAPILOT_AGENT_UPSTREAM`, `HAPILOT_AGENT_IMAGE` (`hapilot-agent:0.10`),
 `HAPILOT_AGENT_NETWORK` (`hapilot-v3-izolowana`), `HAPILOT_AGENT_RELAY` (`hapilot-v3-przekaznik`),
 `HAPILOT_AGENT_TIMEOUT` (900 s per message), `HAPILOT_AGENT_EMAIL` (`off`; `on` offers e-mail drafts through n8n,
 each one approved in the chat), `HAPILOT_AGENT_RULES` (the rules file, default `agent/rules/hapilot.md`),

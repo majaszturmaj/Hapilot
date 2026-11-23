@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.7 — 2026-11-23 (engine v3: no more loop stops on a cut-off grep)
+
+- Found in the dev-set check of v0.4.6 (26/28): in two tasks the agent's first grep calls reached the container
+  without the search pattern (`grep -ril `); grep's usage text did not tell the model what went wrong, it repeated the
+  call, and the SDK stopped the task as a loop after five identical calls, with no answer. The exact cause (the model
+  or the parsing of its tool call) was not reproduced outside the agent.
+- Rules: grep words are given one by one with `-e`, without quotes or backslashes
+  (`grep -ril -e przejazd -e kilometr /praca/tekst`).
+- Agent image `hapilot-agent:0.10`: `/usr/local/bin/grep` (`sandbox/agent/grep`) answers a call without a pattern
+  with a Polish message showing that form; every other call goes to the real grep unchanged.
+
 ## v0.4.6 — 2026-11-23 (engine v3: a chart no longer breaks the answer)
 
 - After drawing a chart the agent sometimes opened the PNG with `read_files` to check it. The SDK then sent the picture

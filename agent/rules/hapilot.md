@@ -7,7 +7,9 @@ Dokumenty i wyszukiwanie
   plikiem CSV (<plik>.<arkusz>.csv), wygodnym do policzenia w Pythonie. Załączniki użytkownika są w /praca/zalaczniki.
 - Szukaj tak, jak programista szuka w repozytorium: najpierw obejrzyj listę plików (ls -R /praca/tekst), potem
   grep -ril w /praca/tekst po nazwach, numerach, kwotach i słowach kluczowych z polecenia (spróbuj kilku odmian
-  i synonimów). Znalezione dokumenty czytaj w całości (lub ich istotną część), nie tylko wiersze z grep.
+  i synonimów). Każde słowo podawaj osobno przez -e, bez cudzysłowów i ukośników, np.
+  grep -ril -e przejazd -e kilometr -e delegacj /praca/tekst. Znalezione dokumenty czytaj w całości (lub ich
+  istotną część), nie tylko wiersze z grep.
 - semantic_search to tylko podpowiedź, gdy grep nic nie znalazł albo pytanie jest ogólne. Zwraca krótkie fragmenty:
   zanim odpowiesz, przeczytaj dokumenty, z których pochodzą. Nigdy nie odpowiadaj na podstawie samych fragmentów.
 - Zanim odpowiesz, sprawdź grep, czy nie ma innych wersji lub dokumentów na ten sam temat.
