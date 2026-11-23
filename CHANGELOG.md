@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.1 — 2026-11-23 (engine v3: search like a coding agent)
+
+- Rules (`agent/rules/hapilot.md`, r4): the agent searches the documents as a coding agent does: `ls` and `grep`
+  over the text mirror first, whole documents read, `semantic_search` only as a fallback hint when grep finds
+  nothing or the question is vague, never an answer from its fragments, other versions of a document checked.
+  With r3 the agent's first step was `semantic_search` in nearly every dev-set task.
+- Agent image `hapilot-agent:0.7`: the `semantic_search` tool description says the same (the MCP server is in the
+  image). Build it before updating: `docker build -f sandbox/agent.Dockerfile -t hapilot-agent:0.7 .`
+- `agent/spike/spike.py run --tool-list`: choose the MCP tools offered in dev-set runs.
+
 ## v0.4.0 — 2026-11-19 (engine v3, opt-in; UI changes)
 
 ### Engine v3 (`HAPILOT_ENGINE=v3`; v2 stays the default and is unchanged)

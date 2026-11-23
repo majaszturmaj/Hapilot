@@ -3,7 +3,8 @@
 
 Runs inside the agent container, started by the runner (agent/runner/run_task.mjs). Four tools:
 
-  semantic_search  hybrid search of the company documents (the v2 index) → paths, pages, short fragments
+  semantic_search  hybrid search of the company documents (the v2 index) → paths, pages, short fragments;
+                   a fallback hint: the agent greps and reads the text copies first
   pdf_document     the v2 LaTeX templates → a PDF in /praca/wyniki
   working_days     Polish public holidays and working-day arithmetic (computed here, src/working_days.py)
   email_draft      an e-mail draft through n8n; off unless enabled, and only after the user's approval
@@ -43,9 +44,10 @@ MAX_REPLY = 4 * 1024 * 1024
 TOOLS = {
     "semantic_search": {
         "description": (
-            "Search the company documents by meaning and keywords (the same index as Hapilot's chat). Returns the "
-            "best fragments with the document path, page or sheet, and the path of its full text copy under "
-            "/praca/tekst. Use it to find which documents matter, then read those files; quote file name and page."),
+            "A hint for finding documents by meaning (the same index as Hapilot's chat). Search the files first: ls and "
+            "grep over /praca/tekst; use this only when grep finds nothing or the question is vague. Returns short "
+            "fragments with the document path, page or sheet, and the path of its full text copy under /praca/tekst: "
+            "read those files before answering, never answer from the fragments alone; quote file name and page."),
         "inputSchema": {
             "type": "object",
             "properties": {

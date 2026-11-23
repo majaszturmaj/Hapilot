@@ -176,7 +176,7 @@ BRIDGE_IN_CONTAINER = "/hapilot/most.sock"
 TOOLS = "semantic_search,pdf_document,working_days"  # no e-mail drafts in task runs
 
 
-def tools_setup(spec: dict, tdir: Path, run: Path, task_id: str) -> tuple[tuple, object]:
+def tools_setup(spec: dict, tdir: Path, run: Path, task_id: str, tools: str = TOOLS) -> tuple[tuple, object]:
     """Stage 3: Hapilot's MCP tools for a task run. Returns the extra `docker run` arguments and the host bridge
     (src/agent_bridge.py; needs Hapilot's Python environment and HAPILOT_DATA_DIR of the index to search)."""
     import tempfile
@@ -189,7 +189,7 @@ def tools_setup(spec: dict, tdir: Path, run: Path, task_id: str) -> tuple[tuple,
     spec["approval"] = {"ask": ["email_draft"], "bridge": BRIDGE_IN_CONTAINER}
     sock_dir = Path(tempfile.mkdtemp(prefix="hb-"))
     bridge = Bridge(Workspace(task_id, root=tdir.parent), trace_path=run / "bridge.jsonl")
-    extra = ("-e", f"HAPILOT_TOOLS={TOOLS}", "-e", f"HAPILOT_BRIDGE={BRIDGE_IN_CONTAINER}",
+    extra = ("-e", f"HAPILOT_TOOLS={tools}", "-e", f"HAPILOT_BRIDGE={BRIDGE_IN_CONTAINER}",
              "--mount", f"type=bind,source={sock_dir},target=/hapilot,readonly")
 
     @contextlib.contextmanager
@@ -218,7 +218,7 @@ def run_task(a, task: dict, prompt: str, logdir: Path, parse_answer) -> dict:
         spec["rules"] = [{"name": "hapilot", "instructions": Path(a.rules).expanduser().read_text(encoding="utf-8")}]
     extra, bridge_ctx = (), contextlib.nullcontext()
     if getattr(a, "tools", False):
-        extra, bridge_ctx = tools_setup(spec, tdir, run, task["id"])
+        extra, bridge_ctx = tools_setup(spec, tdir, run, task["id"], getattr(a, "tool_list", TOOLS))
     (run / "spec.json").write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
     name = f"hapilot-v3-{task['id'].lower()}"
     korpus = Path(a.korpus).expanduser() / "dokumenty"
@@ -296,7 +296,7 @@ def cmd_run(a) -> None:
             "dzis": a.dzis, "commit": a.commit, "model_server": a.model_server, "start": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "rules": str(Path(a.rules).expanduser()) if a.rules else None,
             "rules_sha256": sha256_file(Path(a.rules).expanduser()) if a.rules else None,
-            "tools": TOOLS if a.tools else None, "mode": a.mode}
+            "tools": a.tool_list if a.tools else None, "mode": a.mode}
     (out / "run.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
     for t in tasks:
         if t["id"] in done:
@@ -382,6 +382,7 @@ def main(argv=None) -> None:
     r.add_argument("--only", help="comma-separated task ids")
     r.add_argument("--rules", help="stage 3: Hapilot's rules file (agent/rules/hapilot.md) for the system prompt")
     r.add_argument("--tools", action="store_true", help="stage 3: Hapilot's MCP tools with the host bridge")
+    r.add_argument("--tool-list", default=TOOLS, help="with --tools: comma-separated MCP tools offered (default %(default)s)")
     r.add_argument("--mode", choices=["yolo", "act"], default="yolo",
                    help="stage 4: act = the UI's chat mode; yolo = the measured headless mode (default)")
     s = sub.add_parser("score")

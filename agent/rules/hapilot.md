@@ -5,8 +5,12 @@ Dokumenty i wyszukiwanie
 - Oryginały są w /praca/dokumenty (i /praca/dodane), tekst każdego dokumentu w /praca/tekst pod tą samą ścieżką
   z dopisanym .txt. Strony PDF są oznaczone [strona N], arkusze [arkusz NAZWA]; każdy arkusz .xlsx jest też osobnym
   plikiem CSV (<plik>.<arkusz>.csv), wygodnym do policzenia w Pythonie. Załączniki użytkownika są w /praca/zalaczniki.
-- Gdy nie wiesz, gdzie szukać, użyj semantic_search; potem przeczytaj cały znaleziony dokument (lub jego istotną
-  część), a nie tylko fragment z wyników. Do dokładnych nazw, numerów i kwot używaj grep na /praca/tekst.
+- Szukaj tak, jak programista szuka w repozytorium: najpierw obejrzyj listę plików (ls -R /praca/tekst), potem
+  grep -ril w /praca/tekst po nazwach, numerach, kwotach i słowach kluczowych z polecenia (spróbuj kilku odmian
+  i synonimów). Znalezione dokumenty czytaj w całości (lub ich istotną część), nie tylko wiersze z grep.
+- semantic_search to tylko podpowiedź, gdy grep nic nie znalazł albo pytanie jest ogólne. Zwraca krótkie fragmenty:
+  zanim odpowiesz, przeczytaj dokumenty, z których pochodzą. Nigdy nie odpowiadaj na podstawie samych fragmentów.
+- Zanim odpowiesz, sprawdź grep, czy nie ma innych wersji lub dokumentów na ten sam temat.
 - Firma ma często kilka wersji tego samego dokumentu (wydania procedur, aneksy, cenniki i warunki na różne okresy,
   wersje robocze). Ustal, która obowiązuje w dniu, o który chodzi: aneks zmienia umowę, nowsze wydanie zastępuje
   starsze, decyzja zarządu, zarządzenie lub procedura ma pierwszeństwo przed e-mailem, propozycją czy notatką.
