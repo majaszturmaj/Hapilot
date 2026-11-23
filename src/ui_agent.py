@@ -5,7 +5,11 @@ What the user sees for one message:
   "kroki zadania"   one step per tool call of the agent (reading files, commands, search, PDF, working days, …),
                     with its input and a short piece of its output; text the agent writes before a tool call becomes a
                     "💬" step too, so only the final answer stays a message
-  the answer        streamed as the model writes it; files the agent left in /praca/wyniki are attached below it
+  the answer        streamed as the model writes it; files the agent left in /praca/wyniki are attached below it: a
+                    PDF by its name in the answer, which opens it in the right-hand panel; other files as downloads
+  📋 the PDF form    a PDF the agent prepares is a draft: after the answer the v2 document form shows its values, and
+                    "Generuj PDF" makes it (src/agent_documents.py, src/app.py) — no model call; "✏️ Edytuj dane i
+                    wygeneruj ponownie" under the PDF opens the form again for a new version
   📎 the side panel  "Źródła i pliki" as in engine v2 (src/ui_panel.py): the documents the answer names, the agent read
                     or its searches returned, shown whole (PDF pages, search fragments highlighted), and the new files
                     (a PDF as pages); it opens after the answer, and the button under the answer opens it again
@@ -130,10 +134,23 @@ def answer_text(result: TurnResult, streamed: str) -> str:
     return text or "(brak odpowiedzi)"
 
 
+def is_pdf(name: str) -> bool:
+    return str(name).lower().endswith(".pdf")
+
+
 def file_list(files: list) -> str:
+    """The note under the answer. A PDF is named: Chainlit turns the name of a side element into a link that opens
+    it in the right-hand panel, so the name must be in the text."""
     if not files:
         return ""
-    return "\n\n⬇️ **" + ("Plik do pobrania poniżej." if len(files) == 1 else "Pliki do pobrania poniżej.") + "**"
+    pdfs = [Path(f["name"]).name for f in files if is_pdf(f["name"])]
+    others = len(files) - len(pdfs)
+    parts = []
+    if pdfs:
+        parts.append("📄 Kliknij nazwę, aby otworzyć dokument po prawej: " + ", ".join(pdfs))
+    if others:
+        parts.append("⬇️ **" + ("Plik do pobrania poniżej." if others == 1 else "Pliki do pobrania poniżej.") + "**")
+    return "\n\n" + "\n\n".join(parts)
 
 
 # --------------------------------------------------------------------------- Chainlit
@@ -277,8 +294,7 @@ class ChainlitTurn:
         cl = self.cl
         elements = []
         for f in result.files:
-            kind = cl.Image if Path(f["name"]).suffix.lower() in IMAGE_TYPES else cl.File
-            elements.append(kind(name=Path(f["name"]).name, path=str(f["path"]), display="inline"))
+            elements.append(file_element(cl, Path(f["name"]).name, f["path"]))
         content = answer_text(result, self.streamed) + file_list(result.files)
         message, self.answer = self.answer, None
         if message is not None:
@@ -289,6 +305,15 @@ class ChainlitTurn:
             message = cl.Message(content=content, elements=elements, author=self.author)
             await message.send()
         return message
+
+
+def file_element(cl, name: str, path):
+    """A result file under a message: a PDF opens in the right-hand panel (its name in the text is the link), a
+    picture is shown, anything else is a download."""
+    if is_pdf(name):
+        return cl.Pdf(name=name, path=str(path), display="side")
+    kind = cl.Image if Path(name).suffix.lower() in IMAGE_TYPES else cl.File
+    return kind(name=name, path=str(path), display="inline")
 
 
 # --------------------------------------------------------------------------- entry points for app.py
@@ -317,6 +342,7 @@ def _summary(result: TurnResult) -> str:
 
 
 PanelHook = Callable[[dict, object], Awaitable[None]]
+DocumentHook = Callable[[str], Awaitable[None]]
 
 
 def panel_turn(chat_id: str, question: str, result: TurnResult) -> Optional[dict]:
@@ -328,8 +354,9 @@ def panel_turn(chat_id: str, question: str, result: TurnResult) -> Optional[dict
 
 
 async def on_message(message, *, chat_id: str, user: Optional[str], author: str, store,
-                     panel: Optional[PanelHook] = None) -> None:
-    """``panel(turn, answer_message)`` keeps and shows the side panel's turn (src/app.py)."""
+                     panel: Optional[PanelHook] = None, document: Optional[DocumentHook] = None) -> None:
+    """``panel(turn, answer_message)`` keeps and shows the side panel's turn; ``document(draft_id)`` shows the form
+    of a PDF draft and makes the PDF (both src/app.py)."""
     import chainlit as cl
 
     eng = engine()
@@ -355,14 +382,15 @@ async def on_message(message, *, chat_id: str, user: Optional[str], author: str,
         await cl.make_async(save_history)(store, chat_id, result.messages)
     await ui.finish_steps(_summary(result))
     sent = await ui.deliver(result)
-    if panel is None:
-        return
-    try:  # the answer matters more than the panel
-        turn = await cl.make_async(panel_turn)(chat_id, message.content or "", result)
-        if turn is not None:
-            await panel(turn, sent)
-    except Exception as exc:
-        print(f"⚠️ [PANEL] {type(exc).__name__}: {exc}")
+    if panel is not None:
+        try:  # the answer matters more than the panel
+            turn = await cl.make_async(panel_turn)(chat_id, message.content or "", result)
+            if turn is not None:
+                await panel(turn, sent)
+        except Exception as exc:
+            print(f"⚠️ [PANEL] {type(exc).__name__}: {exc}")
+    for draft in result.drafts if document is not None else []:
+        await document(draft["id"])
 
 
 def on_stop(chat_id: str) -> None:

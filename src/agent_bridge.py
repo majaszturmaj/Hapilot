@@ -34,7 +34,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import shutil
 import socketserver
 import threading
 import time
@@ -43,7 +42,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Iterator, Optional
 
-from src.agent_workspace import Workspace, _safe_name, document_path, text_path
+from src.agent_workspace import Workspace, document_path, text_path
 from src.config import get_settings
 
 NEEDS_APPROVAL = frozenset({"email_draft"})
@@ -88,7 +87,7 @@ class Bridge:
     def __init__(self, workspace: Workspace, *, user: Optional[str] = None, signature: str = "blank",
                  email: bool = False, approver: Optional[Approver] = None, asker: Optional[Asker] = None,
                  trace_path: Optional[Path] = None, search_targets: Optional[list] = None,
-                 answer_format: Optional[dict] = None, record_chunks: bool = False):
+                 answer_format: Optional[dict] = None, record_chunks: bool = False, pdf_drafts: bool = False):
         self.workspace = workspace
         self.user = user
         self.signature = signature if signature in ("blank", "scan") else "blank"
@@ -99,6 +98,8 @@ class Bridge:
         self.search_targets = search_targets
         self.answer_format = answer_format
         self.record_chunks = record_chunks
+        self.pdf_drafts = pdf_drafts  # chat: "create" saves a draft for the user's form (src/agent_documents.py)
+        self.drafts: list[dict] = []  # with pdf_drafts: {"id", "template_id"} per draft of this run
         self.retrievals: list[dict] = []  # with record_chunks: {"query", "k", "chunks", "ms"} per search
         self.answers: list[dict] = []  # every answer check: {"valid", "error", "json"}
         self._approved: Counter[str] = Counter()
@@ -221,41 +222,34 @@ class Bridge:
         return "\n".join(lines)
 
     def pdf_document(self, params: dict) -> str:
-        from src import agent_tools, run_context
+        from src import agent_documents, agent_tools, run_context
 
         action = params.get("action")
         if action not in ("list", "create"):
             raise BridgeError('pole action: "list" albo "create"')
-        work = self.workspace.dir / "pdf"
-        with run_context.use_context(user=self.user, workspace_root=str(work), session_id="robocze"):
-            if action == "list":
+        if action == "list":
+            work = self.workspace.dir / "pdf"
+            with run_context.use_context(user=self.user, workspace_root=str(work), session_id="robocze"):
                 return agent_tools.tool_list_templates()
-            tid = _text(params.get("template_id"), "template_id", 64)
-            values = params.get("parameters") or {}
-            if not isinstance(values, dict):
-                raise BridgeError("pole parameters: obiekt nazwa → tekst")
-            values = {str(k): ("" if v is None else str(v)) for k, v in values.items()}
-            if sum(len(v) for v in values.values()) > 100_000:
-                raise BridgeError("pole parameters: za długie")
-            folder = run_context.workspace_dir()
-            before = set(folder.glob("*.pdf"))
-            result = agent_tools.tool_generate_pdf_from_template(tid, values, signature=self.signature)
-            made = sorted(set(folder.glob("*.pdf")) - before, key=lambda p: p.stat().st_mtime)
-        if not result.startswith("SUKCES") or not made:
-            return result  # the v2 message: unknown template, missing parameters, LaTeX errors
-        target = self._result_name(params.get("file_name"), tid)
-        self.workspace.results_dir.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(made[-1]), target)
-        return f"SUKCES: zapisano /praca/wyniki/{target.name} ({target.stat().st_size} bajtów)"
-
-    def _result_name(self, wanted, template_id: str) -> Path:
-        name = _safe_name(wanted) if isinstance(wanted, str) and wanted.strip() else f"{template_id}.pdf"
-        stem = name[:-4] if name.lower().endswith(".pdf") else name
-        stem = stem[:100] or template_id
-        candidate, n = self.workspace.results_dir / f"{stem}.pdf", 1
-        while candidate.exists() or candidate.is_symlink():
-            candidate, n = self.workspace.results_dir / f"{stem}_{n}.pdf", n + 1
-        return candidate
+        tid = _text(params.get("template_id"), "template_id", 64)
+        values = params.get("parameters") or {}
+        if not isinstance(values, dict):
+            raise BridgeError("pole parameters: obiekt nazwa → tekst")
+        values = {str(k): ("" if v is None else str(v)) for k, v in values.items()}
+        if sum(len(v) for v in values.values()) > 100_000:
+            raise BridgeError("pole parameters: za długie")
+        if self.pdf_drafts:  # the chat: the user checks the values in the form first, then the PDF is made
+            unknown = agent_documents.unknown_template(self.user, tid)
+            if unknown:
+                return unknown
+            values.pop("_signature", None)  # the signature is the user's choice in the form, never the model's
+            doc_id = agent_documents.save_draft(self.workspace, tid, values, params.get("file_name"))
+            with self._lock:
+                self.drafts.append({"id": doc_id, "template_id": tid})
+            return agent_documents.DRAFT_NOTE.format(template_id=tid)
+        target, result = agent_documents.make_pdf(self.workspace, self.user, tid, values, self.signature,
+                                                  params.get("file_name"), keep=False)
+        return result  # SUKCES with the path, or the v2 message: unknown template, missing parameters, LaTeX errors
 
     def email_draft(self, params: dict) -> str:
         if not self.email:

@@ -249,6 +249,8 @@ async def resume(thread: dict):
         if turn.get("message_id"):
             await _panel_action(turn["id"]).send(for_id=turn["message_id"])
     if _v3():
+        for button in saved.get("v3_edit_buttons") or []:
+            await _v3_document_action(button["id"], button.get("kind", "edit")).send(for_id=button["message_id"])
         return
     for button in state.edit_buttons:
         await _edit_action(button["file"]).send(for_id=button["message_id"])
@@ -446,7 +448,7 @@ def _attach(message: cl.Message) -> str:
 async def main(message: cl.Message):
     if _v3():
         await ui_agent.on_message(message, chat_id=_chat(), user=_user(), author=_author(), store=_STORE,
-                                  panel=_v3_panel)
+                                  panel=_v3_panel, document=_v3_document)
         return
     history = _state().messages
     block = await cl.make_async(_attach)(message)
@@ -591,6 +593,89 @@ async def on_edit_document(action: cl.Action):
         cl.user_session.set("last_generated_file", Path(new_pdf[0]).with_suffix(".tex").name)
     await cl.make_async(_save_chat)()
     await _send_answer(result)
+
+
+# --------------------------------------------------------------------------- engine v3: PDF drafts and new versions
+
+V3_DRAFT_LABEL = "📋 Otwórz formularz dokumentu"
+
+
+def _v3_document_action(doc_id: str, kind: str = "edit") -> cl.Action:
+    """``edit``: a made PDF, opened again for a new version; ``draft``: a form closed without "Generuj PDF"."""
+    return cl.Action(name="v3_document", label=EDIT_LABEL if kind == "edit" else V3_DRAFT_LABEL,
+                     payload={"id": doc_id, "kind": kind})
+
+
+async def _v3_remember_button(doc_id: str, kind: str, message_id: str) -> None:
+    """Buttons are not stored with the messages: keep them for a resumed chat (agent state ``v3_edit_buttons``)."""
+    if _STORE is None:
+        return
+    chat = _chat()
+    saved = await cl.make_async(_STORE.load_state)(chat) or {}
+    buttons = [b for b in saved.get("v3_edit_buttons") or [] if b.get("message_id") != message_id]
+    buttons.append({"id": doc_id, "kind": kind, "message_id": message_id})
+    await cl.make_async(_STORE.save_state)(chat, "v3_edit_buttons", buttons[-50:])
+
+
+async def _v3_document(doc_id: str, kind: str = "draft") -> None:
+    """Engine v3 (src/agent_documents.py): show the document form with a draft's values, or with a made PDF's for a
+    new version; "Generuj PDF" compiles the template — no model call — and sends the PDF, which opens on the right."""
+    from src import agent_documents
+    from src.agent_workspace import Workspace
+    from src.signatures import mode_from_form
+
+    ws = Workspace(_chat())
+    data = await cl.make_async(agent_documents.load)(ws, doc_id)
+    if data is None:
+        await cl.Message(content="⚠️ Nie mogę już otworzyć danych tego dokumentu.", author=_author()).send()
+        return
+    form = await cl.make_async(agent_documents.form)(_user(), data)
+    if kind == "edit":
+        title, intro = (f"Edycja dokumentu {doc_id}", f"✏️ Popraw dane dokumentu **{doc_id}** i kliknij **Generuj PDF**. "
+                        "Powstanie nowa wersja pliku; poprzednia zostaje w rozmowie.")
+    else:
+        title = form_title(form.get("content") or "")
+        intro = "📋 Przygotowałem wstępne dane dokumentu. Sprawdź je i popraw co trzeba, a potem kliknij **Generuj PDF**:"
+    answer = await _ask_document_form(form.get("fields") or [], title, data["template_id"], intro, data["parameters"])
+    if answer is None:
+        if kind == "draft":
+            note = cl.Message(content="Formularz możesz otworzyć ponownie przyciskiem poniżej.", author=_author(),
+                              actions=[_v3_document_action(doc_id, "draft")])
+            await note.send()
+            await _v3_remember_button(doc_id, "draft", note.id)
+        return
+    async with cl.Step(name="📄 Generuję dokument PDF", type="tool") as step:
+        step.input = f"szablon {answer['template_id']}"
+        path, result = await cl.make_async(agent_documents.make_pdf)(
+            ws, _user(), answer["template_id"], answer["parameters"],
+            mode_from_form(answer["parameters"].get("_signature")), data.get("file_name"))
+        step.output = display_text(result)
+    if path is None:
+        failed = cl.Message(content=f"⚠️ Nie udało się utworzyć dokumentu.\n\n{display_text(result)}", author=_author(),
+                            actions=[_v3_document_action(doc_id, kind)])
+        await failed.send()
+        await _v3_remember_button(doc_id, kind, failed.id)
+        return
+    files = [{"name": path.name, "path": path, "bytes": path.stat().st_size, "status": "created"}]
+    message = cl.Message(content=f"✅ Dokument gotowy.{ui_agent.file_list(files)}", author=_author(),
+                         elements=[ui_agent.file_element(cl, path.name, path)],
+                         actions=[_v3_document_action(path.name, "edit")])
+    await message.send()
+    await _v3_remember_button(path.name, "edit", message.id)
+    try:
+        turn = await cl.make_async(ui_panel.build_agent_turn)(_chat(), f"Dokument: {path.name}", "", files, [], [],
+                                                             ws.uploads)
+        if turn is not None:
+            await _v3_panel(turn, message)
+    except Exception as exc:  # the PDF matters more than the panel
+        print(f"⚠️ [PANEL] {type(exc).__name__}: {exc}")
+
+
+@cl.action_callback("v3_document")
+@ui_activity.tracked
+async def on_v3_document(action: cl.Action):
+    payload = action.payload or {}
+    await _v3_document(str(payload.get("id") or ""), "edit" if payload.get("kind") == "edit" else "draft")
 
 
 async def _clear_actions(clicked: cl.Action) -> None:

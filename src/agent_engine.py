@@ -118,6 +118,7 @@ class TurnResult:
     tool_calls: dict = field(default_factory=dict)
     retrievals: list = field(default_factory=list)  # semantic_search calls: {"query", "k", "ms", "chunks"}
     opened: list = field(default_factory=list)  # container paths of documents the agent read (side panel)
+    drafts: list = field(default_factory=list)  # PDF drafts for the user's form: {"id", "template_id"}
 
 
 class TurnUI(Protocol):
@@ -185,8 +186,10 @@ Command = Callable[[Workspace, Path, Path, Path, str], list]
 
 class AgentEngine:
     def __init__(self, settings: Optional[Settings] = None, *, command: Optional[Command] = None, slots: int = 1,
-                 workspace_root: Optional[Path] = None):
+                 workspace_root: Optional[Path] = None, pdf_drafts: bool = False):
+        """``pdf_drafts``: the chat's engine — a PDF is a draft the user checks in a form (src/agent_documents.py)."""
         self.settings = settings or get_settings()
+        self.pdf_drafts = pdf_drafts
         self.queue = GpuQueue(slots)
         self.command = command or self.container_command
         self.workspace_root = workspace_root
@@ -290,7 +293,8 @@ class AgentEngine:
             return from_bridge("ask", question, options) or NO_ANSWER
 
         bridge = Bridge(ws, user=turn.user, signature=turn.signature, email=self.settings.agent_email,
-                        approver=approver, asker=asker, trace_path=run / "bridge.jsonl", record_chunks=True)
+                        approver=approver, asker=asker, trace_path=run / "bridge.jsonl", record_chunks=True,
+                        pdf_drafts=self.pdf_drafts)
         sock_dir = Path(tempfile.mkdtemp(prefix="hb-"))
         name = f"hapilot-v3-czat-{folder_name(turn.chat_id)[:24]}-{n}"
         started = time.monotonic()
@@ -343,7 +347,7 @@ class AgentEngine:
                 except asyncio.CancelledError:
                     await asyncio.shield(self._stop(name, proc))
                     result = self._result(ws, run, before, "aborted", "przerwane przez użytkownika", started, tools,
-                                          bridge.retrievals, opened)
+                                          bridge.retrievals, opened, bridge.drafts)
                     await _safely(ui.aborted(result))
                     raise
                 finally:
@@ -357,7 +361,7 @@ class AgentEngine:
         finally:
             self._running.pop(turn.chat_id, None)
             shutil.rmtree(sock_dir, ignore_errors=True)
-        return self._result(ws, run, before, status, error, started, tools, bridge.retrievals, opened)
+        return self._result(ws, run, before, status, error, started, tools, bridge.retrievals, opened, bridge.drafts)
 
     async def _stop(self, name: str, proc) -> None:
         """SIGTERM (the runner aborts and saves the conversation), then a hard kill of the container."""
@@ -379,7 +383,7 @@ class AgentEngine:
 
     def _result(self, ws: Workspace, run: Path, before: dict, status: Optional[str], error: Optional[str],
                 started: float, tools: dict, retrievals: Optional[list] = None,
-                opened: Optional[list] = None) -> TurnResult:
+                opened: Optional[list] = None, drafts: Optional[list] = None) -> TurnResult:
         data = _read_json(run / "result.json") or {}
         messages = _read_json(run / "messages_out.json")
         if status is None:
@@ -390,7 +394,7 @@ class AgentEngine:
                           messages=messages if isinstance(messages, list) else None,
                           files=_changed(ws, before), error=error, run_dir=run,
                           duration_s=round(time.monotonic() - started, 2), tool_calls=tools,
-                          retrievals=list(retrievals or []), opened=list(opened or []))
+                          retrievals=list(retrievals or []), opened=list(opened or []), drafts=list(drafts or []))
 
 
 # --------------------------------------------------------------------------- helpers
@@ -487,5 +491,5 @@ def engine() -> AgentEngine:
     """The UI process's engine (one GPU queue for all chats)."""
     global _ENGINE
     if _ENGINE is None:
-        _ENGINE = AgentEngine()
+        _ENGINE = AgentEngine(pdf_drafts=True)
     return _ENGINE

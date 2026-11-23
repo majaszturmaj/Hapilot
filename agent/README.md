@@ -53,7 +53,7 @@ Stage 2 adds Hapilot's domain tools, served over MCP:
 | Tool | Runs | Approval |
 |---|---|---|
 | `semantic_search` | host: `knowledge_base.search` (E5 + BM25, RRF) → container paths of each document and its text copy, page or sheet, a 400-character fragment | automatic |
-| `pdf_document` | host: `list` = the template catalogue (built-in, admin edits, the user's own); `create` = v2's parameter checks, signature place and LaTeX in the v2 sandbox; only the PDF goes to `/praca/wyniki` | automatic |
+| `pdf_document` | host: `list` = the template catalogue (built-in, admin edits, the user's own); `create` in the chat = a draft (`src/agent_documents.py`): after the answer the user checks and edits the values in the v2 document form (signature: blank place or their scan) and "Generuj PDF" compiles it without the model; in evaluation runs = compiled at once; v2's parameter checks, signature place and LaTeX in the v2 sandbox; only the PDF goes to `/praca/wyniki` | automatic (the form is the user's check) |
 | `working_days` | container: add / count working days, is a date a working day, Civil Code deadline (arts. 111, 112, 115 KC), holidays of a year | automatic |
 | `email_draft` | host: a draft through n8n's `outlook-draft` webhook (local address only); listed only when enabled for the run (`HAPILOT_TOOLS`) | the user's, every draft |
 
@@ -62,7 +62,8 @@ it asks the bridge, whose approver asks the user (stage 4: buttons) or applies t
 answer the call is refused. The bridge records the exact arguments approved and carries out an e-mail request only
 against such a record, once. A shell command can reach the socket too, but gets only what needs no approval: search
 results (from documents the container can read anyway) and templates. The signature scan is never the model's
-choice: v2's rule stays (the user's form; blank otherwise).
+choice: v2's rule stays (the user's form; blank otherwise). A PDF under the answer opens in the right-hand panel (its name
+in the answer is the link); "✏️ Edytuj dane i wygeneruj ponownie" opens the form again for a new version.
 
 Stage 3 adds Hapilot's rules and measures the engine on the ARONIA dev set:
 

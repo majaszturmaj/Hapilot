@@ -123,8 +123,7 @@ if the v3 model server took the GPU. Chats, accounts, templates and the knowledg
 chat started under one engine continues under the other with its messages on screen, but the model does not see the
 other engine's earlier turns.
 
-Under v3 the chat has no tool for adding a file to the knowledge base (administrators use **📚 Baza wiedzy**), PDFs
-get a blank signature place (the user's scan is not used yet), and custom nodes and v2 prompts have no effect: the
+Under v3 the chat has no tool for adding a file to the knowledge base (administrators use **📚 Baza wiedzy**), and custom nodes and v2 prompts have no effect: the
 agent panel shows the v3 engine and its rules instead of the graph and refuses those edits.
 
 ## Updates

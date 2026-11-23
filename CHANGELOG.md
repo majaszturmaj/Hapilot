@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.3 — 2026-11-23 (engine v3: PDF form before generating; PDFs open on the right)
+
+- A PDF the v3 agent prepares is a draft, as under v2: after the answer the document form shows the template and the
+  values the agent filled in; the user edits them, chooses the signature (blank place or their scan) and clicks
+  **Generuj PDF**, which compiles the template without a model call (`src/agent_documents.py`). A form closed
+  without generating leaves a "📋 Otwórz formularz dokumentu" button. Evaluation runs still compile at once.
+- Under a v3 PDF, **✏️ Edytuj dane i wygeneruj ponownie** opens the form with its values and makes a new version (the
+  old one stays); the buttons come back when a chat is reopened.
+- A PDF under a v3 answer opens in the right-hand panel when its name is clicked, instead of a download dialog.
+- The v3 known limit "blank signature place" is gone: the form offers the user's scan.
+
 ## v0.4.2 — 2026-11-23 (engine v3: side panel back)
 
 - The right-hand panel **📎 Źródła i pliki** works under v3 as under v2: after an answer it opens with the documents
