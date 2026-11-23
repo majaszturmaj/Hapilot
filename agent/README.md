@@ -80,7 +80,7 @@ Stage 4 puts the engine behind the chat UI (`HAPILOT_ENGINE=v3`; v2 stays the de
 | Path | What |
 |---|---|
 | `../src/agent_engine.py` | one container per turn, events as JSON lines on stdout, a GPU queue with one slot (the user sees their place), one turn per chat at a time, questions and approvals routed to the user, stop (SIGTERM, then `docker kill`), timeout, the chat's SDK messages in and out, new files in `/praca/wyniki` |
-| `../src/ui_agent.py` | Chainlit side: "kroki zadania" with one step per tool call, working notes, queue note, question and approval buttons, files with the answer, the side panel "📎 Źródła i pliki" (documents the answer names, the agent read or its searches returned, shown whole; new files, a PDF as pages; built by `ui_panel.build_agent_turn`); history in the chat's state |
+| `../src/ui_agent.py` | Chainlit side: "kroki zadania" with one step per tool call, working notes, queue note, question and approval buttons, files with the answer, the side panel "📎 Źródła i pliki" (documents the answer names, the agent read or its searches returned, shown whole; new files, a PDF as pages; built by `ui_panel.build_agent_turn`); history in the chat's state; a chat opened again while its turn runs (another browser session) gets the turn too: progress indicator and ⏹, steps, the streamed answer, questions answered in either session (`LiveTurn`, `MirrorEmitter`) |
 | `runner/run_task.mjs` | `mode: "act"` for the chat (Cline's interactive mode: the answer is text, `ask_question` on; web fetch and skills off), `events: "stdout"`, `ask.bridge`, `initialMessagesPath` / `messagesPath`, abort on SIGTERM |
 | `spike/engine_run.py` | the engine without the UI against a scripted model (question, approval, history, queue, stop) |
 

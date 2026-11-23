@@ -251,6 +251,7 @@ async def resume(thread: dict):
     if _v3():
         for button in saved.get("v3_edit_buttons") or []:
             await _v3_document_action(button["id"], button.get("kind", "edit")).send(for_id=button["message_id"])
+        await ui_agent.rejoin(_chat(), _author())  # its turn may still be running (the user came back to it)
         return
     for button in state.edit_buttons:
         await _edit_action(button["file"]).send(for_id=button["message_id"])
@@ -420,6 +421,12 @@ async def _panel_turn(answer: str):
 async def on_show_panel(action: cl.Action):
     turns = _state().panel_turns
     wanted = (action.payload or {}).get("turn")
+    if _v3() and _STORE is not None and not any(t["id"] == wanted for t in turns):
+        # the button came from a turn that ran while this session opened the chat again (src/ui_agent.rejoin):
+        # its panel turn is in the saved state, not yet in this session's
+        saved = await cl.make_async(_STORE.load_state)(_chat())
+        _state().panel_turns = turns = saved.get("panel_turns") or []
+        ui_panel.import_tokens(_chat(), saved.get("panel_tokens") or {})
     if any(t["id"] == wanted for t in turns):
         await ui_panel.show(turns, wanted)
     else:

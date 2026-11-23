@@ -16,6 +16,10 @@ What the user sees for one message:
   ❓ / 📧            the agent's questions (buttons for its options, or free text) and approvals (an e-mail draft:
                     the draft's recipients, subject and text, ✅ / ❌), in the user's own chat
   ⏹                 Chainlit's stop button aborts the turn; the conversation so far is kept
+  🔁 opened again    a chat opened again while its turn runs (the user went to another chat and came back: Chainlit
+                    gives the browser a new session, and the turn keeps sending to the old one) shows the turn as
+                    running there too: the progress indicator and ⏹, a "still working" note, the steps, the answer
+                    as it streams, the agent's questions (answered in either session) and the side panel
 
 The model-side history of a chat (the SDK's messages) is saved with the chat (agent_state ``v3_messages``), so a
 resumed chat continues where it was; the chat's workspace (src/agent_workspace.py) keeps its files.
@@ -25,6 +29,7 @@ Chainlit is imported inside the functions: the helpers above the UI code are pla
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
@@ -151,6 +156,249 @@ def file_list(files: list) -> str:
     if others:
         parts.append("⬇️ **" + ("Plik do pobrania poniżej." if others == 1 else "Pliki do pobrania poniżej.") + "**")
     return "\n\n" + "\n\n".join(parts)
+
+
+# --------------------------------------------------------------------------- a chat opened again during its turn
+
+# Found on the pilot (2026-11-23): the user wrote a message, went to another chat and came back at once. The chat came
+# back without the progress indicator and the answer never appeared, though the turn finished and the answer was saved:
+# Chainlit gives the returning browser a new websocket session, and everything the running turn sends goes to the
+# session where the message was written. Now the turn's sending (its Chainlit emitter) is mirrored to every session
+# that opens the chat again while it runs. Plain classes: tested with stand-in emitters (tests/unit/test_v3_rejoin.py).
+
+MIRRORED_CALLS = frozenset({"send_step", "update_step", "delete_step", "send_element", "stream_start", "send_token",
+                            "task_start", "task_end", "update_token_count"})
+MIRRORED_EVENTS = frozenset({"action", "remove_action", "remove_element", "set_sidebar_elements",
+                             "set_sidebar_title"})
+_STREAM_CALLS = frozenset({"stream_start", "send_token"})
+_ASK = "__ask__"
+REJOIN_NOTE = ("⏳ Wciąż pracuję nad odpowiedzią na Twoją poprzednią wiadomość w tej rozmowie. Kolejne kroki "
+               "i odpowiedź pojawią się tutaj.")
+REJOIN_FALLBACK_S = 5.0  # when the resumed chat's history was sent without the hook (another Chainlit version)
+PUMP_IDLE_S = 30.0  # a watcher's sender ends this long after the turn closed, if Chainlit's task_end never came
+
+
+def _token(args: tuple, kwargs: dict) -> tuple:
+    """(id, token, is_sequence, is_input) of an emitter's send_token call, positional or by name."""
+    names = ("id", "token", "is_sequence", "is_input")
+    values = dict(zip(names, args), **kwargs)
+    return values.get("id"), values.get("token") or "", bool(values.get("is_sequence")), bool(values.get("is_input"))
+
+
+class Watcher:
+    """A session that opened the chat during the turn. Until its history is on the screen (``ready``) what the turn
+    sends is kept in ``buffer``; then one sender task (``pump``) passes it on in order."""
+
+    def __init__(self, emitter):
+        self.emitter = emitter
+        self.note: Optional[dict] = None
+        self.ready = False
+        self.buffer: list = []
+        self.queue: Optional[asyncio.Queue] = None
+        self.pump: Optional[asyncio.Task] = None
+
+
+class LiveTurn:
+    """A running v3 turn and the sessions watching it."""
+
+    def __init__(self):
+        self.watchers: list[Watcher] = []
+        self.streaming: dict = {}  # message id → the streamed message so far (for a watcher that comes mid-stream)
+        self.closed = False
+        self.ask: Optional[tuple] = None  # (step_dict, spec) while the agent's question waits for the user
+        self.ask_tasks: list = []  # [(emitter, task)]
+        self._changed: Optional[asyncio.Event] = None
+
+    # what the turn sends
+    def mirror(self, name: str, args: tuple, kwargs: dict) -> None:
+        """Called after the turn's own session got ``name(*args, **kwargs)``: track the stream, pass it on."""
+        if name == "stream_start":
+            step = dict(args[0] if args else kwargs.get("step_dict") or {})
+            step["output"] = step.get("output") or ""
+            if step.get("id"):
+                self.streaming[step["id"]] = step
+        elif name == "send_token":
+            sid, token, sequence, is_input = _token(args, kwargs)
+            if sid in self.streaming and not is_input:
+                step = self.streaming[sid]
+                step["output"] = token if sequence else step["output"] + token
+        elif name in ("send_step", "update_step", "delete_step"):
+            step = args[0] if args else kwargs.get("step_dict") or {}
+            self.streaming.pop(step.get("id"), None)
+        for watcher in list(self.watchers):
+            self._put(watcher, (name, args, kwargs))
+        if name == "task_end" and self.closed:  # Chainlit's last word on the turn: the senders can stop
+            for watcher in list(self.watchers):
+                self._put(watcher, None)
+
+    def _put(self, watcher: Watcher, item) -> None:
+        if watcher.ready:
+            watcher.queue.put_nowait(item)
+        elif item is not None:
+            watcher.buffer.append(item)
+
+    # a session comes
+    def add(self, emitter) -> Watcher:
+        watcher = Watcher(emitter)
+        self.watchers.append(watcher)
+        return watcher
+
+    def start(self, watcher: Watcher, note: Optional[dict] = None) -> None:
+        """The watcher's history is on its screen: show the turn as running, then what came since it opened the chat.
+        Synchronous on purpose: nothing the turn sends can slip between the stream snapshot and the queue."""
+        if watcher.ready or watcher not in self.watchers:
+            return
+        items: list = []
+        if not self.closed:
+            items.append(("task_start", (), {}))
+            if note is not None:
+                watcher.note = note
+                items.append(("send_step", (note,), {}))
+        items += [item for item in watcher.buffer if item[0] not in _STREAM_CALLS]  # the snapshot has the streams
+        items += [("stream_start", (dict(step),), {}) for step in self.streaming.values()]
+        if self.ask is not None:
+            items.append((_ASK, (), {}))
+        watcher.buffer, watcher.ready, watcher.queue = [], True, asyncio.Queue()
+        for item in items:
+            watcher.queue.put_nowait(item)
+        watcher.pump = asyncio.ensure_future(self._pump(watcher))
+
+    async def _pump(self, watcher: Watcher) -> None:
+        while True:
+            try:
+                item = await asyncio.wait_for(watcher.queue.get(), PUMP_IDLE_S)
+            except asyncio.TimeoutError:
+                if self.closed:
+                    return
+                continue
+            if item is None:
+                return
+            name, args, kwargs = item
+            if name == _ASK:
+                self._ask_watcher(watcher)
+                continue
+            try:
+                await getattr(watcher.emitter, name)(*args, **kwargs)
+            except Exception as exc:  # a gone session must not stop the turn
+                print(f"⚠️ [V3 REJOIN] {name}: {type(exc).__name__}: {exc}")
+                if watcher in self.watchers:
+                    self.watchers.remove(watcher)
+                return
+
+    def close(self) -> None:
+        """The turn's answer is out: take the notes away; Chainlit's task_end (mirrored) ends the progress indicator."""
+        self.closed = True
+        for watcher in list(self.watchers):
+            if watcher.note is not None:
+                self._put(watcher, ("delete_step", (watcher.note,), {}))
+
+    # the agent's questions
+    def _ask_watcher(self, watcher: Watcher) -> None:
+        if self.ask is None:
+            return
+        step_dict, spec = self.ask
+        task = asyncio.ensure_future(watcher.emitter.send_ask_user(step_dict, spec, False))
+        self.ask_tasks.append((watcher.emitter, task))
+        if self._changed is not None:
+            self._changed.set()
+
+    async def ask_all(self, inner, step_dict, spec, raise_on_timeout: bool = False):
+        """The question goes to the turn's session and to every watcher, also one that comes while it waits; the first
+        answer wins and the others are taken off their screens."""
+        self.ask, self._changed = (step_dict, spec), asyncio.Event()
+        self.ask_tasks = [(inner, asyncio.ensure_future(inner.send_ask_user(step_dict, spec, False)))]
+        for watcher in list(self.watchers):
+            self._put(watcher, (_ASK, (), {}))
+        answer = None
+        try:
+            while answer is None:
+                for _emitter, task in self.ask_tasks:
+                    if task.done() and not task.cancelled() and task.exception() is None and task.result():
+                        answer = task.result()
+                        break
+                if answer is not None:
+                    break
+                pending = [task for _emitter, task in self.ask_tasks if not task.done()]
+                if not pending:
+                    break
+                self._changed.clear()
+                woken = asyncio.ensure_future(self._changed.wait())
+                await asyncio.wait([*pending, woken], return_when=asyncio.FIRST_COMPLETED)
+                woken.cancel()
+        finally:
+            tasks, self.ask, self.ask_tasks, self._changed = self.ask_tasks, None, [], None
+            for emitter, task in tasks:
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await emitter.clear("clear_ask")
+                    except Exception:
+                        pass
+        if answer is None and raise_on_timeout:
+            raise TimeoutError("no answer")
+        return answer
+
+
+class MirrorEmitter:
+    """The turn's Chainlit emitter: everything the turn's session gets, the watchers get too."""
+
+    def __init__(self, inner, live: LiveTurn):
+        self._inner, self._live = inner, live
+
+    def __getattr__(self, name: str):
+        attr = getattr(self._inner, name)
+        live = self._live
+        if name in MIRRORED_CALLS:
+            async def call(*args, **kwargs):
+                result = await attr(*args, **kwargs)
+                live.mirror(name, args, kwargs)
+                return result
+            return call
+        if name == "emit":
+            async def emit(event, data, *rest):
+                result = await attr(event, data, *rest)
+                if event in MIRRORED_EVENTS:
+                    live.mirror("emit", (event, data), {})
+                return result
+            return emit
+        if name == "send_ask_user":
+            async def ask(step_dict, spec, raise_on_timeout=False):
+                return await live.ask_all(self._inner, step_dict, spec, raise_on_timeout)
+            return ask
+        return attr
+
+
+class ResumeHook:
+    """The returning session's emitter while Chainlit resumes the chat: once the history is sent (resume_thread,
+    after on_chat_resume), the watcher starts — sooner its messages would be wiped by the history."""
+
+    def __init__(self, inner, after: Callable[[], None]):
+        self._inner, self._after = inner, after
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+    async def resume_thread(self, thread):
+        result = await self._inner.resume_thread(thread)
+        self._after()
+        return result
+
+
+class KeepRunning:
+    """An emitter whose task_end is skipped while ``running()`` is true."""
+
+    def __init__(self, inner, running: Callable[[], bool]):
+        self._inner, self._running = inner, running
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+    async def task_end(self):
+        if not self._running():
+            return await self._inner.task_end()
+
+
+_LIVE: dict[str, LiveTurn] = {}
 
 
 # --------------------------------------------------------------------------- Chainlit
@@ -363,7 +611,24 @@ async def on_message(message, *, chat_id: str, user: Optional[str], author: str,
     if eng.busy(chat_id):
         await cl.Message(content="⏳ Jeszcze pracuję nad poprzednim zadaniem w tej rozmowie. Zatrzymaj je (⏹) albo "
                                  "poczekaj na odpowiedź.", author=author).send()
+        _keep_running(chat_id)
         return
+    live = LiveTurn()
+    _LIVE[chat_id] = live
+    _mirror(live)
+    try:
+        await _turn(message, eng, chat_id=chat_id, user=user, author=author, store=store, panel=panel,
+                    document=document)
+    finally:
+        if _LIVE.get(chat_id) is live:
+            del _LIVE[chat_id]
+        live.close()
+
+
+async def _turn(message, eng, *, chat_id: str, user: Optional[str], author: str, store,
+                panel: Optional[PanelHook], document: Optional[DocumentHook]) -> None:
+    import chainlit as cl
+
     ws = Workspace(chat_id)
     uploads = []
     for element in message.elements or []:
@@ -395,6 +660,52 @@ async def on_message(message, *, chat_id: str, user: Optional[str], author: str,
 
 def on_stop(chat_id: str) -> None:
     engine().abort(chat_id)
+
+
+def _mirror(live: LiveTurn) -> None:
+    """Mirror this handler's Chainlit emitter (the turn's sends, until Chainlit's task_end after the handler)."""
+    from chainlit.context import context_var
+
+    try:
+        context = context_var.get()
+    except LookupError:
+        return
+    context.emitter = MirrorEmitter(context.emitter, live)
+
+
+def _keep_running(chat_id: str) -> None:
+    """A message written while the chat's turn runs got the "still working" note: Chainlit's task_end after this
+    handler would hide the progress indicator and ⏹ of a turn that is still running, so it is skipped then."""
+    from chainlit.context import context_var
+
+    try:
+        context = context_var.get()
+    except LookupError:
+        return
+    live = _LIVE.get(chat_id)
+    if live is None or not any(getattr(w.emitter, "session", None) is context.session for w in live.watchers):
+        return  # this session does not get the turn's task_end: let Chainlit end its indicator now
+    context.emitter = KeepRunning(context.emitter, lambda: _LIVE.get(chat_id) is live)
+
+
+async def rejoin(chat_id: str, author: str) -> bool:
+    """on_chat_resume of a chat whose turn is still running (the user came back from another chat): this session
+    gets the turn too — the progress indicator and ⏹, a note, the steps, the streamed answer, the agent's questions."""
+    live = _LIVE.get(chat_id)
+    if live is None or live.closed:
+        return False
+    import chainlit as cl
+    from chainlit.context import context_var
+    from chainlit.utils import utc_now
+
+    context = context_var.get()
+    watcher = live.add(context.emitter)
+    note = cl.Message(content=REJOIN_NOTE, author=author)
+    note.created_at = utc_now()
+    note_dict = note.to_dict()
+    context.emitter = ResumeHook(context.emitter, lambda: live.start(watcher, note_dict))
+    asyncio.get_running_loop().call_later(REJOIN_FALLBACK_S, live.start, watcher, note_dict)
+    return True
 
 
 WELCOME = (

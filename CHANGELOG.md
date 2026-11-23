@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.5 — 2026-11-23 (engine v3: back to a chat that is still working)
+
+- A v3 chat opened again while its answer is being prepared (the user went to another chat and came back) shows the
+  turn as running: the progress indicator and ⏹, a "⏳ Wciąż pracuję…" note, the next steps, the answer as it streams,
+  the files and the side panel. Before, Chainlit's new session for the returning browser got nothing of the running
+  turn: no indicator, and the answer only after reopening the chat once more.
+- The agent's question (buttons or text) and the PDF form go to every session of the chat; the first answer counts.
+- A message written in such a chat while the turn runs gets the "still working" note and keeps the indicator on.
+- `📎 Źródła i pliki` under such an answer reads the panel from the saved chat state.
+
 ## v0.4.4 — 2026-11-23 (engine v3: data analysis in Polish formats)
 
 - Rules (`agent/rules/hapilot.md`): Polish CSV files are read with `sep=";", decimal=","` after a look at the first
