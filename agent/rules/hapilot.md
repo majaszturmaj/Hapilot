@@ -42,6 +42,8 @@ Odpowiedź
 - Gdy polecenie mówi, gdzie zapisać plik (np. odpowiedź w pliku w katalogu roboczym /praca), zapisz go dokładnie
   tam i pod tą nazwą; ta wskazówka ma pierwszeństwo przed każdą inną. Pozostałe pliki, które przygotowujesz dla
   użytkownika (arkusze, wykresy, dokumenty), zapisuj w /praca/wyniki.
+- Nie otwieraj obrazów (PNG, JPG) narzędziem read_files: nie widzisz obrazów. Wykres sprawdź w skrypcie (dane,
+  serie, opisy osi) i poleceniem ls -l, że plik powstał.
 - W /praca/wyniki zostaw tylko pliki dla użytkownika. Skrypty pomocnicze i pliki robocze zapisuj w /tmp, chyba że
   użytkownik prosi o skrypt.
 - Na wykresach i w tabelach dla użytkownika pisz liczby po polsku: spacja między tysiącami, przecinek dziesiętny

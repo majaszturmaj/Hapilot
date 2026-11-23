@@ -192,7 +192,7 @@ class Settings:
     agent_workspace_root: Optional[Path] = None  # v3 agent: per-conversation folders (src/agent_workspace.py)
     # v3 engine in the UI (src/agent_engine.py); "v2" (default) keeps the LangGraph agent
     engine: str = "v2"
-    agent_image: str = "hapilot-agent:0.7"
+    agent_image: str = "hapilot-agent:0.9"
     agent_network: str = "hapilot-v3-izolowana"
     agent_model_url: str = "http://model:8000/v1"  # as the container sees it: the relay on its internal network
     agent_model: str = "qwen3.6-27b-q4km"
@@ -329,7 +329,7 @@ def load_settings(env: Optional[Mapping[str, str]] = None) -> Settings:
         kb_trash_days=int(number("HAPILOT_KB_TRASH_DAYS", "30", 1, 3650)),
         agent_workspace_root=path("HAPILOT_AGENT_WORKSPACE_DIR", data_dir / "agent_workspace"),
         engine=engine,
-        agent_image=get("HAPILOT_AGENT_IMAGE", "hapilot-agent:0.7").strip(),
+        agent_image=get("HAPILOT_AGENT_IMAGE", "hapilot-agent:0.9").strip(),
         agent_network=get("HAPILOT_AGENT_NETWORK", "hapilot-v3-izolowana").strip(),
         agent_model_url=agent_url,
         agent_model=get("HAPILOT_AGENT_MODEL", "qwen3.6-27b-q4km").strip(),

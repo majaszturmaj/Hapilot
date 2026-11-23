@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.6 — 2026-11-23 (engine v3: a chart no longer breaks the answer)
+
+- After drawing a chart the agent sometimes opened the PNG with `read_files` to check it. The SDK then sent the picture
+  to the model, the local model server (no image input) refused it four times and the turn ended with "image input is
+  not supported" instead of an answer. The runner now replaces image parts of requests to the model with a short note that the
+  model cannot see images (`agent/runner/no_images.mjs`, a fetch wrapper; spec field `modelImages` turns it off), so
+  the agent goes on; the rules ask it to check charts in its script and with `ls -l`. (The SDK's own switch,
+  `toolContextMetadata.modelSupportsImages`, does not reach its tools from the session config in SDK 0.2.0.) Agent image
+  `hapilot-agent:0.9`.
+
 ## v0.4.5 — 2026-11-23 (engine v3: back to a chat that is still working)
 
 - A v3 chat opened again while its answer is being prepared (the user went to another chat and came back) shows the

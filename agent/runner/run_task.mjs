@@ -24,7 +24,11 @@
  *             mcp?: {command, args, env, timeoutSeconds}, approval?: {ask: [tool names], bridge: socket path},
  *             rules?: [{name, instructions}],
  *             mode?: "yolo" | "act", events?: "stdout", ask?: {bridge: socket path},
- *             initialMessagesPath?, messagesPath?, answer?: {bridge: socket path, file, corrections}}
+ *             initialMessagesPath?, messagesPath?, answer?: {bridge: socket path, file, corrections},
+ *             modelImages?: true when the model takes image input (default: it does not)}
+ * Without `modelImages` image parts of model requests become a short text note (no_images.mjs): the SDK's
+ * read_files returns a PNG/JPG as an image, and a server without image input (llama-server without mmproj) failed
+ * the turn. Each replacement is traced (`images_removed`).
  * Stage 3: `rules` go into the system prompt through the SDK's rule formatter, as the CLI adds a .clinerules file
  * (a "# Rules" section, one "## <name>" each); Cline's own prompt is otherwise unchanged. Without rules: as before.
  * Stage 4 (chat in the UI): `mode: "act"` is Cline's interactive mode (the CLI without -y): its own act prompt, the
@@ -42,6 +46,7 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import net from "node:net";
 import { basename } from "node:path";
 import { answerText, verdictAction } from "./answer.mjs";
+import { installNoImages } from "./no_images.mjs";
 import {
 	buildWorkspaceMetadata,
 	ClineCore,
@@ -91,6 +96,8 @@ function trace(entry) {
 	if (!spec.tracePath) return;
 	appendFileSync(spec.tracePath, `${JSON.stringify({ t: Date.now() - startedAt, ...entry })}\n`);
 }
+
+if (spec.modelImages !== true) installNoImages((count) => trace({ type: "images_removed", count }));
 
 function cut(value, limit = STREAM_TEXT) {
 	const text = typeof value === "string" ? value : value === undefined ? "" : JSON.stringify(value);
