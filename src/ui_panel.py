@@ -150,21 +150,109 @@ def build_turn(session: str, pending: PendingTurn, answer: str) -> Optional[dict
     def page_url(path: Path, n: int) -> str:
         return _url(_register(session, path, n))
 
-    files = []
-    for change in changed:
-        path = workspace / change.name
-        item = {"name": change.name, "status": change.status, "size": change.size,
-                "url": _url(_register(session, path)), "preview": change.preview, "diff": change.diff}
-        if path.suffix.lower() == ".pdf":
-            try:
-                item["pages"] = [{"n": n, "url": page_url(path, n), "ratio": round(h / w, 4)}
-                                 for n, (w, h) in enumerate(source_view.pdf_page_sizes(path), 1)]
-            except Exception as exc:
-                print(f"⚠️ [PANEL] {change.name}: {exc}")
-        files.append(item)
-    question = " ".join(pending.question.split())
-    return {"question": question[:120] + ("…" if len(question) > 120 else ""),
-            "sources": [d.describe(page_url) for d in docs], "files": files}
+    files = [_file_item(session, workspace / c.name, c.name, c.status, c.size, c.preview, c.diff) for c in changed]
+    return {"question": _question(pending.question), "sources": [d.describe(page_url) for d in docs], "files": files}
+
+
+def _question(text: str) -> str:
+    question = " ".join((text or "").split())
+    return question[:120] + ("…" if len(question) > 120 else "")
+
+
+def _file_item(session: str, path: Path, name: str, status: str, size: int, preview: Optional[str] = None,
+               diff: Optional[str] = None) -> dict:
+    """A file of the panel's "Pliki" list; a PDF gets its pages as images."""
+    item = {"name": name, "status": status, "size": size, "url": _url(_register(session, path)), "preview": preview,
+            "diff": diff}
+    if path.suffix.lower() == ".pdf":
+        try:
+            item["pages"] = [{"n": n, "url": _url(_register(session, path, n)), "ratio": round(h / w, 4)}
+                             for n, (w, h) in enumerate(source_view.pdf_page_sizes(path), 1)]
+        except Exception as exc:
+            print(f"⚠️ [PANEL] {name}: {exc}")
+    return item
+
+
+# --------------------------------------------------------------------------- engine v3
+
+MAX_AGENT_SOURCES = 15  # documents shown for one v3 answer
+
+
+def agent_source(container_path: str, mirror: dict, uploads: Optional[Path]) -> Optional[str]:
+    """The index source (or ``załącznik:<name>``) behind a path the v3 agent opened in its container: an original
+    in /praca/dokumenty or /praca/dodane, a text copy in /praca/tekst (``mirror``: mirror file name → source), or an
+    upload or its text copy in /praca/zalaczniki. None for anything else (results, folders, unknown files)."""
+    from src.agent_workspace import ADDED, ADDED_PREFIX, DOCS, ROOT, TEXT, UPLOADS
+
+    def rest(folder: str) -> Optional[str]:
+        prefix = f"{ROOT}/{folder}/"
+        return container_path[len(prefix):] if container_path.startswith(prefix) else None
+
+    if (name := rest(DOCS)) is not None:
+        return name or None
+    if (name := rest(ADDED)) is not None:
+        return f"{ADDED_PREFIX}/{name}" if name else None
+    if (name := rest(TEXT)) is not None:
+        return mirror.get(name)
+    if (name := rest(UPLOADS)) is not None and uploads is not None and "/" not in name:
+        candidate = name  # a text copy is <upload>.txt or <upload>.<sheet>.csv: strip suffixes to the upload
+        while Path(candidate).suffix:
+            candidate = candidate[: -len(Path(candidate).suffix)]
+            if candidate and (uploads / candidate).is_file():
+                return source_view.ATTACHMENT_PREFIX + candidate
+        return source_view.ATTACHMENT_PREFIX + name if (uploads / name).is_file() else None
+    return None
+
+
+def agent_sources(retrievals: list, opened: list, answer: str, uploads: Optional[Path]) -> list:
+    """Documents behind a v3 answer: those named in the answer, those the agent read, those its searches returned
+    (with the fragments highlighted); named ones first, then read ones."""
+    from src import text_mirror
+
+    s = get_settings()
+    manifest = text_mirror.read_manifest(s.chroma_path, s.collection).get("files") or {}
+    mirror = {out: source for source, entry in manifest.items() for out in entry.get("outputs") or []}
+    chunks, seen = [], set()
+    for retrieval in retrievals or []:
+        for chunk in retrieval.get("chunks") or []:
+            key = chunk.get("chunk_id") or (chunk.get("file"), chunk.get("page"), chunk.get("text"))
+            if key not in seen:
+                seen.add(key)
+                chunks.append(dict(chunk, collection=s.collection))
+    groups = source_view.group_chunks(chunks)
+    read = list(dict.fromkeys(filter(None, (agent_source(p, mirror, uploads) for p in opened or []))))
+    named = [source for source in manifest if source_view.is_cited(source, answer)]
+    docs = []
+    for source in dict.fromkeys(named + read + list(groups)):
+        path = source_view.resolve_source(source, Path(s.docs_dir), Path(s.added_docs_dir), uploads)
+        if path is None and source not in groups:
+            continue  # a path the agent tried that is no document: nothing to show
+        docs.append(source_view.SourceDoc(source, path, groups.get(source, []), source_view.is_cited(source, answer),
+                                          read_by_agent=source in read))
+    docs.sort(key=lambda d: (not d.cited, not d.read_by_agent))  # stable
+    return docs[:MAX_AGENT_SOURCES]
+
+
+def build_agent_turn(session: str, question: str, answer: str, files: list, retrievals: list, opened: list,
+                     uploads: Optional[Path]) -> Optional[dict]:
+    """Panel data for a v3 answer (src/ui_agent.py), or None when it has no documents and no files.
+    ``files``: the engine's new or changed files in /praca/wyniki (``{"name", "path", "bytes", "status"}``)."""
+    docs = agent_sources(retrievals, opened, answer, uploads)
+    pdf_stems = {Path(f["name"]).with_suffix("").as_posix() for f in files if f["name"].lower().endswith(".pdf")}
+    items = []
+    for f in files:
+        name, path = f["name"], Path(f["path"])
+        if source_view._hidden(Path(name).name) or (name.lower().endswith(".tex")
+                                                     and Path(name).with_suffix("").as_posix() in pdf_stems):
+            continue
+        preview = None
+        if path.suffix.lower() in source_view.TEXT_PREVIEW and f.get("bytes", 0) <= source_view.PREVIEW_LIMIT:
+            preview = path.read_bytes().decode("utf-8", errors="replace")
+        items.append(_file_item(session, path, name, f.get("status") or "created", f.get("bytes", 0), preview))
+    if not docs and not items:
+        return None
+    return {"question": _question(question), "sources": [d.describe(lambda p, n: _url(_register(session, p, n)))
+                                                          for d in docs], "files": items}
 
 
 IMAGE_TYPES = (".png", ".jpg", ".jpeg", ".gif", ".webp")

@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.2 — 2026-11-23 (engine v3: side panel back)
+
+- The right-hand panel **📎 Źródła i pliki** works under v3 as under v2: after an answer it opens with the documents
+  the answer names, the agent read (marked "📖 przeczytany przez agenta") or its `semantic_search` returned (fragments
+  highlighted), each shown whole (PDF pages, text, tables), and the files the agent made in `/praca/wyniki` (a PDF as
+  pages, text with a preview). The button under the answer opens it again, also in a resumed chat.
+- Engine: `TurnResult.retrievals` (search fragments, recorded by the bridge), `TurnResult.opened` (document paths the
+  agent read, from `read_files` and commands), and `status` created | modified per result file.
+
 ## v0.4.1 — 2026-11-23 (engine v3: search like a coding agent)
 
 - Rules (`agent/rules/hapilot.md`, r4): the agent searches the documents as a coding agent does: `ls` and `grep`

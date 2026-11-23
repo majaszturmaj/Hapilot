@@ -317,11 +317,12 @@ class SourceDoc:
     chunks: list[dict]
     cited: bool
     read_by_code: bool = False
+    read_by_agent: bool = False  # engine v3: the agent opened the document (or its text copy)
 
     def describe(self, page_url) -> dict:
         """JSON for the panel. ``page_url(path, page_no)`` returns the image URL of a PDF page."""
         base = {"source": self.source, "name": Path(self.source.replace(ATTACHMENT_PREFIX, "")).name,
-                "cited": self.cited, "read_by_code": self.read_by_code,
+                "cited": self.cited, "read_by_code": self.read_by_code, "read_by_agent": self.read_by_agent,
                 "chunks": [{"no": i, "page": c.get("page"), "sheet": c.get("sheet"), "score": c.get("score"),
                             "rank": c.get("rank"), "text": chunk_body(c.get("text", ""))} for i, c in enumerate(self.chunks)]}
         if self.path is None:

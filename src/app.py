@@ -243,12 +243,13 @@ async def resume(thread: dict):
     ui_panel.import_tokens(_chat(), saved.get("panel_tokens") or {})
     if cl.user_session.get("profile") not in settings.profiles:
         cl.user_session.set("profile", settings.default_profile)
-    if _v3():  # the agent's history is read per message (src/ui_agent.py)
-        return
-    await _send_settings()
+    if not _v3():  # v3 has no per-chat profiles; its history is read per message (src/ui_agent.py)
+        await _send_settings()
     for turn in state.panel_turns:  # buttons are not stored with the messages; put them back
         if turn.get("message_id"):
             await _panel_action(turn["id"]).send(for_id=turn["message_id"])
+    if _v3():
+        return
     for button in state.edit_buttons:
         await _edit_action(button["file"]).send(for_id=button["message_id"])
 
@@ -375,6 +376,20 @@ async def _send_answer(text: str) -> None:
         await ui_panel.show(_state().panel_turns, panel["id"])
 
 
+async def _v3_panel(turn: dict, answer: cl.Message) -> None:
+    """Engine v3: keep the answer's panel turn, put the button under the answer and open the panel. Only the panel's
+    part of the chat state is saved (the v3 history is kept by src/ui_agent.py)."""
+    state = _state()
+    state.panel_turns = ui_panel.add_turn(state.panel_turns, turn)
+    turn["message_id"] = answer.id
+    await _panel_action(turn["id"]).send(for_id=answer.id)
+    if _STORE is not None:
+        chat = _chat()
+        await cl.make_async(_STORE.save_state)(chat, "panel_turns", state.panel_turns)
+        await cl.make_async(_STORE.save_state)(chat, "panel_tokens", ui_panel.export_tokens(chat))
+    await ui_panel.show(state.panel_turns, turn["id"])
+
+
 def _panel_action(turn_id: int) -> cl.Action:
     return cl.Action(name="show_panel", label="📎 Źródła i pliki", payload={"turn": turn_id})
 
@@ -430,7 +445,8 @@ def _attach(message: cl.Message) -> str:
 @ui_activity.tracked
 async def main(message: cl.Message):
     if _v3():
-        await ui_agent.on_message(message, chat_id=_chat(), user=_user(), author=_author(), store=_STORE)
+        await ui_agent.on_message(message, chat_id=_chat(), user=_user(), author=_author(), store=_STORE,
+                                  panel=_v3_panel)
         return
     history = _state().messages
     block = await cl.make_async(_attach)(message)

@@ -6,6 +6,9 @@ What the user sees for one message:
                     with its input and a short piece of its output; text the agent writes before a tool call becomes a
                     "💬" step too, so only the final answer stays a message
   the answer        streamed as the model writes it; files the agent left in /praca/wyniki are attached below it
+  📎 the side panel  "Źródła i pliki" as in engine v2 (src/ui_panel.py): the documents the answer names, the agent read
+                    or its searches returned, shown whole (PDF pages, search fragments highlighted), and the new files
+                    (a PDF as pages); it opens after the answer, and the button under the answer opens it again
   ❓ / 📧            the agent's questions (buttons for its options, or free text) and approvals (an e-mail draft:
                     the draft's recipients, subject and text, ✅ / ❌), in the user's own chat
   ⏹                 Chainlit's stop button aborts the turn; the conversation so far is kept
@@ -20,7 +23,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Awaitable, Callable, Optional
 
 from src.agent_engine import (NO_ANSWER, QUESTION_TIMEOUT_S, TOOL_LABELS, EngineBusy, Turn, TurnResult, chat_prompt,
                               engine)
@@ -269,20 +272,23 @@ class ChainlitTurn:
         await self.finish_steps("⏹ przerwano")
         await self.deliver(result)
 
-    async def deliver(self, result: TurnResult) -> None:
+    async def deliver(self, result: TurnResult):
+        """Send the answer with its files; returns the message (the side panel's button goes under it)."""
         cl = self.cl
         elements = []
         for f in result.files:
             kind = cl.Image if Path(f["name"]).suffix.lower() in IMAGE_TYPES else cl.File
             elements.append(kind(name=Path(f["name"]).name, path=str(f["path"]), display="inline"))
         content = answer_text(result, self.streamed) + file_list(result.files)
-        if self.answer is not None:
-            self.answer.content = content
-            self.answer.elements = elements
-            await self.answer.send()  # ends the stream and saves the message
+        message, self.answer = self.answer, None
+        if message is not None:
+            message.content = content
+            message.elements = elements
+            await message.send()  # ends the stream and saves the message
         else:
-            await cl.Message(content=content, elements=elements, author=self.author).send()
-        self.answer = None
+            message = cl.Message(content=content, elements=elements, author=self.author)
+            await message.send()
+        return message
 
 
 # --------------------------------------------------------------------------- entry points for app.py
@@ -310,7 +316,20 @@ def _summary(result: TurnResult) -> str:
     return f"**Kroków:** {calls} · **czas:** {result.duration_s:.0f} s" + (f"\n\n{names}" if names else "")
 
 
-async def on_message(message, *, chat_id: str, user: Optional[str], author: str, store) -> None:
+PanelHook = Callable[[dict, object], Awaitable[None]]
+
+
+def panel_turn(chat_id: str, question: str, result: TurnResult) -> Optional[dict]:
+    """The side panel's data for a finished v3 turn (None: no documents, no files)."""
+    from src import ui_panel
+
+    return ui_panel.build_agent_turn(chat_id, question, answer_text(result, ""), result.files, result.retrievals,
+                                     result.opened, Workspace(chat_id).uploads)
+
+
+async def on_message(message, *, chat_id: str, user: Optional[str], author: str, store,
+                     panel: Optional[PanelHook] = None) -> None:
+    """``panel(turn, answer_message)`` keeps and shows the side panel's turn (src/app.py)."""
     import chainlit as cl
 
     eng = engine()
@@ -335,7 +354,15 @@ async def on_message(message, *, chat_id: str, user: Optional[str], author: str,
     if result.messages is not None:
         await cl.make_async(save_history)(store, chat_id, result.messages)
     await ui.finish_steps(_summary(result))
-    await ui.deliver(result)
+    sent = await ui.deliver(result)
+    if panel is None:
+        return
+    try:  # the answer matters more than the panel
+        turn = await cl.make_async(panel_turn)(chat_id, message.content or "", result)
+        if turn is not None:
+            await panel(turn, sent)
+    except Exception as exc:
+        print(f"⚠️ [PANEL] {type(exc).__name__}: {exc}")
 
 
 def on_stop(chat_id: str) -> None:

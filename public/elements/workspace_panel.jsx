@@ -212,6 +212,7 @@ function SourceList({ sources, onOpen }) {
             {doc.cited ? <Badge>cytowany w odpowiedzi</Badge> : <Badge variant="secondary">użyty, nie wymieniony</Badge>}
             {doc.chunks.length > 0 && <Badge variant="outline">fragmenty: {doc.chunks.length}</Badge>}
             {doc.read_by_code && <Badge variant="outline">odczytany przez kod</Badge>}
+            {doc.read_by_agent && <Badge variant="outline">📖 przeczytany przez agenta</Badge>}
           </div>
         </button>
       ))}

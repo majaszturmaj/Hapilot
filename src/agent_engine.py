@@ -26,6 +26,7 @@ import contextlib
 import itertools
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -37,7 +38,7 @@ from pathlib import Path
 from typing import Awaitable, Callable, Optional, Protocol
 
 from src.agent_bridge import Bridge
-from src.agent_workspace import ROOT, UPLOADS, Workspace, folder_name
+from src.agent_workspace import ADDED, DOCS, ROOT, TEXT, UPLOADS, Workspace, folder_name
 from src.config import Settings, get_settings
 
 RUNNER = "/opt/hapilot-agent"
@@ -110,11 +111,13 @@ class TurnResult:
     status: str  # ok | error | timeout | aborted
     text: str
     messages: Optional[list]  # the conversation after the turn; None: the runner wrote none (keep the old one)
-    files: list  # [{"name", "path", "bytes"}] new or changed in /praca/wyniki
+    files: list  # [{"name", "path", "bytes", "status"}] new or changed in /praca/wyniki (status created | modified)
     error: Optional[str]
     run_dir: Path
     duration_s: float
     tool_calls: dict = field(default_factory=dict)
+    retrievals: list = field(default_factory=list)  # semantic_search calls: {"query", "k", "ms", "chunks"}
+    opened: list = field(default_factory=list)  # container paths of documents the agent read (side panel)
 
 
 class TurnUI(Protocol):
@@ -287,11 +290,12 @@ class AgentEngine:
             return from_bridge("ask", question, options) or NO_ANSWER
 
         bridge = Bridge(ws, user=turn.user, signature=turn.signature, email=self.settings.agent_email,
-                        approver=approver, asker=asker, trace_path=run / "bridge.jsonl")
+                        approver=approver, asker=asker, trace_path=run / "bridge.jsonl", record_chunks=True)
         sock_dir = Path(tempfile.mkdtemp(prefix="hb-"))
         name = f"hapilot-v3-czat-{folder_name(turn.chat_id)[:24]}-{n}"
         started = time.monotonic()
         tools: dict[str, int] = {}
+        opened: list[str] = []
         status, error = None, None
         proc = None
         try:
@@ -315,6 +319,9 @@ class AgentEngine:
                             event = item[1]
                             if event.get("ev") == "tool_end":
                                 tools[event.get("tool")] = tools.get(event.get("tool"), 0) + 1
+                            elif event.get("ev") == "tool_start":
+                                opened += [p for p in opened_paths(event.get("tool"), event.get("input"))
+                                           if p not in opened]
                             await _safely(ui.event(event))
                         elif item[0] == "ui":
                             _kind, kind, args, future = item
@@ -335,7 +342,8 @@ class AgentEngine:
                     await self._stop(name, proc)
                 except asyncio.CancelledError:
                     await asyncio.shield(self._stop(name, proc))
-                    result = self._result(ws, run, before, "aborted", "przerwane przez użytkownika", started, tools)
+                    result = self._result(ws, run, before, "aborted", "przerwane przez użytkownika", started, tools,
+                                          bridge.retrievals, opened)
                     await _safely(ui.aborted(result))
                     raise
                 finally:
@@ -349,7 +357,7 @@ class AgentEngine:
         finally:
             self._running.pop(turn.chat_id, None)
             shutil.rmtree(sock_dir, ignore_errors=True)
-        return self._result(ws, run, before, status, error, started, tools)
+        return self._result(ws, run, before, status, error, started, tools, bridge.retrievals, opened)
 
     async def _stop(self, name: str, proc) -> None:
         """SIGTERM (the runner aborts and saves the conversation), then a hard kill of the container."""
@@ -370,7 +378,8 @@ class AgentEngine:
             await asyncio.wait_for(proc.wait(), timeout=STOP_WAIT_S)
 
     def _result(self, ws: Workspace, run: Path, before: dict, status: Optional[str], error: Optional[str],
-                started: float, tools: dict) -> TurnResult:
+                started: float, tools: dict, retrievals: Optional[list] = None,
+                opened: Optional[list] = None) -> TurnResult:
         data = _read_json(run / "result.json") or {}
         messages = _read_json(run / "messages_out.json")
         if status is None:
@@ -380,7 +389,8 @@ class AgentEngine:
         return TurnResult(status=status, text=str(data.get("text") or ""),
                           messages=messages if isinstance(messages, list) else None,
                           files=_changed(ws, before), error=error, run_dir=run,
-                          duration_s=round(time.monotonic() - started, 2), tool_calls=tools)
+                          duration_s=round(time.monotonic() - started, 2), tool_calls=tools,
+                          retrievals=list(retrievals or []), opened=list(opened or []))
 
 
 # --------------------------------------------------------------------------- helpers
@@ -426,8 +436,48 @@ def _changed(ws: Workspace, before: dict) -> list:
     out = []
     for f in ws.results():
         if before.get(f["name"]) != (f["bytes"], f["path"].stat().st_mtime_ns):
-            out.append(f)
+            out.append({**f, "status": "modified" if f["name"] in before else "created"})
     return out
+
+
+DOCUMENT_ROOTS = tuple(f"{ROOT}/{d}/" for d in (DOCS, ADDED, TEXT, UPLOADS))
+_QUOTED_PATH = re.compile(r"""(['"])(/praca/[^'"\n]+)\1""")
+_BARE_PATH = re.compile(r"""/praca/[^\s'"`;|&<>(){}\[\],]+""")
+
+
+def _strings(value) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for v in value.values() for s in _strings(v)]
+    if isinstance(value, list):
+        return [s for v in value for s in _strings(v)]
+    return []
+
+
+def opened_paths(tool: Optional[str], raw) -> list[str]:
+    """Container paths of the documents a tool call opens, for the side panel: the files ``read_files`` reads and the
+    document paths a command names (cat, sed, pandas …). Only paths under the documents, the text mirror and the
+    uploads; folders and globs are dropped later, when the paths are matched to documents."""
+    if tool not in ("read_files", "run_commands"):
+        return []
+    try:
+        data = json.loads(raw) if isinstance(raw, str) and raw else raw
+    except ValueError:
+        data = raw
+    found: list[str] = []
+    for text in _strings(data):
+        if tool == "read_files":
+            if text.startswith(DOCUMENT_ROOTS):
+                found.append(text)
+            continue
+        rest = text
+        for match in _QUOTED_PATH.finditer(text):
+            found.append(match.group(2))
+            rest = rest.replace(match.group(0), " ")
+        found += _BARE_PATH.findall(rest)
+    paths = (p.rstrip(".:") for p in found)
+    return [p for p in dict.fromkeys(paths) if p.startswith(DOCUMENT_ROOTS) and not p.endswith("/")]
 
 
 _ENGINE: Optional[AgentEngine] = None
